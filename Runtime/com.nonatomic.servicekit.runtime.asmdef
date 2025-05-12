@@ -1,0 +1,14 @@
+{
+    "name": "com.nonatomic.servicekit.runtime",
+    "rootNamespace": "Nonatomic.ServiceKit",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
