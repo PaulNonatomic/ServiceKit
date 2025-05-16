@@ -1,0 +1,15 @@
+﻿using System;
+using System.Collections.Generic;
+using UnityEngine.SceneManagement;
+
+namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
+{
+	public class SceneGroupData
+	{
+		public string SceneName { get; set; } = "No Scene";
+		public Scene Scene { get; set; } = default;
+		public bool IsUnloaded { get; set; } = false;
+		public bool IsDontDestroyOnLoad { get; set; } = false;
+		public List<(Type Type, ServiceRecord ServiceRecord)> Services { get; } = new();
+	}
+}
