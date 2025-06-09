@@ -269,16 +269,8 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				}
 				else
 				{
-					// Unique name - just show the name
 					_locatorChoices.Add(locator.name);
 				}
-			}
-
-			// Debug: Verify the lists are in sync
-			Debug.Log($"ServiceKit Window: Found {_orderedLocators.Count} locators, {_locatorChoices.Count} choices");
-			for (int i = 0; i < _orderedLocators.Count && i < _locatorChoices.Count; i++)
-			{
-				Debug.Log($"  [{i}] {_orderedLocators[i].name} -> '{_locatorChoices[i]}'");
 			}
 
 			_locatorDropdown.choices = _locatorChoices;
@@ -316,7 +308,6 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				if (selectedIndex >= 0 && selectedIndex < _locatorChoices.Count)
 				{
 					_locatorDropdown.value = _locatorChoices[selectedIndex];
-					Debug.Log($"ServiceKit Window: Restored selection to index {selectedIndex}: '{_locatorChoices[selectedIndex]}'");
 				}
 			}
 			else
@@ -334,8 +325,6 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private void OnLocatorDropdownChanged(ChangeEvent<string> evt)
 		{
 			var selectedValue = evt.newValue;
-			Debug.Log($"ServiceKit Window: Dropdown changed to '{selectedValue}'");
-
 			if (selectedValue == "No ServiceKit Locators found")
 			{
 				_selectedLocator = null;
@@ -346,14 +335,11 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 			// Find the locator using the ordered list that matches dropdown choices
 			var selectedIndex = _locatorChoices.IndexOf(selectedValue);
-			Debug.Log($"ServiceKit Window: Selected index {selectedIndex} out of {_locatorChoices.Count} choices, {_orderedLocators.Count} locators");
-			
 			if (selectedIndex >= 0 && selectedIndex < _orderedLocators.Count)
 			{
 				_selectedLocator = _orderedLocators[selectedIndex];
 				_persistedLocatorGuid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(_selectedLocator));
 				EditorPrefs.SetString(SELECTED_LOCATOR_PREF_KEY, _persistedLocatorGuid);
-				Debug.Log($"ServiceKit Window: Selected locator '{_selectedLocator.name}' with GUID '{_persistedLocatorGuid}'");
 			}
 			else
 			{
@@ -372,7 +358,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			if (newLocator != null)
 			{
 				Debug.Log($"Created new ServiceKitLocator: {newLocator.name}");
-				RefreshServices(); // This will refresh the dropdown and auto-select the new locator
+				RefreshServices();
 			}
 		}
 
