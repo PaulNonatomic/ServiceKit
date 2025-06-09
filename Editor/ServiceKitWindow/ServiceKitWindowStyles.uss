@@ -1,0 +1,275 @@
+﻿
+.service-kit-window {
+    padding: 10px;
+}
+
+.header {
+    font-size: 16px;
+    -unity-font-style: bold;
+    margin-bottom: 10px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(0, 0, 0, 0.2);
+    padding-bottom: 5px;
+}
+
+.locator-header {
+    font-size: 14px;
+    -unity-font-style: bold;
+    padding: 5px;
+    background-color: rgba(0, 0, 0, 0.4);
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+}
+
+.locator-item {
+    margin-bottom: 2px;
+    padding: 2px;
+}
+
+.scene-header {
+    font-size: 14px;
+    -unity-font-style: bold;
+    padding: 5px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+.scene-item {
+    margin-bottom: 6px;
+}
+
+.scene-content {
+    margin-left: 0px;
+}
+
+.services-title-bar {
+    flex-direction: row;
+    justify-content: space-between;
+    min-height: 28px;
+}
+
+/* Updated: Lighter text for service labels */
+.service-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8); /* 80% opacity white for lighter text */
+}
+
+.service-icon {
+    width: 12px;
+    height: 12px;
+    margin-right: 10px;
+    margin-left: 10px;
+    opacity: 0.8; /* Make the icon slightly lighter too */
+}
+
+.button-icon {
+    width: 18px;
+    height: 18px;
+    margin: 4px;
+}
+
+/* Base style for service items */
+.service-item {
+    border-radius: 5px;
+    padding: 2px;
+    margin-bottom: 2px;
+    -unity-font-style: italic;
+}
+
+/* Even rows - default background (no change needed) */
+.service-item-even {
+    background-color: rgba(0, 0, 0, 0.25);
+}
+
+/* Odd rows - slightly lighter background */
+.service-item-odd {
+    background-color: rgba(0, 0, 0, 0.15);
+}
+
+.service-item:hover {
+    border-radius: 5px;
+    background-color: rgba(0, 100, 0, 0.3);
+}
+
+/* Make hover text fully opaque for better readability */
+.service-item:hover .service-label {
+    color: rgba(255, 255, 255, 1.0);
+}
+
+.service-item:hover .service-icon {
+    opacity: 1.0;
+}
+
+.service-item-container {
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    border-radius: 5px;
+}
+
+.service-edit-btn-container {
+    margin-left: auto;
+    position: absolute;
+    right: 0;
+}
+
+.service-type {
+    -unity-font-style: bold;
+}
+
+.no-services-message {
+    margin-top: 5px;
+    color: rgba(255, 255, 255, 0.5);
+    -unity-font-style: bold;
+}
+
+.refresh-button {
+    margin-top: -16px;
+    align-self: center;
+    margin-left: auto;
+}
+
+.open-script-button {
+    height: 16px;
+    margin: auto;
+    background-color: rgba(0, 0, 0, 0);
+    border-color: rgba(0, 0, 0, 0);
+}
+
+.open-script-icon {
+    height: 16px;
+    opacity: 0.8; /* Make icon slightly lighter by default */
+}
+
+.open-script-button:hover .open-script-icon {
+    opacity: 1.0; /* Full opacity on hover */
+}
+
+.unloaded-scene {
+    color: #FF6B6B;
+}
+
+.unloaded-scene > .unity-toggle__text {
+    color: #FF6B6B;
+    -unity-font-style: italic;
+}
+
+.unloaded-scene > .unity-toggle__input:checked {
+    background-color: rgba(255, 107, 107, 0.2);
+}
+
+/* Services Tab Styles */
+.services-tab {
+    flex-grow: 1;
+    flex-direction: column;
+}
+
+.services-header {
+    font-size: 16px;
+    -unity-font-style: bold;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+}
+
+/* Style for DontDestroyOnLoad scenes - Green */
+.dont-destroy-scene {
+    color: #4CAF50; /* Material Design Green */
+}
+
+.dont-destroy-scene > .unity-toggle__text {
+    color: #4CAF50;
+    -unity-font-style: bold;
+}
+
+.dont-destroy-scene > .unity-toggle__input:checked {
+    background-color: rgba(76, 175, 80, 0.2); /* Light green background */
+}
+
+/* Style for unloaded scenes - Red (already exists, keeping for reference) */
+.unloaded-scene {
+    color: #FF6B6B;
+}
+
+.unloaded-scene > .unity-toggle__text {
+    color: #FF6B6B;
+    -unity-font-style: italic;
+}
+
+.unloaded-scene > .unity-toggle__input:checked {
+    background-color: rgba(255, 107, 107, 0.2);
+}
+
+/* NEW: Style for "No Scene" services - Blue */
+.no-scene {
+    color: #2196F3; /* Material Design Blue */
+}
+
+.no-scene > .unity-toggle__text {
+    color: #2196F3;
+    -unity-font-style: normal;
+}
+
+.no-scene > .unity-toggle__input:checked {
+    background-color: rgba(33, 150, 243, 0.2); /* Light blue background */
+}
+
+/* NEW: Style for regular scene services - Orange */
+.regular-scene {
+    color: #FF9800; /* Material Design Orange */
+}
+
+.regular-scene > .unity-toggle__text {
+    color: #FF9800;
+    -unity-font-style: normal;
+}
+
+.regular-scene > .unity-toggle__input:checked {
+    background-color: rgba(255, 152, 0, 0.2); /* Light orange background */
+}
+
+/* Search styles for ServiceKitWindow */
+
+.search-container {
+    flex-direction: row;
+    padding: 5px 0;
+    margin-bottom: 5px;
+    min-height: 38px;
+}
+
+.search-field {
+    flex-grow: 1;
+    margin-right: 5px;
+}
+
+.search-field > .unity-text-field__input {
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 3px 6px;
+    height: 24px;
+}
+
+.clear-search-button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 16px;
+    -unity-font-style: bold;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    align-self: center;
+}
+
+.clear-search-button:hover {
+    background-color: rgba(255, 0, 0, 0.2);
+}
+
+.no-results-message {
+    margin-top: 0px;
+    margin-bottom: 5px;
+    padding: 10px;
+    color: rgba(255, 255, 255, 0.7);
+    -unity-text-align: middle-center;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
