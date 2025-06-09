@@ -106,8 +106,6 @@ public class PlayerUI : MonoBehaviour
             .WithCancellation(destroyCancellationToken)
             .WithErrorHandling()
             .ExecuteAsync();
-        
-        RegisterService();
     }
     
     private void Start()
@@ -126,7 +124,7 @@ public class PlayerUI : MonoBehaviour
 For common scenarios, inherit from `ServiceKitBehaviour<T>` to automatically handle service injection:
 
 ```csharp
-public class PlayerController : ServiceKitBehaviour<IPlayerController>
+public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerController
 {
     [InjectService] private IPlayerService _playerService;
     [InjectService] private IInventoryService _inventoryService;
@@ -139,6 +137,7 @@ public class PlayerController : ServiceKitBehaviour<IPlayerController>
         _inventoryService.LoadInventory();
         
         Debug.Log("Player controller initialized with all dependencies!");
+        RegisterService();
     }
     
     // Optional: Handle injection failures gracefully
@@ -174,6 +173,11 @@ Automatically register MonoBehaviours as services:
 ```csharp
 public class AudioManager : ServiceKitAutoRegister<IAudioService>, IAudioService
 {
+    protected override void OnServicesInjected()
+    {
+        RegisterService();
+    }
+    
     public void PlaySound(string soundName)
     {
         // Implementation

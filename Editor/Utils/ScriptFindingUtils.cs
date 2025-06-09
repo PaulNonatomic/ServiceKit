@@ -1,11 +1,38 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
+using UnityEngine;
 
 namespace Nonatomic.ServiceKit.Editor.Utils
 {
 	public static class ScriptFindingUtils
 	{
+		public static T CreateInstanceInProject<T>(bool selectInstance = true) where T : ScriptableObject
+		{
+			var asset = ScriptableObject.CreateInstance<T>();
+			var path = AssetDatabase.GetAssetPath(Selection.activeObject);
+            
+			if (string.IsNullOrEmpty(path))
+			{
+				path = "Assets";
+			}
+			else if (Path.GetExtension(path) != "")
+			{
+				path = path.Replace(Path.GetFileName(AssetDatabase.GetAssetPath(Selection.activeObject)), "");
+			}
+
+			var assetPathAndName = AssetDatabase.GenerateUniqueAssetPath(path + "/New " + typeof(T).Name + ".asset");
+
+			AssetDatabase.CreateAsset(asset, assetPathAndName);
+			AssetDatabase.SaveAssets();
+			AssetDatabase.Refresh();
+			EditorUtility.FocusProjectWindow();
+			if(selectInstance) Selection.activeObject = asset;
+
+			return asset;
+		}
+		
 		public static MonoScript FindScriptForType(Type type)
 		{
 			var script = FindExactTypeScript(type);
@@ -76,7 +103,7 @@ namespace Nonatomic.ServiceKit.Editor.Utils
 				// Skip obvious non-matches
 				if (!path.EndsWith(".cs")) continue;
 				
-				var content = System.IO.File.ReadAllText(path);
+				var content = File.ReadAllText(path);
 				
 				// Look for interface declaration pattern
 				if (content.Contains($"interface {interfaceName}") || 
