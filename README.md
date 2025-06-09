@@ -14,6 +14,7 @@ A powerful, ScriptableObject-based service locator pattern implementation for Un
 [![Unity](https://img.shields.io/badge/Unity-2022.3+-black.svg)](https://unity3d.com/pt/get-unity/download/archive)
 
 </div>
+
 ## Features
 
 - **ScriptableObject-Based**: Clean, asset-based architecture that integrates seamlessly with Unity's workflow
