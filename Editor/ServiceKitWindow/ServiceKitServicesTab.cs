@@ -1,6 +1,7 @@
 ﻿#nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nonatomic.ServiceKit.Editor.Utils;
 using UnityEditor;
 using UnityEngine;
@@ -19,13 +20,24 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private readonly Action _refreshCallback;
 		private readonly TextField _searchField;
 		private readonly ScrollView _servicesScrollView;
+		private readonly DropdownField _locatorDropdown;
+		private readonly Button _showAllButton;
+		private readonly Button _createButton;
 		private bool _refreshPending;
 		private List<ServiceKitLocator> _serviceKitLocators = new();
+		private List<ServiceKitLocator> _orderedLocators = new(); // Ordered list that matches dropdown choices
+		private ServiceKitLocator _selectedLocator;
+		private List<string> _locatorChoices = new();
+		private string _persistedLocatorGuid; // Store GUID instead of name for uniqueness
+		private const string SELECTED_LOCATOR_PREF_KEY = "ServiceKit_SelectedLocatorGuid";
 
 		public ServiceKitServicesTab(Action refreshCallback)
 		{
 			_refreshCallback = refreshCallback;
 			AddToClassList("services-tab");
+
+			// Load persisted locator selection using GUID for uniqueness
+			_persistedLocatorGuid = EditorPrefs.GetString(SELECTED_LOCATOR_PREF_KEY, "");
 
 			// Title bar
 			var titleBar = new VisualElement();
@@ -45,8 +57,30 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 			var icon = new Image();
 			icon.AddToClassList("button-icon");
-			icon.image = Resources.Load<Texture2D>("ServiceKit/Icons/refresh");
+			icon.image = Resources.Load<Texture2D>("Icons/refresh");
 			refreshButton.Add(icon);
+
+			// Create the locator selection container
+			var locatorContainer = new VisualElement();
+			locatorContainer.AddToClassList("locator-selection-container");
+			Add(locatorContainer);
+
+			// Add locator selection dropdown
+			_locatorDropdown = new DropdownField("ServiceKit Locator");
+			_locatorDropdown.AddToClassList("locator-selection-dropdown");
+			_locatorDropdown.RegisterValueChangedCallback(OnLocatorDropdownChanged);
+			locatorContainer.Add(_locatorDropdown);
+
+			// Add "Create New" button for when no locators exist
+			var createButton = new Button(CreateNewLocator);
+			createButton.text = "Create";
+			createButton.tooltip = "Create a new ServiceKit Locator";
+			createButton.AddToClassList("create-locator-button");
+			createButton.style.display = DisplayStyle.None; // Hidden initially
+			locatorContainer.Add(createButton);
+
+			// Store reference to create button for later visibility control
+			_createButton = createButton;
 
 			// Create the search container
 			var searchContainer = new VisualElement();
@@ -171,19 +205,184 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			// Find all ServiceKitLocator assets
 			_serviceKitLocators = FindServiceKitLocatorAssets();
 
+			// Update dropdown choices
+			UpdateDropdownChoices();
+
+			// Determine which locators to display
+			var locatorsToDisplay = _selectedLocator != null 
+				? new List<ServiceKitLocator> { _selectedLocator }
+				: _serviceKitLocators; // Show all if no specific selection
+
 			// Create UI for each service locator
-			foreach (var locator in _serviceKitLocators)
+			foreach (var locator in locatorsToDisplay)
 			{
-				var locatorItem = new LocatorItem(locator);
+				// Always show headers when displaying multiple locators, hide when showing single
+				var showHeader = locatorsToDisplay.Count > 1;
+				var locatorItem = new LocatorItem(locator, showHeader);
 				_locatorItems.Add(locatorItem);
 				_servicesScrollView.contentContainer.Add(locatorItem);
 			}
+
+			// Update UI state
+			UpdateUIState();
 
 			// Apply any existing search filter
 			if (!string.IsNullOrWhiteSpace(_searchField.value))
 			{
 				ApplySearchFilter(_searchField.value);
 			}
+		}
+
+		private void UpdateDropdownChoices()
+		{
+			_locatorChoices.Clear();
+			_orderedLocators.Clear();
+
+			if (_serviceKitLocators.Count == 0)
+			{
+				_locatorChoices.Add("No ServiceKit Locators found");
+				_locatorDropdown.choices = _locatorChoices;
+				_locatorDropdown.value = _locatorChoices[0];
+				_locatorDropdown.SetEnabled(false);
+				_createButton.style.display = DisplayStyle.Flex;
+				_selectedLocator = null;
+				return;
+			}
+
+			// First, create the ordered list
+			_orderedLocators = _serviceKitLocators.OrderBy(l => l.name).ToList();
+			
+			// Then create display names for the ordered list
+			var nameGroups = _orderedLocators.GroupBy(l => l.name).ToList();
+			
+			for (int i = 0; i < _orderedLocators.Count; i++)
+			{
+				var locator = _orderedLocators[i];
+				var group = nameGroups.First(g => g.Key == locator.name);
+				
+				if (group.Count() > 1)
+				{
+					// Multiple locators with same name - show path
+					var path = AssetDatabase.GetAssetPath(locator);
+					var folderPath = System.IO.Path.GetDirectoryName(path)?.Replace("Assets/", "") ?? "";
+					_locatorChoices.Add($"{locator.name} ({folderPath})");
+				}
+				else
+				{
+					// Unique name - just show the name
+					_locatorChoices.Add(locator.name);
+				}
+			}
+
+			// Debug: Verify the lists are in sync
+			Debug.Log($"ServiceKit Window: Found {_orderedLocators.Count} locators, {_locatorChoices.Count} choices");
+			for (int i = 0; i < _orderedLocators.Count && i < _locatorChoices.Count; i++)
+			{
+				Debug.Log($"  [{i}] {_orderedLocators[i].name} -> '{_locatorChoices[i]}'");
+			}
+
+			_locatorDropdown.choices = _locatorChoices;
+			_locatorDropdown.SetEnabled(true);
+			_createButton.style.display = DisplayStyle.None;
+
+			// Restore selection from persisted name or select first locator
+			RestoreOrSelectFirstLocator();
+		}
+
+		private void RestoreOrSelectFirstLocator()
+		{
+			ServiceKitLocator locatorToSelect = null;
+
+			// Try to restore from persisted GUID first
+			if (!string.IsNullOrEmpty(_persistedLocatorGuid))
+			{
+				locatorToSelect = _orderedLocators.FirstOrDefault(l => 
+					AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(l)) == _persistedLocatorGuid);
+			}
+
+			// If no persisted selection or locator not found, select first available
+			if (locatorToSelect == null && _orderedLocators.Count > 0)
+			{
+				locatorToSelect = _orderedLocators[0];
+			}
+
+			if (locatorToSelect != null)
+			{
+				_selectedLocator = locatorToSelect;
+				_persistedLocatorGuid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(locatorToSelect));
+
+				// Set dropdown value using the ordered list
+				var selectedIndex = _orderedLocators.IndexOf(locatorToSelect);
+				if (selectedIndex >= 0 && selectedIndex < _locatorChoices.Count)
+				{
+					_locatorDropdown.value = _locatorChoices[selectedIndex];
+					Debug.Log($"ServiceKit Window: Restored selection to index {selectedIndex}: '{_locatorChoices[selectedIndex]}'");
+				}
+			}
+			else
+			{
+				_selectedLocator = null;
+				_persistedLocatorGuid = null;
+			}
+		}
+
+		private void UpdateUIState()
+		{
+			// No need for separate "Show All" button anymore since it's in the dropdown
+		}
+
+		private void OnLocatorDropdownChanged(ChangeEvent<string> evt)
+		{
+			var selectedValue = evt.newValue;
+			Debug.Log($"ServiceKit Window: Dropdown changed to '{selectedValue}'");
+
+			if (selectedValue == "No ServiceKit Locators found")
+			{
+				_selectedLocator = null;
+				_persistedLocatorGuid = null;
+				EditorPrefs.DeleteKey(SELECTED_LOCATOR_PREF_KEY);
+				return;
+			}
+
+			// Find the locator using the ordered list that matches dropdown choices
+			var selectedIndex = _locatorChoices.IndexOf(selectedValue);
+			Debug.Log($"ServiceKit Window: Selected index {selectedIndex} out of {_locatorChoices.Count} choices, {_orderedLocators.Count} locators");
+			
+			if (selectedIndex >= 0 && selectedIndex < _orderedLocators.Count)
+			{
+				_selectedLocator = _orderedLocators[selectedIndex];
+				_persistedLocatorGuid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(_selectedLocator));
+				EditorPrefs.SetString(SELECTED_LOCATOR_PREF_KEY, _persistedLocatorGuid);
+				Debug.Log($"ServiceKit Window: Selected locator '{_selectedLocator.name}' with GUID '{_persistedLocatorGuid}'");
+			}
+			else
+			{
+				_selectedLocator = null;
+				_persistedLocatorGuid = null;
+				EditorPrefs.DeleteKey(SELECTED_LOCATOR_PREF_KEY);
+				Debug.LogWarning($"ServiceKit Window: Could not find locator for index {selectedIndex}");
+			}
+
+			RefreshServices();
+		}
+
+		private void CreateNewLocator()
+		{
+			var newLocator = ScriptableObjectUtils.CreateInstanceInProject<ServiceKitLocator>(selectInstance: false);
+			if (newLocator != null)
+			{
+				Debug.Log($"Created new ServiceKitLocator: {newLocator.name}");
+				RefreshServices(); // This will refresh the dropdown and auto-select the new locator
+			}
+		}
+
+		private void ShowAllLocators()
+		{
+			_selectedLocator = null;
+			_persistedLocatorGuid = null;
+			EditorPrefs.DeleteKey(SELECTED_LOCATOR_PREF_KEY);
+			// Update dropdown to show first locator or handle empty state
+			UpdateDropdownChoices();
 		}
 
 		/// <summary>

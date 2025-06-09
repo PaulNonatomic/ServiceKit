@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nonatomic.ServiceKit.Editor.Utils;
 using UnityEngine.UIElements;
@@ -10,16 +11,21 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private readonly ServiceKitLocator _locator;
 		private readonly List<SceneItem> _sceneItems = new();
 		private readonly VisualElement _servicesContainer;
+		private readonly Label _headerLabel;
 		private string _currentSearchText = string.Empty;
 
-		public LocatorItem(ServiceKitLocator locator)
+		public LocatorItem(ServiceKitLocator locator, bool showHeader = true)
 		{
 			_locator = locator;
 			AddToClassList("locator-item");
 
-			var headerLabel = new Label(locator.name);
-			headerLabel.AddToClassList("locator-header");
-			Add(headerLabel);
+			_headerLabel = new Label(locator.name);
+			_headerLabel.AddToClassList("locator-header");
+			
+			if (showHeader)
+			{
+				Add(_headerLabel);
+			}
 
 			_servicesContainer = new();
 			_servicesContainer.AddToClassList("services-container");
@@ -27,6 +33,11 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 			// Refresh services initially
 			RefreshServices();
+		}
+
+		public void SetHeaderVisibility(bool visible)
+		{
+			_headerLabel.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
 		}
 
 		private void RefreshServices()

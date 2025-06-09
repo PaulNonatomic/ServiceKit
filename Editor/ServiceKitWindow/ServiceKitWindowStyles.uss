@@ -1,4 +1,5 @@
-﻿
+﻿/* ServiceKitWindowStyles.uss */
+
 .service-kit-window {
     padding: 10px;
 }
@@ -229,6 +230,34 @@
 }
 
 /* Search styles for ServiceKitWindow */
+
+.locator-selection-container {
+    flex-direction: row;
+    padding: 5px 0;
+    margin-bottom: 5px;
+    min-height: 24px;
+    align-items: center;
+}
+
+.locator-selection-dropdown {
+    flex-grow: 1;
+    margin-right: 5px;
+}
+
+.create-locator-button {
+    width: 60px;
+    height: 20px;
+    padding: 0;
+    font-size: 11px;
+    background-color: rgba(0, 120, 215, 0.8);
+    border-radius: 4px;
+    align-self: center;
+    color: white;
+}
+
+.create-locator-button:hover {
+    background-color: rgba(0, 120, 215, 1.0);
+}
 
 .search-container {
     flex-direction: row;
