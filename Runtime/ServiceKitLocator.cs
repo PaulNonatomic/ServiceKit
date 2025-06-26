@@ -82,7 +82,7 @@ namespace Nonatomic.ServiceKit
 					_pendingServices.Remove(type);
 				}
 
-				if (ServiceKitSettings.instance.DebugLogging)
+				if (ServiceKitSettings.Instance.DebugLogging)
 				{
 					Debug.Log($"[ServiceKit] Registered {type.Name} from scene '{serviceInfo.SceneName}' by {registeredBy}");
 				}
@@ -127,7 +127,7 @@ namespace Nonatomic.ServiceKit
 				{
 					_services.Remove(type);
 
-					if (ServiceKitSettings.instance.DebugLogging)
+					if (ServiceKitSettings.Instance.DebugLogging)
 					{
 						Debug.Log($"[ServiceKit] Auto-unregistered {type.Name} from unloaded scene '{scene.name}'");
 					}
@@ -165,7 +165,7 @@ namespace Nonatomic.ServiceKit
 				{
 					_services.Remove(type);
 
-					if (ServiceKitSettings.instance.DebugLogging)
+					if (ServiceKitSettings.Instance.DebugLogging)
 					{
 						Debug.Log($"[ServiceKit] Cleaned up destroyed service: {type.Name}");
 					}
@@ -190,7 +190,7 @@ namespace Nonatomic.ServiceKit
 			{
 				if (!_services.Remove(serviceType, out var serviceInfo)) return;
 
-				if (ServiceKitSettings.instance.DebugLogging)
+				if (ServiceKitSettings.Instance.DebugLogging)
 				{
 					Debug.Log($"[ServiceKit] Unregistered {serviceType.Name}");
 				}
@@ -358,7 +358,7 @@ namespace Nonatomic.ServiceKit
 
 		private void OnSceneUnloaded(Scene scene)
 		{
-			if (ServiceKitSettings.instance.AutoCleanupOnSceneUnload)
+			if (ServiceKitSettings.Instance.AutoCleanupOnSceneUnload)
 			{
 				UnregisterServicesFromScene(scene);
 			}

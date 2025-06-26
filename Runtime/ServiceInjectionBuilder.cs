@@ -30,7 +30,7 @@ namespace Nonatomic.ServiceKit
 
 		public IServiceInjectionBuilder WithTimeout()
 		{
-			_timeout = ServiceKitSettings.instance.DefaultTimeout;
+			_timeout = ServiceKitSettings.Instance.DefaultTimeout;
 			return this;
 		}
 
