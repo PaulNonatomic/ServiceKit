@@ -37,10 +37,7 @@ namespace Nonatomic.ServiceKit
 		/// Called after all services have been successfully injected.
 		/// Override this method to perform initialization that depends on injected services.
 		/// </summary>
-		protected virtual void OnServicesInjected()
-		{
-			// Default implementation does nothing
-		}
+		protected abstract void OnServicesInjected();
 
 		/// <summary>
 		/// Called when service injection fails.

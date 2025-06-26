@@ -80,9 +80,17 @@ namespace Tests.EditMode
         IInventoryService InventoryService { get; }
     }
     
-	public class PlayerController : ServiceKitBehaviour<IPlayerController>
+	public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerController
 	{
+		public IPlayerService PlayerService => _playerService;
+		public IInventoryService InventoryService => _inventoryService;
+		
 		[InjectService] private IPlayerService _playerService;
 		[InjectService] private IInventoryService _inventoryService;
+		
+		protected override void OnServicesInjected()
+		{
+			RegisterService();
+		}
 	}
 }
