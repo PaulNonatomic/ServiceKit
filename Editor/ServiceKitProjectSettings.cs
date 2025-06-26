@@ -1,7 +1,7 @@
 ﻿using UnityEditor;
-namespace Nonatomic.ServiceKit
+
+namespace Nonatomic.ServiceKit.Editor
 {
-	[InitializeOnLoad]
 	public static class ServiceKitProjectSettings
 	{
 		private const string AUTO_CLEANUP_KEY = "ServiceKit_AutoCleanupOnSceneUnload";
@@ -29,12 +29,6 @@ namespace Nonatomic.ServiceKit
 			{
 				EditorPrefs.SetBool(DEBUG_LOGGING_KEY, value);
 			}
-		}
-
-		static ServiceKitProjectSettings()
-		{
-			// Add settings to Preferences window
-			//SettingsService.RegisterSettingsProvider(new ServiceKitSettingsProvider());
 		}
 	}
 }
