@@ -1,3 +1,6 @@
+## [0.1.4] - Jun 26, 2025
+- Made the OnServicesInjected method abstract 
+
 ## [0.1.3] - Jun 26, 2025
 - Moved the ServiceKitProjectSettings into the Editor folder to prevent it being included in builds
 
