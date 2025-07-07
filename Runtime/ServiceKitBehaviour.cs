@@ -8,9 +8,16 @@ namespace Nonatomic.ServiceKit
 	{
 		[SerializeField] protected ServiceKitLocator ServiceKitLocator;
 
+		protected bool Registered;
+
 		protected async virtual void Awake()
 		{
 			await InjectServices();
+		}
+		
+		protected virtual void OnDestroy()
+		{
+			UnregisterService();
 		}
 
 		protected virtual void RegisterService()
@@ -18,6 +25,15 @@ namespace Nonatomic.ServiceKit
 			if (GuardAgainstUnassignedServiceKit()) return;
 			
 			ServiceKitLocator.RegisterService<T>(this as T);
+			Registered = true;
+		}
+		
+		protected virtual void UnregisterService()
+		{
+			if (GuardAgainstUnassignedServiceKit()) return;
+			
+			Registered = false;
+			ServiceKitLocator.UnregisterService(typeof(T));
 		}
 
 		protected async virtual Task InjectServices()
