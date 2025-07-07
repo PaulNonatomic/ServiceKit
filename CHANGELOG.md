@@ -1,3 +1,6 @@
+## [0.1.5] - Jul 07, 2025
+- ServiceKitBehaviour now calls OnRegister in OnDestroy 
+
 ## [0.1.4] - Jun 26, 2025
 - Made the OnServicesInjected method abstract 
 
