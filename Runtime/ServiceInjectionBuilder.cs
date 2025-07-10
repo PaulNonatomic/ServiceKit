@@ -75,67 +75,88 @@ namespace Nonatomic.ServiceKit
 			}
 
 			// Create timeout cancellation if needed
-			using var timeoutCts = _timeout > 0 ? new CancellationTokenSource(TimeSpan.FromSeconds(_timeout)) : null;
-			using var linkedCts = timeoutCts != null
-				? CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken, timeoutCts.Token)
-				: null;
-
-			var finalToken = linkedCts?.Token ?? _cancellationToken;
-
-			// Capture Unity thread context
-			var unityContext = SynchronizationContext.Current;
-
-			try
+			CancellationTokenSource timeoutCts = null;
+			IDisposable timeoutRegistration = null;
+			if (_timeout > 0)
 			{
-				// Create tasks for all service retrievals
-				var serviceTasks = fieldsToInject.Select<FieldInfo, Task<(FieldInfo fieldInfo, object service, bool Required)>>(async fieldInfo =>
-				{
-					var attribute = CustomAttributeExtensions.GetCustomAttribute<InjectServiceAttribute>((MemberInfo)fieldInfo);
-					var serviceType = fieldInfo.FieldType;
+				timeoutCts = new CancellationTokenSource();
+				timeoutRegistration = ServiceKitTimeoutManager.Instance.RegisterTimeout(timeoutCts, _timeout);
+			}
 
-					// For optional services, try to get them immediately without waiting
-					if (!attribute.Required)
+			using (timeoutRegistration)
+			using (var linkedCts = timeoutCts != null
+				? CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken, timeoutCts.Token)
+				: null)
+			{
+				var finalToken = linkedCts?.Token ?? _cancellationToken;
+
+				// Capture Unity thread context
+				var unityContext = SynchronizationContext.Current;
+
+				try
+				{
+					// Create tasks for all service retrievals
+					var serviceTasks = fieldsToInject.Select<FieldInfo, Task<(FieldInfo fieldInfo, object service, bool Required)>>(async fieldInfo =>
 					{
-						object optionalService = _serviceKitLocator.GetService(serviceType);
-						return (fieldInfo, optionalService, attribute.Required);
+						var attribute = CustomAttributeExtensions.GetCustomAttribute<InjectServiceAttribute>((MemberInfo)fieldInfo);
+						var serviceType = fieldInfo.FieldType;
+
+						// For optional services, try to get them immediately without waiting
+						if (!attribute.Required)
+						{
+							object optionalService = _serviceKitLocator.GetService(serviceType);
+							return (fieldInfo, optionalService, attribute.Required);
+						}
+
+						// For required services, wait for them to become available
+						object requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
+						return (fieldInfo, requiredService, attribute.Required);
+					}).ToList();
+
+					// Wait for all services
+					var results = await Task.WhenAll(serviceTasks);
+
+					// Check for missing required services
+					var missingRequiredServices = results
+						.Where(r => r.service == null && r.Required)
+						.Select(r => r.fieldInfo.FieldType.Name)
+						.ToList();
+
+					if (missingRequiredServices.Any())
+					{
+						throw new ServiceInjectionException(
+							$"Required services not available: {string.Join(", ", missingRequiredServices)}");
 					}
 
-					// For required services, wait for them to become available
-					object requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
-					return (fieldInfo, requiredService, attribute.Required);
-				}).ToList();
+					// Switch back to Unity thread for injection
+					await SwitchToUnityThread(unityContext);
 
-				// Wait for all services
-				var results = await Task.WhenAll(serviceTasks);
-
-				// Check for missing required services
-				var missingRequiredServices = results
-					.Where(r => r.service == null && r.Required)
-					.Select(r => r.fieldInfo.FieldType.Name)
-					.ToList();
-
-				if (missingRequiredServices.Any())
-				{
-					throw new ServiceInjectionException(
-						$"Required services not available: {string.Join(", ", missingRequiredServices)}");
+					// Inject all services (including null for optional services)
+					foreach ((var field, object service, bool _) in results)
+					{
+						field.SetValue(_target, service);
+					}
 				}
-
-				// Switch back to Unity thread for injection
-				await SwitchToUnityThread(unityContext);
-
-				// Inject all services (including null for optional services)
-				foreach ((var field, object service, bool _) in results)
+				catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
 				{
-					field.SetValue(_target, service);
+					var requiredFields = fieldsToInject.Where(f => CustomAttributeExtensions.GetCustomAttribute<InjectServiceAttribute>((MemberInfo)f).Required);
+					var missingServices = requiredFields
+						.Where(f => _serviceKitLocator.GetService(f.FieldType) == null)
+						.Select(f => f.FieldType.Name)
+						.ToList();
+
+					string message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
+					if (missingServices.Any())
+					{
+						message += $" Missing required services: {string.Join(", ", missingServices)}.";
+					}
+
+					throw new TimeoutException(message);
 				}
-			}
-			catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
-			{
-				throw new TimeoutException($"Service injection timed out after {_timeout} seconds");
-			}
-			catch (Exception ex) when (!(ex is ServiceInjectionException || ex is TimeoutException))
-			{
-				throw new ServiceInjectionException("Failed to inject services", ex);
+				catch (Exception ex) when (!(ex is ServiceInjectionException || ex is TimeoutException))
+				{
+					throw new ServiceInjectionException("Failed to inject services", ex);
+				}
 			}
 		}
 
