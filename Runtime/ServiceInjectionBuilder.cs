@@ -162,10 +162,21 @@ namespace Nonatomic.ServiceKit
 
 		private List<FieldInfo> GetFieldsToInject(Type targetType)
 		{
-			return targetType
-				.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
-				.Where(f => f.GetCustomAttribute<InjectServiceAttribute>() != null)
-				.ToList();
+			var fields = new List<FieldInfo>();
+			var currentType = targetType;
+    
+			// Walk up the inheritance hierarchy
+			while (currentType != null && currentType != typeof(object))
+			{
+				var typeFields = currentType
+					.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly)
+					.Where(f => f.GetCustomAttribute<InjectServiceAttribute>() != null);
+            
+				fields.AddRange(typeFields);
+				currentType = currentType.BaseType;
+			}
+    
+			return fields;
 		}
 
 		private async Task SwitchToUnityThread(SynchronizationContext unityContext)
