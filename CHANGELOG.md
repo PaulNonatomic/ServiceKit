@@ -1,3 +1,8 @@
+## [0.3.0] - Jul 13, 2025
+- Updated the ServiceInjectionBuilders GetFieldsToInject method which only looks at the specific type passed to it
+  but will now walk up the inheritance hierarchy and inject parents
+- Added additional tests for this scenario
+
 ## [0.2.0] - Jul 10, 2025
 - Updated the ServiceInjectionBuilder to introduce the ServiceKitTimeoutManager which provides a revised timeout system
   that respects timescale and provides more insightful error messages.

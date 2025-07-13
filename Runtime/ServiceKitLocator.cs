@@ -66,6 +66,9 @@ namespace Nonatomic.ServiceKit
 			{
 				var type = typeof(T);
 				var serviceInfo = CreateServiceInfo(service, type, registeredBy);
+				
+				if (service == null) throw new ArgumentNullException(nameof(service));
+				if (_services.ContainsKey(type) && ServiceKitSettings.Instance.DebugLogging) Debug.LogWarning($"Overwriting existing service for {type.Name}");
 
 				_services[type] = serviceInfo;
 
