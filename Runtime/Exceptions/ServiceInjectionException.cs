@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Nonatomic.ServiceKit
+namespace Nonatomic.ServiceKit.Exceptions
 {
 	public class ServiceInjectionException : Exception
 	{

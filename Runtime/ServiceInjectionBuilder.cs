@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nonatomic.ServiceKit.Exceptions;
 using UnityEngine;
 
 namespace Nonatomic.ServiceKit
@@ -15,6 +16,11 @@ namespace Nonatomic.ServiceKit
 		private CancellationToken _cancellationToken = CancellationToken.None;
 		private float _timeout = -1f;
 		private Action<Exception> _errorHandler;
+
+		// MODIFIED: Use [ThreadStatic] to share the stack across all separate
+		// async Awake() calls within the same frame on the main thread.
+		[ThreadStatic]
+		private static Stack<Type> _dependencyStack;
 
 		internal ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target)
 		{
@@ -66,96 +72,112 @@ namespace Nonatomic.ServiceKit
 
 		public async Task ExecuteAsync()
 		{
+			// Initialize the stack for this thread if it's the first call in the frame.
+			if (_dependencyStack == null)
+			{
+				_dependencyStack = new Stack<Type>();
+			}
+
 			var targetType = _target.GetType();
-			var fieldsToInject = GetFieldsToInject(targetType);
+			
+			_dependencyStack.Push(targetType);
 
-			if (fieldsToInject.Count == 0)
+			try
 			{
-				return;
-			}
+				var fieldsToInject = GetFieldsToInject(targetType);
 
-			// Create timeout cancellation if needed
-			CancellationTokenSource timeoutCts = null;
-			IDisposable timeoutRegistration = null;
-			if (_timeout > 0)
-			{
-				timeoutCts = new CancellationTokenSource();
-				timeoutRegistration = ServiceKitTimeoutManager.Instance.RegisterTimeout(timeoutCts, _timeout);
-			}
-
-			using (timeoutRegistration)
-			using (var linkedCts = timeoutCts != null
-				? CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken, timeoutCts.Token)
-				: null)
-			{
-				var finalToken = linkedCts?.Token ?? _cancellationToken;
-
-				// Capture Unity thread context
-				var unityContext = SynchronizationContext.Current;
-
-				try
+				if (fieldsToInject.Count == 0)
 				{
-					// Create tasks for all service retrievals
-					var serviceTasks = fieldsToInject.Select<FieldInfo, Task<(FieldInfo fieldInfo, object service, bool Required)>>(async fieldInfo =>
-					{
-						var attribute = CustomAttributeExtensions.GetCustomAttribute<InjectServiceAttribute>((MemberInfo)fieldInfo);
-						var serviceType = fieldInfo.FieldType;
+					return;
+				}
 
-						// For optional services, try to get them immediately without waiting
-						if (!attribute.Required)
+				CancellationTokenSource timeoutCts = null;
+				IDisposable timeoutRegistration = null;
+				if (_timeout > 0)
+				{
+					timeoutCts = new CancellationTokenSource();
+					timeoutRegistration = ServiceKitTimeoutManager.Instance.RegisterTimeout(timeoutCts, _timeout);
+				}
+
+				using (timeoutRegistration)
+				using (var linkedCts = timeoutCts != null
+					? CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken, timeoutCts.Token)
+					: null)
+				{
+					var finalToken = linkedCts?.Token ?? _cancellationToken;
+					var unityContext = SynchronizationContext.Current;
+
+					try
+					{
+						var serviceTasks = fieldsToInject.Select<FieldInfo, Task<(FieldInfo fieldInfo, object service, bool Required)>>(async fieldInfo =>
 						{
-							object optionalService = _serviceKitLocator.GetService(serviceType);
-							return (fieldInfo, optionalService, attribute.Required);
+							var attribute = CustomAttributeExtensions.GetCustomAttribute<InjectServiceAttribute>((MemberInfo)fieldInfo);
+							var serviceType = fieldInfo.FieldType;
+
+							if (_dependencyStack.Any(typeInStack => serviceType.IsAssignableFrom(typeInStack)))
+							{
+								var chain = string.Join(" -> ", _dependencyStack.Reverse().Select(t => t.Name)) + $" -> {serviceType.Name}";
+								throw new CircularDependencyException($"Circular dependency detected: {chain}");
+							}
+
+							if (!attribute.Required)
+							{
+								object optionalService = _serviceKitLocator.GetService(serviceType);
+								return (fieldInfo, optionalService, attribute.Required);
+							}
+
+							object requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
+							return (fieldInfo, requiredService, attribute.Required);
+						}).ToList();
+
+						var results = await Task.WhenAll(serviceTasks);
+
+						var missingRequiredServices = results
+							.Where(r => r.service == null && r.Required)
+							.Select(r => r.fieldInfo.FieldType.Name)
+							.ToList();
+
+						if (missingRequiredServices.Any())
+						{
+							throw new ServiceInjectionException(
+								$"Required services not available: {string.Join(", ", missingRequiredServices)}");
 						}
 
-						// For required services, wait for them to become available
-						object requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
-						return (fieldInfo, requiredService, attribute.Required);
-					}).ToList();
+						await SwitchToUnityThread(unityContext);
 
-					// Wait for all services
-					var results = await Task.WhenAll(serviceTasks);
-
-					// Check for missing required services
-					var missingRequiredServices = results
-						.Where(r => r.service == null && r.Required)
-						.Select(r => r.fieldInfo.FieldType.Name)
-						.ToList();
-
-					if (missingRequiredServices.Any())
-					{
-						throw new ServiceInjectionException(
-							$"Required services not available: {string.Join(", ", missingRequiredServices)}");
+						foreach ((var field, object service, bool _) in results)
+						{
+							field.SetValue(_target, service);
+						}
 					}
-
-					// Switch back to Unity thread for injection
-					await SwitchToUnityThread(unityContext);
-
-					// Inject all services (including null for optional services)
-					foreach ((var field, object service, bool _) in results)
+					catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
 					{
-						field.SetValue(_target, service);
+						var requiredFields = fieldsToInject.Where(f => CustomAttributeExtensions.GetCustomAttribute<InjectServiceAttribute>((MemberInfo)f).Required);
+						var missingServices = requiredFields
+							.Where(f => _serviceKitLocator.GetService(f.FieldType) == null)
+							.Select(f => f.FieldType.Name)
+							.ToList();
+
+						string message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
+						if (missingServices.Any())
+						{
+							message += $" Missing required services: {string.Join(", ", missingServices)}.";
+						}
+
+						throw new TimeoutException(message);
+					}
+					catch (Exception ex) when (!(ex is ServiceInjectionException || ex is TimeoutException || ex is CircularDependencyException))
+					{
+						throw new ServiceInjectionException("Failed to inject services", ex);
 					}
 				}
-				catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
+			}
+			finally
+			{
+				// This pop is critical to correctly unwind the stack for the next service.
+				if (_dependencyStack?.Count > 0)
 				{
-					var requiredFields = fieldsToInject.Where(f => CustomAttributeExtensions.GetCustomAttribute<InjectServiceAttribute>((MemberInfo)f).Required);
-					var missingServices = requiredFields
-						.Where(f => _serviceKitLocator.GetService(f.FieldType) == null)
-						.Select(f => f.FieldType.Name)
-						.ToList();
-
-					string message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
-					if (missingServices.Any())
-					{
-						message += $" Missing required services: {string.Join(", ", missingServices)}.";
-					}
-
-					throw new TimeoutException(message);
-				}
-				catch (Exception ex) when (!(ex is ServiceInjectionException || ex is TimeoutException))
-				{
-					throw new ServiceInjectionException("Failed to inject services", ex);
+					_dependencyStack.Pop();
 				}
 			}
 		}
@@ -164,18 +186,17 @@ namespace Nonatomic.ServiceKit
 		{
 			var fields = new List<FieldInfo>();
 			var currentType = targetType;
-    
-			// Walk up the inheritance hierarchy
+	
 			while (currentType != null && currentType != typeof(object))
 			{
 				var typeFields = currentType
 					.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly)
 					.Where(f => f.GetCustomAttribute<InjectServiceAttribute>() != null);
-            
+			
 				fields.AddRange(typeFields);
 				currentType = currentType.BaseType;
 			}
-    
+	
 			return fields;
 		}
 

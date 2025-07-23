@@ -1,3 +1,6 @@
+## [0.4.0] - Jul 23, 2025
+- Updated ServiceInjectionBuilder to detect circular dependencies
+
 ## [0.3.0] - Jul 13, 2025
 - Updated the ServiceInjectionBuilders GetFieldsToInject method which only looks at the specific type passed to it
   but will now walk up the inheritance hierarchy and inject parents

@@ -28,12 +28,28 @@ namespace Nonatomic.ServiceKit
 			Registered = true;
 		}
 		
+		protected virtual void RegisterService<TInterface>() where TInterface : class
+		{
+			if (GuardAgainstUnassignedServiceKit()) return;
+          
+			ServiceKitLocator.RegisterService<TInterface>(this as TInterface);
+			Registered = true;
+		}
+		
 		protected virtual void UnregisterService()
 		{
 			if (GuardAgainstUnassignedServiceKit()) return;
 			
 			Registered = false;
 			ServiceKitLocator.UnregisterService(typeof(T));
+		}
+		
+		protected virtual void UnregisterService<TInterface>() where TInterface : class
+		{
+			if (GuardAgainstUnassignedServiceKit()) return;
+
+			Registered = false;
+			ServiceKitLocator.UnregisterService(typeof(TInterface));
 		}
 
 		protected async virtual Task InjectServices()
