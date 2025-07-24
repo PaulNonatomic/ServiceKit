@@ -15,8 +15,9 @@ namespace Nonatomic.ServiceKit
 		{
 			RegisterService();
 			
-			await InjectServices();
-			await InitializeService();
+			await InjectServicesAsync();
+			await InitializeServiceAsync();
+			InitializeService();
 			
 			MarkServiceReady();
 		}
@@ -62,7 +63,7 @@ namespace Nonatomic.ServiceKit
 			ServiceKitLocator.UnregisterService(typeof(T));
 		}
 
-		protected virtual async Task InjectServices()
+		protected virtual async Task InjectServicesAsync()
 		{
 			if (GuardAgainstUnassignedServiceKit()) return;
 			
@@ -87,18 +88,22 @@ namespace Nonatomic.ServiceKit
 		/// Override this to perform initialization after dependencies are injected
 		/// but before the service becomes ready
 		/// </summary>
-		protected virtual async Task InitializeService()
+		protected virtual async Task InitializeServiceAsync()
 		{
 			// Default implementation does nothing
 			// Override in derived classes to perform initialization
 			await Task.CompletedTask;
-			OnServicesInjected();
 		}
 
 		/// <summary>
-		/// Called after all initialization is complete
+		/// Override this to perform initialization after dependencies are injected
+		/// but before the service becomes ready
 		/// </summary>
-		protected abstract void OnServicesInjected();
+		protected virtual void InitializeService()
+		{
+			// Default implementation does nothing
+			// Override in derived classes to perform initialization
+		}
 
 		/// <summary>
 		/// Called when service injection fails
