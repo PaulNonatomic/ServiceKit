@@ -24,6 +24,11 @@ namespace Nonatomic.ServiceKit
 			public DateTime RegisteredAt { get; set; }
 			public List<Type> WaitingForDependencies { get; set; } = new List<Type>();
 		}
+		
+		public string GetDependencyReport()
+		{
+			return ServiceInjectionBuilder.GetDependencyReport();
+		}
 
 		/// <summary>
 		/// Register a service (Phase 1) - Service is NOT available for injection yet

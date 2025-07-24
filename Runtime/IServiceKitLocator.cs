@@ -15,6 +15,8 @@ namespace Nonatomic.ServiceKit
 		// Phase 3: Ready (service becomes available)
 		void ReadyService<T>() where T : class;
 		void ReadyService(Type serviceType);
+
+		string GetDependencyReport();
 		
 		// Convenience method for simple services
 		void RegisterAndReadyService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
