@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,16 +25,25 @@ namespace Nonatomic.ServiceKit
 			public DateTime RegisteredAt { get; set; }
 			public List<Type> WaitingForDependencies { get; set; } = new List<Type>();
 		}
-		
-		public string GetDependencyReport()
+
+		/// <summary>
+		/// Register a service instance (Phase 1) - Service is NOT available for injection yet
+		/// </summary>
+		public void RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
-			return ServiceInjectionBuilder.GetDependencyReport();
+			RegisterService(service, false, registeredBy);
 		}
 
 		/// <summary>
-		/// Register a service (Phase 1) - Service is NOT available for injection yet
+		/// Register a service with circular dependency exemption (Phase 1)
+		/// Use this for immutable third-party services that cannot have dependencies on your project
 		/// </summary>
-		public void RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
+		public void RegisterServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
+		{
+			RegisterService(service, true, registeredBy);
+		}
+
+		private void RegisterService<T>(T service, bool exemptFromCircularDependencyCheck, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			if (service == null) throw new ArgumentNullException(nameof(service));
 
@@ -54,6 +64,17 @@ namespace Nonatomic.ServiceKit
 				{
 					if (ServiceKitSettings.Instance.DebugLogging)
 						Debug.LogWarning($"Service {type.Name} is already registered. Updating registration.");
+				}
+
+				// Track circular dependency exemption
+				if (exemptFromCircularDependencyCheck)
+				{
+					ServiceInjectionBuilder.AddCircularDependencyExemption(type);
+					
+					if (ServiceKitSettings.Instance.DebugLogging)
+					{
+						Debug.Log($"[ServiceKit] Service {type.Name} is exempt from circular dependency checks");
+					}
 				}
 
 				// Track the scene if it's a MonoBehaviour
@@ -129,7 +150,16 @@ namespace Nonatomic.ServiceKit
 		/// </summary>
 		public void RegisterAndReadyService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
-			RegisterService(service, registeredBy);
+			RegisterService(service, false, registeredBy);
+			ReadyService<T>();
+		}
+
+		/// <summary>
+		/// Register and immediately ready a service with circular dependency exemption
+		/// </summary>
+		public void RegisterAndReadyServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
+		{
+			RegisterService(service, true, registeredBy);
 			ReadyService<T>();
 		}
 
@@ -190,6 +220,22 @@ namespace Nonatomic.ServiceKit
 			{
 				return _readyServices.ContainsKey(serviceType);
 			}
+		}
+
+		/// <summary>
+		/// Check if a service is exempt from circular dependency checks
+		/// </summary>
+		public bool IsServiceCircularDependencyExempt<T>() where T : class
+		{
+			return IsServiceCircularDependencyExempt(typeof(T));
+		}
+
+		/// <summary>
+		/// Check if a service is exempt from circular dependency checks by type
+		/// </summary>
+		public bool IsServiceCircularDependencyExempt(Type serviceType)
+		{
+			return ServiceInjectionBuilder.IsCircularDependencyExempt(serviceType);
 		}
 
 		/// <summary>
@@ -300,6 +346,9 @@ namespace Nonatomic.ServiceKit
 			lock (_lock)
 			{
 				var removed = _readyServices.Remove(serviceType) || _registeredServices.Remove(serviceType);
+				
+				// Also remove from exemptions
+				ServiceInjectionBuilder.RemoveCircularDependencyExemption(serviceType);
 				
 				if (removed && ServiceKitSettings.Instance.DebugLogging)
 				{
@@ -551,6 +600,9 @@ namespace Nonatomic.ServiceKit
 					kvp.Value.TrySetCanceled();
 				}
 				_serviceAwaiters.Clear();
+				
+				// Clear dependency graph and exemptions
+				ServiceInjectionBuilder.ClearDependencyGraph();
 			}
 		}
 

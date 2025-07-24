@@ -20,14 +20,25 @@ namespace Nonatomic.ServiceKit
 		// Static dependency tracking for circular dependency detection
 		private static readonly Dictionary<Type, DependencyNode> _dependencyGraph = new Dictionary<Type, DependencyNode>();
 		private static readonly Dictionary<Type, CancellationTokenSource> _resolvingCancellations = new Dictionary<Type, CancellationTokenSource>();
+		private static readonly HashSet<Type> _circularExemptServices = new HashSet<Type>();
 		private static readonly object _graphLock = new object();
 
 		private class DependencyNode
 		{
 			public Type ServiceType { get; set; }
 			public HashSet<Type> Dependencies { get; set; } = new HashSet<Type>();
+			public Dictionary<Type, string> DependencyFields { get; set; } = new Dictionary<Type, string>();
 			public bool IsResolving { get; set; }
 			public List<Type> ResolutionPath { get; set; } = new List<Type>();
+		}
+
+		private class CircularDependencyInfo
+		{
+			public string Path { get; set; }
+			public string DetailedPath { get; set; }
+			public Type FromType { get; set; }
+			public Type ToType { get; set; }
+			public string FieldName { get; set; }
 		}
 
 		internal ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target)
@@ -138,10 +149,55 @@ namespace Nonatomic.ServiceKit
 				if (circularDependency != null)
 				{
 					// Cancel all services in the circular dependency chain
-					CancelCircularDependencyChain(circularDependency);
+					CancelCircularDependencyChain(circularDependency.Path);
 					
-					throw new ServiceInjectionException(
-						$"Circular dependency detected: {circularDependency}");
+					// Build complete error message with field details
+					var errorMessage = $"Circular dependency detected: {circularDependency.Path}";
+					
+					// Extract types from the path
+					var types = circularDependency.Path.Split(new[] { " → " }, StringSplitOptions.None);
+					if (types.Length > 1)
+					{
+						errorMessage += "\n\nCircular dependency chain:";
+						
+						lock (_graphLock)
+						{
+							for (int i = 0; i < types.Length - 1; i++)
+							{
+								var fromTypeName = types[i].Trim();
+								var toTypeName = types[i + 1].Trim();
+								
+								// Find the field that creates this dependency
+								var fieldFound = false;
+								foreach (var graphEntry in _dependencyGraph)
+								{
+									if (graphEntry.Key.Name == fromTypeName)
+									{
+										foreach (var dependency in graphEntry.Value.Dependencies)
+										{
+											if (dependency.Name == toTypeName)
+											{
+												if (graphEntry.Value.DependencyFields.TryGetValue(dependency, out var fieldName))
+												{
+													errorMessage += $"\n  → {fromTypeName} has field '{fieldName}' that requires {toTypeName}";
+													fieldFound = true;
+													break;
+												}
+											}
+										}
+										if (fieldFound) break;
+									}
+								}
+								
+								if (!fieldFound)
+								{
+									errorMessage += $"\n  → {fromTypeName} requires {toTypeName}";
+								}
+							}
+						}
+					}
+					
+					throw new ServiceInjectionException(errorMessage);
 				}
 
 				// Create timeout cancellation if needed
@@ -242,7 +298,7 @@ namespace Nonatomic.ServiceKit
 						var circularDep = DetectCircularDependency();
 						if (circularDep != null)
 						{
-							message += $" Circular dependency detected: {circularDep}";
+							message += $"\n\nCircular dependency detected: {circularDep.Path}";
 						}
 
 						throw new TimeoutException(message);
@@ -268,8 +324,9 @@ namespace Nonatomic.ServiceKit
 
 		private void CancelCircularDependencyChain(string circularDependencyPath)
 		{
-			// Parse the circular dependency path to get all involved types
-			var typeNames = circularDependencyPath.Split(new[] { " → " }, StringSplitOptions.None);
+			// Extract just the type names from the path (before any field details)
+			var pathParts = circularDependencyPath.Split('\n')[0]; // Get first line only
+			var typeNames = pathParts.Split(new[] { " → " }, StringSplitOptions.None);
 			
 			lock (_graphLock)
 			{
@@ -292,61 +349,77 @@ namespace Nonatomic.ServiceKit
 		{
 			lock (_graphLock)
 			{
-				if (!_dependencyGraph.ContainsKey(_targetServiceType))
+				// Use the service type (interface), not the concrete type
+				var serviceType = _targetServiceType;
+				
+				if (!_dependencyGraph.ContainsKey(serviceType))
 				{
-					_dependencyGraph[_targetServiceType] = new DependencyNode
+					_dependencyGraph[serviceType] = new DependencyNode
 					{
-						ServiceType = _targetServiceType
+						ServiceType = serviceType
 					};
 				}
 
-				var node = _dependencyGraph[_targetServiceType];
+				var node = _dependencyGraph[serviceType];
 				node.Dependencies.Clear();
+				node.DependencyFields.Clear();
 
 				foreach (var field in fieldsToInject)
 				{
 					var attribute = field.GetCustomAttribute<InjectServiceAttribute>();
-					if (attribute.Required)
-					{
-						node.Dependencies.Add(field.FieldType);
-					}
+					// Track ALL dependencies, not just required ones, for circular dependency detection
+					node.Dependencies.Add(field.FieldType);
+					node.DependencyFields[field.FieldType] = field.Name;
 				}
 			}
 		}
 
-		private string DetectCircularDependency()
+		private CircularDependencyInfo DetectCircularDependency()
 		{
 			lock (_graphLock)
 			{
-				var visited = new HashSet<Type>();
 				var path = new List<Type>();
+				var circularInfo = new CircularDependencyInfo();
 				
-				if (HasCircularDependency(_targetServiceType, visited, path))
+				if (HasCircularDependency(_targetServiceType, path, circularInfo))
 				{
 					// Format the circular dependency path
-					var cycle = string.Join(" → ", path.Select(t => t.Name));
-					return cycle;
+					circularInfo.Path = string.Join(" → ", path.Select(t => t.Name));
+					return circularInfo;
 				}
 				
 				return null;
 			}
 		}
 
-		private bool HasCircularDependency(Type serviceType, HashSet<Type> visited, List<Type> path)
+		private bool HasCircularDependency(Type serviceType, List<Type> path, CircularDependencyInfo circularInfo)
 		{
-			if (!visited.Add(serviceType))
+			// Check if this service is exempt from circular dependency checks
+			if (_circularExemptServices.Contains(serviceType))
 			{
-				// Found a cycle
-				var cycleStart = path.IndexOf(serviceType);
-				if (cycleStart >= 0)
-				{
-					// Add the type again to show the complete cycle
-					path.Add(serviceType);
-					return true;
-				}
 				return false;
 			}
-
+			
+			// Check if this type is already in our path (circular dependency)
+			if (path.Contains(serviceType))
+			{
+				// Found a cycle! Add it once more to complete the circle
+				path.Add(serviceType);
+				
+				// Find the last occurrence that completes the cycle
+				var lastIndex = path.Count - 2; // The one before we just added
+				if (lastIndex >= 0 && _dependencyGraph.TryGetValue(path[lastIndex], out var lastNode) &&
+					lastNode.DependencyFields.TryGetValue(serviceType, out var completingField))
+				{
+					circularInfo.FromType = path[lastIndex];
+					circularInfo.ToType = serviceType;
+					circularInfo.FieldName = completingField;
+				}
+				
+				return true;
+			}
+			
+			// Add to path
 			path.Add(serviceType);
 
 			// Check if this service has dependencies
@@ -354,23 +427,22 @@ namespace Nonatomic.ServiceKit
 			{
 				foreach (var dependency in node.Dependencies)
 				{
-					// Check if the dependency is currently being resolved
-					if (_dependencyGraph.TryGetValue(dependency, out var depNode) && depNode.IsResolving)
+					// Skip if the dependency is exempt
+					if (_circularExemptServices.Contains(dependency))
 					{
-						// This dependency is also trying to resolve, potential circular dependency
-						path.Add(dependency);
-						return true;
+						continue;
 					}
-
-					if (HasCircularDependency(dependency, visited, path))
+					
+					// Recursively check this dependency
+					if (HasCircularDependency(dependency, path, circularInfo))
 					{
 						return true;
 					}
 				}
 			}
 
+			// Backtrack
 			path.RemoveAt(path.Count - 1);
-			visited.Remove(serviceType);
 			return false;
 		}
 
@@ -410,7 +482,40 @@ namespace Nonatomic.ServiceKit
 			var circularDep = DetectCircularDependency();
 			if (circularDep != null)
 			{
-				Debug.LogError($"Circular dependency detected: {circularDep}");
+				Debug.LogError($"Circular dependency detected: {circularDep.Path}");
+			}
+		}
+
+		/// <summary>
+		/// Mark a service type as exempt from circular dependency checks
+		/// </summary>
+		public static void AddCircularDependencyExemption(Type serviceType)
+		{
+			lock (_graphLock)
+			{
+				_circularExemptServices.Add(serviceType);
+			}
+		}
+
+		/// <summary>
+		/// Remove circular dependency exemption for a service type
+		/// </summary>
+		public static void RemoveCircularDependencyExemption(Type serviceType)
+		{
+			lock (_graphLock)
+			{
+				_circularExemptServices.Remove(serviceType);
+			}
+		}
+
+		/// <summary>
+		/// Check if a service type is exempt from circular dependency checks
+		/// </summary>
+		public static bool IsCircularDependencyExempt(Type serviceType)
+		{
+			lock (_graphLock)
+			{
+				return _circularExemptServices.Contains(serviceType);
 			}
 		}
 
@@ -426,12 +531,25 @@ namespace Nonatomic.ServiceKit
 				foreach (var kvp in _dependencyGraph)
 				{
 					report += $"\n{kvp.Key.Name}";
+					
+					// Check if exempt
+					if (_circularExemptServices.Contains(kvp.Key))
+					{
+						report += " [CIRCULAR EXEMPT]";
+					}
+					
 					if (kvp.Value.Dependencies.Count > 0)
 					{
 						report += " depends on:";
 						foreach (var dep in kvp.Value.Dependencies)
 						{
-							report += $"\n  - {dep.Name}";
+							var fieldName = kvp.Value.DependencyFields.TryGetValue(dep, out var field) ? field : "unknown";
+							report += $"\n  - {dep.Name} (field: {fieldName})";
+							
+							if (_circularExemptServices.Contains(dep))
+							{
+								report += " [EXEMPT]";
+							}
 						}
 					}
 					else
@@ -457,6 +575,7 @@ namespace Nonatomic.ServiceKit
 			lock (_graphLock)
 			{
 				_dependencyGraph.Clear();
+				_circularExemptServices.Clear();
 				
 				// Cancel any pending resolutions
 				foreach (var cts in _resolvingCancellations.Values)

@@ -12,20 +12,24 @@ namespace Nonatomic.ServiceKit
 		// Phase 1: Registration (service not available yet)
 		void RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
 		
+		// Phase 1: Registration with circular dependency exemption
+		void RegisterServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+		
 		// Phase 3: Ready (service becomes available)
 		void ReadyService<T>() where T : class;
 		void ReadyService(Type serviceType);
-
-		string GetDependencyReport();
 		
-		// Convenience method for simple services
+		// Convenience methods for simple services
 		void RegisterAndReadyService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+		void RegisterAndReadyServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
 		
 		// Status checks
 		bool IsServiceRegistered<T>() where T : class;
 		bool IsServiceRegistered(Type serviceType);
 		bool IsServiceReady<T>() where T : class;
 		bool IsServiceReady(Type serviceType);
+		bool IsServiceCircularDependencyExempt<T>() where T : class;
+		bool IsServiceCircularDependencyExempt(Type serviceType);
 		string GetServiceStatus<T>() where T : class;
 		string GetServiceStatus(Type serviceType);
 		
