@@ -9,7 +9,25 @@ namespace Nonatomic.ServiceKit
 {
 	public interface IServiceKitLocator
 	{
+		// Phase 1: Registration (service not available yet)
 		void RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+		
+		// Phase 3: Ready (service becomes available)
+		void ReadyService<T>() where T : class;
+		void ReadyService(Type serviceType);
+		
+		// Convenience method for simple services
+		void RegisterAndReadyService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+		
+		// Status checks
+		bool IsServiceRegistered<T>() where T : class;
+		bool IsServiceRegistered(Type serviceType);
+		bool IsServiceReady<T>() where T : class;
+		bool IsServiceReady(Type serviceType);
+		string GetServiceStatus<T>() where T : class;
+		string GetServiceStatus(Type serviceType);
+		
+		// Service retrieval (only returns ready services)
 		void UnregisterService<T>() where T : class;
 		void UnregisterService(Type serviceType);
 		T GetService<T>() where T : class;
