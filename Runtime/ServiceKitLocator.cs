@@ -56,14 +56,19 @@ namespace Nonatomic.ServiceKit
 				if (_readyServices.ContainsKey(type))
 				{
 					if (ServiceKitSettings.Instance.DebugLogging)
-						Debug.LogWarning($"Service {type.Name} is already ready. Use UnregisterService first.");
+					{
+						Debug.LogWarning($"[ServiceKit] Service {type.Name} is already ready. Use UnregisterService first.");
+					}
+					
 					return;
 				}
 
 				if (_registeredServices.ContainsKey(type))
 				{
 					if (ServiceKitSettings.Instance.DebugLogging)
-						Debug.LogWarning($"Service {type.Name} is already registered. Updating registration.");
+					{
+						Debug.LogWarning($"[ServiceKit] Service {type.Name} is already registered. Updating registration.");
+					}
 				}
 
 				// Track circular dependency exemption
