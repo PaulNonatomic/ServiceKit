@@ -87,10 +87,5 @@ namespace Tests.EditMode
 		
 		[InjectService] private IPlayerService _playerService;
 		[InjectService] private IInventoryService _inventoryService;
-		
-		protected override void OnServicesInjected()
-		{
-			RegisterService();
-		}
 	}
 }
