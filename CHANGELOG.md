@@ -1,3 +1,8 @@
+## [1.0.0] - Jul 26, 2025
+- Added circular dependency detection
+- Simplified the use of ServiceKitBehaviour
+- Switched to a 2 phase injection process
+
 ## [0.3.0] - Jul 13, 2025
 - Updated the ServiceInjectionBuilders GetFieldsToInject method which only looks at the specific type passed to it
   but will now walk up the inheritance hierarchy and inject parents
