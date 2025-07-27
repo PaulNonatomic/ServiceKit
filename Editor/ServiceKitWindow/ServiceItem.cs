@@ -75,7 +75,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
             var openIcon = new Image();
             openIcon.AddToClassList("open-script-icon");
-            openIcon.image = Resources.Load<Texture2D>("Icons/pencil");
+            openIcon.image = Resources.Load<Texture2D>("ServiceKit/Icons/pencil");
             openButton.Add(openIcon);
 
             // Register mouse hover events at the container level for better UX
