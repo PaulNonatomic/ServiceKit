@@ -30,6 +30,9 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private List<string> _locatorChoices = new();
 		private string _persistedLocatorGuid; // Store GUID instead of name for uniqueness
 		private const string SELECTED_LOCATOR_PREF_KEY = "ServiceKit_SelectedLocatorGuid";
+		private double _lastStateCheckTime;
+		private const float STATE_CHECK_INTERVAL = 1.0f; // Check every 1 second
+		private Dictionary<Type, string> _serviceStateCache = new();
 
 		public ServiceKitServicesTab(Action refreshCallback)
 		{
@@ -132,12 +135,16 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		{
 			// Listen for editor scene changes
 			EditorApplication.hierarchyChanged += HandleHierarchyChanged;
+			// Start periodic state checking
+			EditorApplication.update += CheckServiceStates;
 		}
 
 		private void HandleDetachFromPanel(DetachFromPanelEvent evt)
 		{
 			// Stop listening for editor scene changes
 			EditorApplication.hierarchyChanged -= HandleHierarchyChanged;
+			// Stop periodic state checking
+			EditorApplication.update -= CheckServiceStates;
 
 			// Clean up other callbacks
 			UnregisterCallback<AttachToPanelEvent>(HandleAttachToPanel);
@@ -148,6 +155,75 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		{
 			// This catches scene changes (loading/unloading)
 			ScheduleRefresh();
+		}
+		
+		private void CheckServiceStates()
+		{
+			// Only check periodically to avoid performance impact
+			if (EditorApplication.timeSinceStartup - _lastStateCheckTime < STATE_CHECK_INTERVAL)
+			{
+				return;
+			}
+			
+			_lastStateCheckTime = EditorApplication.timeSinceStartup;
+			
+			// Check if any service states have changed
+			if (HasServiceStateChanged())
+			{
+				ScheduleRefresh();
+			}
+		}
+		
+		private bool HasServiceStateChanged()
+		{
+			if (_selectedLocator == null)
+			{
+				return false;
+			}
+			
+			var allServices = _selectedLocator.GetAllServices();
+			var stateChanged = false;
+			
+			// Build current state map
+			var currentStates = new Dictionary<Type, string>();
+			foreach (var service in allServices)
+			{
+				currentStates[service.ServiceType] = service.State;
+			}
+			
+			// Check for changes
+			foreach (var kvp in currentStates)
+			{
+				if (_serviceStateCache.TryGetValue(kvp.Key, out var cachedState))
+				{
+					if (cachedState != kvp.Value)
+					{
+						stateChanged = true;
+						break;
+					}
+				}
+				else
+				{
+					// New service
+					stateChanged = true;
+					break;
+				}
+			}
+			
+			// Check for removed services
+			if (!stateChanged)
+			{
+				foreach (var cachedType in _serviceStateCache.Keys)
+				{
+					if (!currentStates.ContainsKey(cachedType))
+					{
+						stateChanged = true;
+						break;
+					}
+				}
+			}
+			
+			return stateChanged;
 		}
 
 		/// <summary>
@@ -230,6 +306,23 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			if (!string.IsNullOrWhiteSpace(_searchField.value))
 			{
 				ApplySearchFilter(_searchField.value);
+			}
+			
+			// Update service state cache
+			UpdateServiceStateCache();
+		}
+		
+		private void UpdateServiceStateCache()
+		{
+			_serviceStateCache.Clear();
+			
+			if (_selectedLocator != null)
+			{
+				var allServices = _selectedLocator.GetAllServices();
+				foreach (var service in allServices)
+				{
+					_serviceStateCache[service.ServiceType] = service.State;
+				}
 			}
 		}
 

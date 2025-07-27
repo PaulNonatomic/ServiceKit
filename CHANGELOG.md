@@ -1,3 +1,6 @@
+## [1.0.2] - Jul 27, 2025
+- ServiceKit Windowe now shows the registration status of each service
+
 ## [1.0.1] - Jul 27, 2025
 - Fix for icon pathing issues when package loaded via package manager
 

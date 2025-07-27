@@ -102,6 +102,36 @@
     opacity: 1.0;
 }
 
+/* Service state styles */
+.service-item-not-ready .service-label {
+    color: rgba(128, 128, 128, 0.8); /* Grey text for not-ready services */
+}
+
+.service-item-not-ready .service-icon {
+    /* Grey icon for not-ready services */
+}
+
+.service-item-not-ready .open-script-icon {
+    /* Grey pencil icon for not-ready services */
+}
+
+/* Scene type color classes */
+.service-item-no-scene.service-item-ready .service-icon {
+    /* Blue for Non-MonoBehaviour services */
+}
+
+.service-item-dont-destroy.service-item-ready .service-icon {
+    /* Green for DontDestroyOnLoad services */
+}
+
+.service-item-regular.service-item-ready .service-icon {
+    /* Orange for Regular MonoBehaviour services */
+}
+
+.service-item-unloaded.service-item-ready .service-icon {
+    /* Red for Unloaded scene services */
+}
+
 .service-item-container {
     flex-direction: row;
     justify-content: flex-start;

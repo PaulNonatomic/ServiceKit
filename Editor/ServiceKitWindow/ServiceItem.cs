@@ -18,13 +18,29 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
         private readonly Color _iconColor;
         private readonly Texture2D _normalIcon;
 
-        public ServiceItem(Type serviceType, object serviceInstance, SceneType sceneType = SceneType.Regular)
+        public ServiceItem(Type serviceType, object serviceInstance, SceneType sceneType = SceneType.Regular, string state = "Ready")
         {
             // Store the service type name for searching
             ServiceTypeName = serviceType.Name;
 
             // Add the base service-item class
             AddToClassList("service-item");
+            
+            // Determine if service is ready
+            var isReady = state == "Ready";
+            
+            // Add state class
+            if (isReady)
+            {
+                AddToClassList("service-item-ready");
+            }
+            else
+            {
+                AddToClassList("service-item-not-ready");
+            }
+            
+            // Add scene type class
+            AddSceneTypeClass(sceneType);
 
             // Add alternating background class (even/odd)
             if (_itemCounter % 2 == 0)
@@ -55,8 +71,16 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
             // Store the color to use for both states
             _iconColor = GetColorForSceneType(sceneType);
 
-            // Set initial tint color
-            _icon.tintColor = _iconColor;
+            // Set initial tint color only if ready (for code compatibility)
+            // USS will handle the actual styling
+            if (isReady)
+            {
+                _icon.tintColor = _iconColor;
+            }
+            else
+            {
+                _icon.tintColor = new Color(0.5f, 0.5f, 0.5f, 0.8f);
+            }
 
             container.Add(_icon);
 
@@ -79,20 +103,27 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
             openButton.Add(openIcon);
 
             // Register mouse hover events at the container level for better UX
-            RegisterCallbacks(container, serviceInstance);
+            RegisterCallbacks(container, serviceInstance, isReady);
         }
 
         // The type name for search purposes
         public string ServiceTypeName { get; }
 
-        private void RegisterCallbacks(VisualElement container, object serviceInstance)
+        private void RegisterCallbacks(VisualElement container, object serviceInstance, bool isReady)
         {
             // Handle mouse enter (hover start)
             container.RegisterCallback<MouseEnterEvent>(evt =>
             {
                 // Swap to the hover icon and maintain color
                 _icon.image = _hoverIcon;
-                _icon.tintColor = _iconColor;
+                if (isReady)
+                {
+                    _icon.tintColor = _iconColor;
+                }
+                else
+                {
+                    _icon.tintColor = new Color(0.5f, 0.5f, 0.5f, 1.0f); // Brighter grey on hover
+                }
             });
 
             // Handle mouse leave (hover end)
@@ -100,7 +131,14 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
             {
                 // Switch back to normal icon and maintain color
                 _icon.image = _normalIcon;
-                _icon.tintColor = _iconColor;
+                if (isReady)
+                {
+                    _icon.tintColor = _iconColor;
+                }
+                else
+                {
+                    _icon.tintColor = new Color(0.5f, 0.5f, 0.5f, 0.8f); // Back to normal grey
+                }
             });
 
             container.RegisterCallback<ClickEvent>(evt =>
@@ -125,6 +163,22 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
                 SceneType.Regular           => new(1.0f, 0.596f, 0.0f), // #FF9800 Orange
                 _                           => Color.white
             };
+        }
+        
+        /// <summary>
+        ///     Adds CSS class based on scene type for styling.
+        /// </summary>
+        private void AddSceneTypeClass(SceneType sceneType)
+        {
+            var className = sceneType switch
+            {
+                SceneType.NoScene           => "service-item-no-scene",
+                SceneType.DontDestroyOnLoad => "service-item-dont-destroy",
+                SceneType.Unloaded          => "service-item-unloaded",
+                SceneType.Regular           => "service-item-regular",
+                _                           => "service-item-regular"
+            };
+            AddToClassList(className);
         }
 
         // Method to reset the counter when refreshing the UI
