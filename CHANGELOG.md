@@ -1,3 +1,7 @@
+## [1.0.3] - Jul 27, 2025
+- As the ServiceKitLocator is a ScriptableObject it is capable of persisting state in Editor.
+  I've added the ServiceKitPlayModeHandler to cleanup the state of the ServiceKitLocator when exiting play mode in editor.
+
 ## [1.0.2] - Jul 27, 2025
 - ServiceKit Windowe now shows the registration status of each service
 
