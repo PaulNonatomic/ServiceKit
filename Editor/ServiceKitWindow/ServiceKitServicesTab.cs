@@ -57,7 +57,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 			var icon = new Image();
 			icon.AddToClassList("button-icon");
-			icon.image = Resources.Load<Texture2D>("Icons/refresh");
+			icon.image = Resources.Load<Texture2D>("ServiceKit/Icons/refresh");
 			refreshButton.Add(icon);
 
 			// Create the locator selection container

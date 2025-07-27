@@ -1,3 +1,6 @@
+## [1.0.1] - Jul 27, 2025
+- Fix for icon pathing issues when package loaded via package manager
+
 ## [1.0.0] - Jul 26, 2025
 - Added circular dependency detection
 - Simplified the use of ServiceKitBehaviour
