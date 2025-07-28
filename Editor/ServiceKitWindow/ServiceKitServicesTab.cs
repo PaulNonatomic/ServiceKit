@@ -25,13 +25,13 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private readonly Button _createButton;
 		private bool _refreshPending;
 		private List<ServiceKitLocator> _serviceKitLocators = new();
-		private List<ServiceKitLocator> _orderedLocators = new(); // Ordered list that matches dropdown choices
+		private List<ServiceKitLocator> _orderedLocators = new();
 		private ServiceKitLocator _selectedLocator;
 		private List<string> _locatorChoices = new();
-		private string _persistedLocatorGuid; // Store GUID instead of name for uniqueness
-		private const string SELECTED_LOCATOR_PREF_KEY = "ServiceKit_SelectedLocatorGuid";
+		private string _persistedLocatorGuid;
 		private double _lastStateCheckTime;
-		private const float STATE_CHECK_INTERVAL = 1.0f; // Check every 1 second
+		private const string SELECTED_LOCATOR_PREF_KEY = "ServiceKit_SelectedLocatorGuid";
+		private const float STATE_CHECK_INTERVAL = 1.0f;
 		private Dictionary<Type, string> _serviceStateCache = new();
 
 		public ServiceKitServicesTab(Action refreshCallback)
@@ -97,9 +97,9 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			
 			// Set placeholder text based on Unity version
 			#if UNITY_2022_3_OR_OLDER
-			_searchField.placeholder = "Search services...";
+			_searchField.placeholder = "Search services and tags...";
 			#elif UNITY_2023_1_OR_NEWER || UNITY_6_0_OR_NEWER
-			_searchField.textEdition.placeholder = "Search services...";
+			_searchField.textEdition.placeholder = "Search services and tags...";
 			_searchField.textEdition.hidePlaceholderOnFocus = true;
 			#endif
 			
@@ -111,7 +111,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			_clearSearchButton.AddToClassList("clear-search-button");
 			_clearSearchButton.text = "×";
 			_clearSearchButton.tooltip = "Clear search";
-			_clearSearchButton.style.display = DisplayStyle.None; // Hidden initially
+			_clearSearchButton.style.display = DisplayStyle.None;
 			searchContainer.Add(_clearSearchButton);
 
 			// "No results" label (hidden initially)
@@ -150,7 +150,6 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 		private void HandleHierarchyChanged()
 		{
-			// This catches scene changes (loading/unloading)
 			ScheduleRefresh();
 		}
 		
@@ -193,11 +192,10 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			{
 				if (_serviceStateCache.TryGetValue(kvp.Key, out var cachedState))
 				{
-					if (cachedState != kvp.Value)
-					{
-						stateChanged = true;
-						break;
-					}
+					if (cachedState == kvp.Value) continue;
+					
+					stateChanged = true;
+					break;
 				}
 				else
 				{
@@ -208,18 +206,16 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			}
 			
 			// Check for removed services
-			if (!stateChanged)
-			{
-				foreach (var cachedType in _serviceStateCache.Keys)
-				{
-					if (!currentStates.ContainsKey(cachedType))
-					{
-						stateChanged = true;
-						break;
-					}
-				}
-			}
+			if (stateChanged) return stateChanged;
 			
+			foreach (var cachedType in _serviceStateCache.Keys)
+			{
+				if (currentStates.ContainsKey(cachedType)) continue;
+				
+				stateChanged = true;
+				break;
+			}
+
 			return stateChanged;
 		}
 
@@ -313,14 +309,12 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private void UpdateServiceStateCache()
 		{
 			_serviceStateCache.Clear();
-			
-			if (_selectedLocator != null)
+			if (_selectedLocator == null) return;
+		
+			var allServices = _selectedLocator.GetAllServices();
+			foreach (var service in allServices)
 			{
-				var allServices = _selectedLocator.GetAllServices();
-				foreach (var service in allServices)
-				{
-					_serviceStateCache[service.ServiceType] = service.State;
-				}
+				_serviceStateCache[service.ServiceType] = service.State;
 			}
 		}
 
