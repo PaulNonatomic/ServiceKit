@@ -82,6 +82,37 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 
+				// Analyze dependencies and check for circular dependencies at registration time
+				if (!exemptFromCircularDependencyCheck)
+				{
+					var fieldsToInject = GetInjectableFields(service.GetType());
+					ServiceInjectionBuilder.UpdateDependencyGraphForRegistration(type, fieldsToInject);
+					
+					var circularDependency = ServiceInjectionBuilder.DetectCircularDependencyAtRegistration(type);
+					if (circularDependency != null)
+					{
+						ServiceInjectionBuilder.AddCircularDependencyError(type);
+						
+						// Mark all services in the circular dependency chain as having errors
+						var typesInPath = circularDependency.Split(new[] { " → " }, StringSplitOptions.None);
+						foreach (var typeName in typesInPath)
+						{
+							var trimmedTypeName = typeName.Trim();
+							// Find the type and mark it as having an error
+							var foundType = FindTypeByName(trimmedTypeName);
+							if (foundType != null)
+							{
+								ServiceInjectionBuilder.AddCircularDependencyError(foundType);
+							}
+						}
+						
+						if (ServiceKitSettings.Instance.DebugLogging)
+						{
+							Debug.LogError($"[ServiceKit] Circular dependency detected during registration: {circularDependency}");
+						}
+					}
+				}
+
 				// Track the scene if it's a MonoBehaviour
 				if (service is MonoBehaviour monoBehaviour && monoBehaviour != null)
 				{
@@ -696,6 +727,50 @@ namespace Nonatomic.ServiceKit
 		private void OnDestroy()
 		{
 			ClearServices();
+		}
+
+		/// <summary>
+		/// Get injectable fields from a service type (used for dependency analysis at registration time)
+		/// </summary>
+		private List<FieldInfo> GetInjectableFields(Type serviceType)
+		{
+			var fields = new List<FieldInfo>();
+			var currentType = serviceType;
+
+			// Walk up the inheritance hierarchy
+			while (currentType != null && currentType != typeof(object))
+			{
+				var typeFields = currentType
+					.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly)
+					.Where(f => f.GetCustomAttribute<InjectServiceAttribute>() != null);
+
+				fields.AddRange(typeFields);
+				currentType = currentType.BaseType;
+			}
+
+			return fields;
+		}
+
+		/// <summary>
+		/// Find a type by its name (helper for circular dependency error marking)
+		/// </summary>
+		private Type FindTypeByName(string typeName)
+		{
+			// First check in registered services
+			foreach (var registeredType in _registeredServices.Keys)
+			{
+				if (registeredType.Name == typeName)
+					return registeredType;
+			}
+
+			// Then check in ready services
+			foreach (var readyType in _readyServices.Keys)
+			{
+				if (readyType.Name == typeName)
+					return readyType;
+			}
+
+			return null;
 		}
 	}
 }
