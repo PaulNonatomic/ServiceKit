@@ -33,6 +33,9 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			// Check if service is exempt from circular dependency checks
 			var isExempt = ServiceInjectionBuilder.IsExemptFromCircularDependencyCheck(serviceType);
 			
+			// Check if service has circular dependency errors
+			var hasCircularDependencyError = ServiceInjectionBuilder.HasCircularDependencyError(serviceType);
+			
 			// Add state class
 			if (isReady)
 			{
@@ -47,6 +50,12 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			if (isExempt)
 			{
 				AddToClassList("service-item-exempt");
+			}
+			
+			// Add error class
+			if (hasCircularDependencyError)
+			{
+				AddToClassList("service-item-circular-error");
 			}
 			
 			// Add scene type class
@@ -105,18 +114,26 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			// Create the infinite icon image element (positioned before the pencil button)
 			_infiniteIcon = new();
 			_infiniteIcon.AddToClassList("infinite-icon");
-			_infiniteIcon.image = Resources.Load<Texture2D>("ServiceKit/Icons/infinite");
 			
-			// Set color and tooltip based on exemption status
-			if (isExempt)
+			// Set icon, color and tooltip based on error status first, then exemption status
+			if (hasCircularDependencyError)
 			{
-				// Grey for exempt services
+				// Error icon for services with circular dependency errors
+				_infiniteIcon.image = Resources.Load<Texture2D>("ServiceKit/Icons/error");
+				_infiniteIcon.tintColor = Color.white;
+				_infiniteIcon.tooltip = "This service has a circular dependency error";
+			}
+			else if (isExempt)
+			{
+				// Infinite icon, grey for exempt services
+				_infiniteIcon.image = Resources.Load<Texture2D>("ServiceKit/Icons/infinite");
 				_infiniteIcon.tintColor = new Color(0.5f, 0.5f, 0.5f, 0.8f);
 				_infiniteIcon.tooltip = "Circular dependency detection is disabled for this service";
 			}
 			else
 			{
-				// Colored for non-exempt services (matches service color)
+				// Infinite icon, colored for non-exempt services (matches service color)
+				_infiniteIcon.image = Resources.Load<Texture2D>("ServiceKit/Icons/infinite");
 				_infiniteIcon.tintColor = _iconColor;
 				_infiniteIcon.tooltip = "Circular dependency detection is enabled for this service";
 			}

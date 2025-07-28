@@ -1,6 +1,11 @@
+## [1.0.5] - Jul 28, 2025
+- Services that encounter circular dependencies will be highlighted red in the ServiceKit Window with 
+  a warning icon and tooltip explaining the issue.
+
 ## [1.0.4] - Jul 28, 2025
 - Added an infinite icon to the ServiceItems displayed in the ServiceKit Window. The icon is coloured when circular 
   dependency detection is enabled for the service and greyed out when detection is disabled.
+- Added tooltip to the infinite icon to explain the meaning.
 
 ## [1.0.3] - Jul 27, 2025
 - As the ServiceKitLocator is a ScriptableObject it is capable of persisting state in Editor.
