@@ -31,7 +31,15 @@ namespace Nonatomic.ServiceKit
 		/// </summary>
 		public void RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
-			RegisterService(service, false, registeredBy);
+			RegisterService(service, false, null, registeredBy);
+		}
+
+		/// <summary>
+		/// Register a service with tags (Phase 1) - Service is NOT available for injection yet
+		/// </summary>
+		public void RegisterService<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
+		{
+			RegisterService(service, false, tags, registeredBy);
 		}
 
 		/// <summary>
@@ -40,17 +48,25 @@ namespace Nonatomic.ServiceKit
 		/// </summary>
 		public void RegisterServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
-			RegisterService(service, true, registeredBy);
+			RegisterService(service, true, null, registeredBy);
 		}
 
-		private void RegisterService<T>(T service, bool exemptFromCircularDependencyCheck, [CallerMemberName] string registeredBy = null) where T : class
+		/// <summary>
+		/// Register a service with circular dependency exemption and tags (Phase 1)
+		/// </summary>
+		public void RegisterServiceWithCircularExemption<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
+		{
+			RegisterService(service, true, tags, registeredBy);
+		}
+
+		private void RegisterService<T>(T service, bool exemptFromCircularDependencyCheck, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			if (service == null) throw new ArgumentNullException(nameof(service));
 
 			lock (_lock)
 			{
 				var type = typeof(T);
-				var serviceInfo = CreateServiceInfo(service, type, registeredBy);
+				var serviceInfo = CreateServiceInfo(service, type, registeredBy, tags);
 
 				// Check if already exists
 				if (_readyServices.ContainsKey(type))
@@ -186,7 +202,16 @@ namespace Nonatomic.ServiceKit
 		/// </summary>
 		public void RegisterAndReadyService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
-			RegisterService(service, false, registeredBy);
+			RegisterService(service, false, null, registeredBy);
+			ReadyService<T>();
+		}
+
+		/// <summary>
+		/// Register and immediately ready a service with tags
+		/// </summary>
+		public void RegisterAndReadyService<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
+		{
+			RegisterService(service, false, tags, registeredBy);
 			ReadyService<T>();
 		}
 
@@ -195,7 +220,16 @@ namespace Nonatomic.ServiceKit
 		/// </summary>
 		public void RegisterAndReadyServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
-			RegisterService(service, true, registeredBy);
+			RegisterService(service, true, null, registeredBy);
+			ReadyService<T>();
+		}
+
+		/// <summary>
+		/// Register and immediately ready a service with circular dependency exemption and tags
+		/// </summary>
+		public void RegisterAndReadyServiceWithCircularExemption<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
+		{
+			RegisterService(service, true, tags, registeredBy);
 			ReadyService<T>();
 		}
 
@@ -642,7 +676,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		private ServiceInfo CreateServiceInfo(object service, Type type, string registeredBy)
+		private ServiceInfo CreateServiceInfo(object service, Type type, string registeredBy, ServiceTag[] tags = null)
 		{
 			var info = new ServiceInfo
 			{
@@ -651,6 +685,12 @@ namespace Nonatomic.ServiceKit
 				RegisteredAt = DateTime.Now,
 				RegisteredBy = registeredBy ?? "Unknown"
 			};
+			
+			// Add tags if provided
+			if (tags != null && tags.Length > 0)
+			{
+				info.Tags.AddRange(tags);
+			}
 
 			// Determine scene information
 			if (service is MonoBehaviour monoBehaviour && monoBehaviour != null)
@@ -772,5 +812,233 @@ namespace Nonatomic.ServiceKit
 
 			return null;
 		}
+
+		#region Tag Management
+
+		/// <summary>
+		/// Add tags to an existing service
+		/// </summary>
+		public void AddTagsToService<T>(params ServiceTag[] tags) where T : class
+		{
+			AddTagsToService(typeof(T), tags);
+		}
+
+		/// <summary>
+		/// Add tags to an existing service by type
+		/// </summary>
+		public void AddTagsToService(Type serviceType, params ServiceTag[] tags)
+		{
+			if (serviceType == null) throw new ArgumentNullException(nameof(serviceType));
+			if (tags == null || tags.Length == 0) return;
+
+			lock (_lock)
+			{
+				ServiceInfo serviceInfo = null;
+
+				// Check ready services first
+				if (_readyServices.TryGetValue(serviceType, out var readyInfo))
+				{
+					serviceInfo = readyInfo;
+				}
+				// Then check registered services
+				else if (_registeredServices.TryGetValue(serviceType, out var registeredInfo))
+				{
+					serviceInfo = registeredInfo.ServiceInfo;
+				}
+
+				if (serviceInfo != null)
+				{
+					foreach (var tag in tags)
+					{
+						if (!string.IsNullOrWhiteSpace(tag.name) && !serviceInfo.Tags.Any(t => t.name == tag.name))
+						{
+							serviceInfo.Tags.Add(tag);
+						}
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// Remove tags from an existing service
+		/// </summary>
+		public void RemoveTagsFromService<T>(params string[] tags) where T : class
+		{
+			RemoveTagsFromService(typeof(T), tags);
+		}
+
+		/// <summary>
+		/// Remove tags from an existing service by type
+		/// </summary>
+		public void RemoveTagsFromService(Type serviceType, params string[] tags)
+		{
+			if (serviceType == null) throw new ArgumentNullException(nameof(serviceType));
+			if (tags == null || tags.Length == 0) return;
+
+			lock (_lock)
+			{
+				ServiceInfo serviceInfo = null;
+
+				// Check ready services first
+				if (_readyServices.TryGetValue(serviceType, out var readyInfo))
+				{
+					serviceInfo = readyInfo;
+				}
+				// Then check registered services
+				else if (_registeredServices.TryGetValue(serviceType, out var registeredInfo))
+				{
+					serviceInfo = registeredInfo.ServiceInfo;
+				}
+
+				if (serviceInfo != null)
+				{
+					foreach (var tagName in tags)
+					{
+						serviceInfo.Tags.RemoveAll(t => t.name == tagName);
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// Get tags for a service
+		/// </summary>
+		public IReadOnlyList<string> GetServiceTags<T>() where T : class
+		{
+			return GetServiceTags(typeof(T));
+		}
+
+		/// <summary>
+		/// Get tags for a service by type
+		/// </summary>
+		public IReadOnlyList<string> GetServiceTags(Type serviceType)
+		{
+			if (serviceType == null) throw new ArgumentNullException(nameof(serviceType));
+
+			lock (_lock)
+			{
+				ServiceInfo serviceInfo = null;
+
+				// Check ready services first
+				if (_readyServices.TryGetValue(serviceType, out var readyInfo))
+				{
+					serviceInfo = readyInfo;
+				}
+				// Then check registered services
+				else if (_registeredServices.TryGetValue(serviceType, out var registeredInfo))
+				{
+					serviceInfo = registeredInfo.ServiceInfo;
+				}
+
+				return serviceInfo?.Tags?.Select(t => t.name).ToList().AsReadOnly() ?? new List<string>().AsReadOnly();
+			}
+		}
+
+		/// <summary>
+		/// Get all services with a specific tag
+		/// </summary>
+		public IReadOnlyList<ServiceInfo> GetServicesWithTag(string tag)
+		{
+			if (string.IsNullOrWhiteSpace(tag)) return new List<ServiceInfo>().AsReadOnly();
+
+			lock (_lock)
+			{
+				var result = new List<ServiceInfo>();
+
+				// Check ready services
+				foreach (var kvp in _readyServices)
+				{
+					if (kvp.Value.Tags.Any(t => t.name == tag))
+					{
+						result.Add(kvp.Value);
+					}
+				}
+
+				// Check registered services
+				foreach (var kvp in _registeredServices)
+				{
+					if (kvp.Value.ServiceInfo.Tags.Any(t => t.name == tag) && !result.Contains(kvp.Value.ServiceInfo))
+					{
+						result.Add(kvp.Value.ServiceInfo);
+					}
+				}
+
+				return result.AsReadOnly();
+			}
+		}
+
+		/// <summary>
+		/// Get all services with any of the specified tags
+		/// </summary>
+		public IReadOnlyList<ServiceInfo> GetServicesWithAnyTag(params string[] tags)
+		{
+			if (tags == null || tags.Length == 0) return new List<ServiceInfo>().AsReadOnly();
+
+			lock (_lock)
+			{
+				var result = new List<ServiceInfo>();
+				var validTags = tags.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+
+				if (validTags.Count == 0) return result.AsReadOnly();
+
+				// Check ready services
+				foreach (var kvp in _readyServices)
+				{
+					if (kvp.Value.Tags.Any(t => validTags.Contains(t.name)))
+					{
+						result.Add(kvp.Value);
+					}
+				}
+
+				// Check registered services
+				foreach (var kvp in _registeredServices)
+				{
+					if (kvp.Value.ServiceInfo.Tags.Any(t => validTags.Contains(t.name)) && !result.Contains(kvp.Value.ServiceInfo))
+					{
+						result.Add(kvp.Value.ServiceInfo);
+					}
+				}
+
+				return result.AsReadOnly();
+			}
+		}
+
+		/// <summary>
+		/// Get all services with all of the specified tags
+		/// </summary>
+		public IReadOnlyList<ServiceInfo> GetServicesWithAllTags(params string[] tags)
+		{
+			if (tags == null || tags.Length == 0) return new List<ServiceInfo>().AsReadOnly();
+
+			lock (_lock)
+			{
+				var result = new List<ServiceInfo>();
+				var validTags = tags.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
+
+				if (validTags.Count == 0) return result.AsReadOnly();
+
+				// Check ready services
+				foreach (var kvp in _readyServices)
+				{
+					if (validTags.All(tagName => kvp.Value.Tags.Any(serviceTag => serviceTag.name == tagName)))
+					{
+						result.Add(kvp.Value);
+					}
+				}
+
+				// Check registered services
+				foreach (var kvp in _registeredServices)
+				{
+					if (validTags.All(tagName => kvp.Value.ServiceInfo.Tags.Any(serviceTag => serviceTag.name == tagName)) && !result.Contains(kvp.Value.ServiceInfo))
+					{
+						result.Add(kvp.Value.ServiceInfo);
+					}
+				}
+
+				return result.AsReadOnly();
+			}
+		}
+
+		#endregion
 	}
 }

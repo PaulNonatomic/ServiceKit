@@ -1,3 +1,6 @@
+## [1.0.9] - Jul 28, 2025
+- Added support for service tags
+
 ## [1.0.8] - Jul 28, 2025
 - Updated the ServiceKitServicesTab to use the same logic as ServiceKitLocatorDrawer to select the ServiceKitLocator.
 
