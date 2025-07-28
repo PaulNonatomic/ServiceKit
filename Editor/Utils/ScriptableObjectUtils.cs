@@ -8,6 +8,11 @@ namespace Nonatomic.ServiceKit.Editor.Utils
 	{
 		public static T CreateInstanceInProject<T>(bool selectInstance = true) where T : ScriptableObject
 		{
+			return CreateInstanceInProject<T>(null, selectInstance);
+		}
+
+		public static T CreateInstanceInProject<T>(string fileName = null, bool selectInstance = true) where T : ScriptableObject
+		{
 			var asset = ScriptableObject.CreateInstance<T>();
 
 			var path = AssetDatabase.GetAssetPath(Selection.activeObject);
@@ -20,7 +25,8 @@ namespace Nonatomic.ServiceKit.Editor.Utils
 				path = path.Replace(Path.GetFileName(AssetDatabase.GetAssetPath(Selection.activeObject)), "");
 			}
 
-			var assetPathAndName = AssetDatabase.GenerateUniqueAssetPath(path + "/New " + typeof(T).Name + ".asset");
+			var baseName = string.IsNullOrEmpty(fileName) ? "New " + typeof(T).Name : fileName;
+			var assetPathAndName = AssetDatabase.GenerateUniqueAssetPath(path + "/" + baseName + ".asset");
 
 			AssetDatabase.CreateAsset(asset, assetPathAndName);
 			AssetDatabase.SaveAssets();
