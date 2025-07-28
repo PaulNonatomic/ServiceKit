@@ -1,3 +1,8 @@
+## [1.0.7] - Jul 28, 2025
+- Enhanced the ServiceKitLocatorDrawer to assign the ServiceKitLocator without having to look at the component in the inspector.
+- Also improved how the instance of ServiceKitLocator is selected. By default it will now select the instance in
+  the package unless ServiceKitSettings provide an alternative.
+
 ## [1.0.6] - Jul 28, 2025
 - Enhanced circular dependency detection to detect circular dependencies created later in the registration process.
 
