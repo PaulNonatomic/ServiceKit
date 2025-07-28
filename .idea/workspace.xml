@@ -27,6 +27,7 @@
 }</component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/Runtime/ServiceKitBehaviour.cs" root0="SKIP_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/Tests/PlayMode/com.nonatomic.servicekit.tests.playmode.asmdef" root0="SKIP_HIGHLIGHTING" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 6
@@ -40,6 +41,7 @@
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "main",
     "node.js.detected.package.eslint": "true",
@@ -59,6 +61,7 @@
       <updated>1752999035339</updated>
       <workItem from="1752999037085" duration="284000" />
       <workItem from="1753536153015" duration="1371000" />
+      <workItem from="1753569347943" duration="1294000" />
     </task>
     <servers />
   </component>

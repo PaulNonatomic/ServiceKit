@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace Nonatomic.ServiceKit
 {
@@ -44,5 +45,10 @@ namespace Nonatomic.ServiceKit
 		/// Current state of the service: "Registered" or "Ready"
 		/// </summary>
 		public string State { get; set; }
+		
+		/// <summary>
+		/// Custom tags associated with this service (e.g. "ThirdParty", "Firebase", "Debug")
+		/// </summary>
+		public List<ServiceTag> Tags { get; set; } = new ();
 	}
 }

@@ -12,8 +12,14 @@ namespace Nonatomic.ServiceKit
 		// Phase 1: Registration (service not available yet)
 		void RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
 		
+		// Phase 1: Registration with tags
+		void RegisterService<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
+		
 		// Phase 1: Registration with circular dependency exemption
 		void RegisterServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+		
+		// Phase 1: Registration with circular dependency exemption and tags
+		void RegisterServiceWithCircularExemption<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
 		
 		// Phase 3: Ready (service becomes available)
 		void ReadyService<T>() where T : class;
@@ -21,7 +27,9 @@ namespace Nonatomic.ServiceKit
 		
 		// Convenience methods for simple services
 		void RegisterAndReadyService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+		void RegisterAndReadyService<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
 		void RegisterAndReadyServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+		void RegisterAndReadyServiceWithCircularExemption<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
 		
 		// Status checks
 		bool IsServiceRegistered<T>() where T : class;
@@ -51,5 +59,16 @@ namespace Nonatomic.ServiceKit
 		IReadOnlyList<ServiceInfo> GetDontDestroyOnLoadServices();
 		void UnregisterServicesFromScene(Scene scene);
 		void CleanupDestroyedServices();
+		
+		// Tag management
+		void AddTagsToService<T>(params ServiceTag[] tags) where T : class;
+		void AddTagsToService(Type serviceType, params ServiceTag[] tags);
+		void RemoveTagsFromService<T>(params string[] tags) where T : class;
+		void RemoveTagsFromService(Type serviceType, params string[] tags);
+		IReadOnlyList<string> GetServiceTags<T>() where T : class;
+		IReadOnlyList<string> GetServiceTags(Type serviceType);
+		IReadOnlyList<ServiceInfo> GetServicesWithTag(string tag);
+		IReadOnlyList<ServiceInfo> GetServicesWithAnyTag(params string[] tags);
+		IReadOnlyList<ServiceInfo> GetServicesWithAllTags(params string[] tags);
 	}
 }

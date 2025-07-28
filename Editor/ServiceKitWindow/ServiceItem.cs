@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Nonatomic.ServiceKit.Editor.Utils;
 using UnityEditor;
 using UnityEngine;
@@ -19,10 +20,11 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private readonly Color _iconColor;
 		private readonly Texture2D _normalIcon;
 
-		public ServiceItem(Type serviceType, object serviceInstance, SceneType sceneType = SceneType.Regular, string state = "Ready")
+		public ServiceItem(Type serviceType, object serviceInstance, SceneType sceneType = SceneType.Regular, string state = "Ready", List<ServiceTag> tags = null)
 		{
 			// Store the service type name for searching
 			ServiceTypeName = serviceType.Name;
+			Tags = tags ?? new List<ServiceTag>();
 
 			// Add the base service-item class
 			AddToClassList("service-item");
@@ -107,9 +109,54 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			_serviceLabel.AddToClassList("service-label");
 			container.Add(_serviceLabel);
 
+
 			var buttonsContainer = new VisualElement();
 			buttonsContainer.AddToClassList("service-edit-btn-container");
 			container.Add(buttonsContainer);
+
+			// Add tags container if there are tags (positioned right-aligned before infinity icon)
+			if (Tags != null && Tags.Count > 0)
+			{
+				var tagsContainer = new VisualElement();
+				tagsContainer.AddToClassList("service-tags-container");
+				
+				foreach (var tag in Tags)
+				{
+					var tagBadge = new Label(tag.name);
+					tagBadge.AddToClassList("service-tag-badge");
+					
+					// Check if tag has custom styling
+					if (tag.HasCustomStyle)
+					{
+						// Apply custom colors from the tag
+						tagBadge.style.backgroundColor = new StyleColor(tag.backgroundColor.Value);
+						
+						// Use custom text color if specified, otherwise auto-calculate
+						if (tag.textColor.HasValue)
+						{
+							tagBadge.style.color = new StyleColor(tag.textColor.Value);
+						}
+						else
+						{
+							// Auto-calculate text color based on background brightness
+							var bg = tag.backgroundColor.Value;
+							float brightness = bg.r * 0.299f + bg.g * 0.587f + bg.b * 0.114f;
+							var textColor = brightness > 0.5f ? Color.black : Color.white;
+							tagBadge.style.color = new StyleColor(textColor);
+						}
+					}
+					else
+					{
+						// Fall back to CSS class-based styling for predefined tags
+						var tagClass = tag.name.Replace(" ", "-").ToLower();
+						tagBadge.AddToClassList($"tag-{tagClass}");
+					}
+					
+					tagsContainer.Add(tagBadge);
+				}
+				
+				buttonsContainer.Add(tagsContainer);
+			}
 
 			// Create the infinite icon image element (positioned before the pencil button)
 			_infiniteIcon = new();
@@ -156,6 +203,9 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 		// The type name for search purposes
 		public string ServiceTypeName { get; }
+		
+		// Tags associated with this service
+		public List<ServiceTag> Tags { get; }
 
 		private void RegisterCallbacks(VisualElement container, object serviceInstance, bool isReady)
 		{
