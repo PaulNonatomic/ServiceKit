@@ -413,7 +413,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		private bool HasCircularDependency(Type serviceType, List<Type> path, CircularDependencyInfo circularInfo)
+		private static bool HasCircularDependency(Type serviceType, List<Type> path, CircularDependencyInfo circularInfo)
 		{
 			// Check if this service is exempt from circular dependency checks
 			if (_circularExemptServices.Contains(serviceType))
@@ -650,6 +650,54 @@ namespace Nonatomic.ServiceKit
 					try { cts.Cancel(); } catch { }
 				}
 				_resolvingCancellations.Clear();
+			}
+		}
+
+		/// <summary>
+		/// Update dependency graph at registration time (called from ServiceKitLocator)
+		/// </summary>
+		public static void UpdateDependencyGraphForRegistration(Type serviceType, List<FieldInfo> fieldsToInject)
+		{
+			lock (_graphLock)
+			{
+				if (!_dependencyGraph.ContainsKey(serviceType))
+				{
+					_dependencyGraph[serviceType] = new DependencyNode
+					{
+						ServiceType = serviceType
+					};
+				}
+
+				var node = _dependencyGraph[serviceType];
+				node.Dependencies.Clear();
+				node.DependencyFields.Clear();
+
+				foreach (var field in fieldsToInject)
+				{
+					// Track ALL dependencies for circular dependency detection
+					node.Dependencies.Add(field.FieldType);
+					node.DependencyFields[field.FieldType] = field.Name;
+				}
+			}
+		}
+
+		/// <summary>
+		/// Detect circular dependency at registration time
+		/// </summary>
+		public static string DetectCircularDependencyAtRegistration(Type serviceType)
+		{
+			lock (_graphLock)
+			{
+				var path = new List<Type>();
+				var circularInfo = new CircularDependencyInfo();
+				
+				if (HasCircularDependency(serviceType, path, circularInfo))
+				{
+					// Format the circular dependency path
+					return string.Join(" → ", path.Select(t => t.Name));
+				}
+				
+				return null;
 			}
 		}
 	}
