@@ -21,6 +21,7 @@ namespace Nonatomic.ServiceKit
 		private static readonly Dictionary<Type, DependencyNode> _dependencyGraph = new Dictionary<Type, DependencyNode>();
 		private static readonly Dictionary<Type, CancellationTokenSource> _resolvingCancellations = new Dictionary<Type, CancellationTokenSource>();
 		private static readonly HashSet<Type> _circularExemptServices = new HashSet<Type>();
+		private static readonly HashSet<Type> _servicesWithCircularDependencyErrors = new HashSet<Type>();
 		private static readonly object _graphLock = new object();
 
 		private class DependencyNode
@@ -197,6 +198,22 @@ namespace Nonatomic.ServiceKit
 						}
 					}
 					
+					// Mark all services in the circular dependency as having errors
+					var typesInPath = circularDependency.Path.Split(new[] { " → " }, StringSplitOptions.None);
+					foreach (var typeName in typesInPath)
+					{
+						var trimmedTypeName = typeName.Trim();
+						// Find the type in the dependency graph and mark it as having an error
+						foreach (var graphEntry in _dependencyGraph)
+						{
+							if (graphEntry.Key.Name == trimmedTypeName)
+							{
+								AddCircularDependencyError(graphEntry.Key);
+								break;
+							}
+						}
+					}
+					
 					throw new ServiceInjectionException(errorMessage);
 				}
 
@@ -252,6 +269,10 @@ namespace Nonatomic.ServiceKit
 							catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
 							{
 								// This was cancelled due to circular dependency
+								// Mark the service as having a circular dependency error
+								AddCircularDependencyError(serviceType);
+								AddCircularDependencyError(_targetServiceType);
+								
 								throw new ServiceInjectionException($"Injection cancelled due to circular dependency involving {serviceType.Name}");
 							}
 						}).ToList();
@@ -483,6 +504,18 @@ namespace Nonatomic.ServiceKit
 			if (circularDep != null)
 			{
 				Debug.LogError($"Circular dependency detected: {circularDep.Path}");
+				
+				// Mark the service types involved in the circular dependency as having errors
+				if (_targetServiceType != null)
+				{
+					AddCircularDependencyError(_targetServiceType);
+				}
+				
+				// Also mark the "to" type in the circular dependency
+				if (circularDep.ToType != null)
+				{
+					AddCircularDependencyError(circularDep.ToType);
+				}
 			}
 		}
 
@@ -505,6 +538,28 @@ namespace Nonatomic.ServiceKit
 			lock (_graphLock)
 			{
 				return _circularExemptServices.Contains(serviceType);
+			}
+		}
+		
+		/// <summary>
+		/// Check if a service type has circular dependency errors
+		/// </summary>
+		public static bool HasCircularDependencyError(Type serviceType)
+		{
+			lock (_graphLock)
+			{
+				return _servicesWithCircularDependencyErrors.Contains(serviceType);
+			}
+		}
+		
+		/// <summary>
+		/// Mark a service type as having circular dependency errors
+		/// </summary>
+		public static void AddCircularDependencyError(Type serviceType)
+		{
+			lock (_graphLock)
+			{
+				_servicesWithCircularDependencyErrors.Add(serviceType);
 			}
 		}
 
@@ -587,6 +642,7 @@ namespace Nonatomic.ServiceKit
 			{
 				_dependencyGraph.Clear();
 				_circularExemptServices.Clear();
+				_servicesWithCircularDependencyErrors.Clear();
 				
 				// Cancel any pending resolutions
 				foreach (var cts in _resolvingCancellations.Values)

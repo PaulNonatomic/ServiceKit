@@ -143,6 +143,15 @@
 
 /* Infinite icon colors are now handled in code based on exemption status */
 
+/* Red background for services with circular dependency errors */
+.service-item-circular-error {
+    background-color: rgba(255, 0, 0, 0.3) !important; /* Semi-transparent red background */
+}
+
+.service-item-circular-error:hover {
+    background-color: rgba(255, 0, 0, 0.4) !important; /* Slightly more opaque red on hover */
+}
+
 .service-item-container {
     flex-direction: row;
     justify-content: flex-start;
