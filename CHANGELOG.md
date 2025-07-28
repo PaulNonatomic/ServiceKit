@@ -1,3 +1,6 @@
+## [1.0.6] - Jul 28, 2025
+- Enhanced circular dependency detection to detect circular dependencies created later in the registration process.
+
 ## [1.0.5] - Jul 28, 2025
 - Services that encounter circular dependencies will be highlighted red in the ServiceKit Window with 
   a warning icon and tooltip explaining the issue.
