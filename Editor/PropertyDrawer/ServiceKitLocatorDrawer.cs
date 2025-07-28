@@ -120,71 +120,80 @@ namespace Nonatomic.ServiceKit.Editor.PropertyDrawer
 
 		private static void RefreshCache()
 		{
-			_cachedLocators = AssetUtils.FindAssetsByType<ServiceKitLocator>();
+			var result = GetAllServiceKitLocatorsWithDisplayNames();
+			_cachedLocators = result.locators;
+			_cachedDisplayNames = result.displayNames;
+			_cacheValid = true;
+		}
+		
+		/// <summary>
+		/// Get all ServiceKitLocators with their display names - shared logic for use by other components
+		/// </summary>
+		public static (List<ServiceKitLocator> locators, string[] displayNames) GetAllServiceKitLocatorsWithDisplayNames()
+		{
+			var locators = AssetUtils.FindAssetsByType<ServiceKitLocator>();
 			
-			if (_cachedLocators != null && _cachedLocators.Count > 0)
+			if (locators == null || locators.Count == 0)
 			{
-				// Sort by priority: configured default first, then alphabetical
-				var defaultLocator = GetStaticPriorityBasedDefaultLocator();
+				return (new List<ServiceKitLocator>(), new string[0]);
+			}
+			
+			// Sort by priority: configured default first, then alphabetical
+			var defaultLocator = GetStaticPriorityBasedDefaultLocator();
+			
+			// Remove default from list if it exists, then add it at the beginning
+			if (defaultLocator != null && locators.Contains(defaultLocator))
+			{
+				locators.Remove(defaultLocator);
+				locators.Insert(0, defaultLocator);
 				
-				// Remove default from list if it exists, then add it at the beginning
-				if (defaultLocator != null && _cachedLocators.Contains(defaultLocator))
-				{
-					_cachedLocators.Remove(defaultLocator);
-					_cachedLocators.Insert(0, defaultLocator);
-					
-					// Sort the rest alphabetically
-					var remaining = _cachedLocators.Skip(1).OrderBy(l => l.name).ToList();
-					_cachedLocators = new List<ServiceKitLocator> { defaultLocator };
-					_cachedLocators.AddRange(remaining);
-				}
-				else
-				{
-					// No configured default, just sort by name for consistent ordering
-					_cachedLocators = _cachedLocators.OrderBy(l => l.name).ToList();
-				}
-				
-				// Create display names (show path for duplicates and mark default)
-				_cachedDisplayNames = new string[_cachedLocators.Count];
-				var nameGroups = _cachedLocators.GroupBy(l => l.name).ToList();
-				var configuredDefault = GetStaticPriorityBasedDefaultLocator();
-				
-				for (int i = 0; i < _cachedLocators.Count; i++)
-				{
-					var locator = _cachedLocators[i];
-					var group = nameGroups.First(g => g.Key == locator.name);
-					
-					string baseName;
-					if (group.Count() > 1)
-					{
-						// Multiple locators with same name - show path
-						var path = AssetDatabase.GetAssetPath(locator);
-						var folderPath = System.IO.Path.GetDirectoryName(path)?.Replace("Assets/", "") ?? "";
-						baseName = $"{locator.name} ({folderPath})";
-					}
-					else
-					{
-						// Unique name - just show the name
-						baseName = locator.name;
-					}
-					
-					// Mark the configured default
-					if (configuredDefault != null && locator == configuredDefault)
-					{
-						_cachedDisplayNames[i] = $"★ {baseName} (Default)";
-					}
-					else
-					{
-						_cachedDisplayNames[i] = baseName;
-					}
-				}
+				// Sort the rest alphabetically
+				var remaining = locators.Skip(1).OrderBy(l => l.name).ToList();
+				locators = new List<ServiceKitLocator> { defaultLocator };
+				locators.AddRange(remaining);
 			}
 			else
 			{
-				_cachedDisplayNames = new string[0];
+				// No configured default, just sort by name for consistent ordering
+				locators = locators.OrderBy(l => l.name).ToList();
 			}
 			
-			_cacheValid = true;
+			// Create display names (show path for duplicates and mark default)
+			var displayNames = new string[locators.Count];
+			var nameGroups = locators.GroupBy(l => l.name).ToList();
+			var configuredDefault = GetStaticPriorityBasedDefaultLocator();
+			
+			for (int i = 0; i < locators.Count; i++)
+			{
+				var locator = locators[i];
+				var group = nameGroups.First(g => g.Key == locator.name);
+				
+				string baseName;
+				if (group.Count() > 1)
+				{
+					// Multiple locators with same name - show path
+					var path = AssetDatabase.GetAssetPath(locator);
+					var folderPath = System.IO.Path.GetDirectoryName(path)?.Replace("Assets/", "") ?? "";
+					baseName = $"{locator.name} ({folderPath})";
+				}
+				else
+				{
+					// Unique name - just show the name
+					baseName = locator.name;
+				}
+				
+				// Mark the configured default
+				if (configuredDefault != null && locator == configuredDefault)
+				{
+					displayNames[i] = $"★ {baseName} (Default)";
+				}
+				else
+				{
+					displayNames[i] = baseName;
+				}
+			}
+			
+			return (locators, displayNames);
 		}
 
 		// Static method to invalidate cache when assets change
@@ -295,7 +304,7 @@ namespace Nonatomic.ServiceKit.Editor.PropertyDrawer
 		/// <summary>
 		/// Static version of priority-based default locator selection (for use in cache refresh)
 		/// </summary>
-		private static ServiceKitLocator GetStaticPriorityBasedDefaultLocator()
+		public static ServiceKitLocator GetStaticPriorityBasedDefaultLocator()
 		{
 			// PRIORITY 0A: Check ServiceKitSettings ScriptableObject first (highest priority - visible in inspector)
 			var settingsDefault = ServiceKitSettings.Instance.DefaultServiceKitLocator;
