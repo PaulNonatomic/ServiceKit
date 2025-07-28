@@ -59,9 +59,18 @@
 .service-icon {
     width: 12px;
     height: 12px;
-    margin-right: 10px;
+    margin-right: 5px;
     margin-left: 10px;
     opacity: 0.8; /* Make the icon slightly lighter too */
+}
+
+.infinite-icon {
+    width: 12px;
+    height: 12px;
+    margin-right: 5px;
+    margin-left: 0px;
+    opacity: 0.8;
+    /* Color set in code based on exemption status */
 }
 
 .button-icon {
@@ -132,6 +141,8 @@
     /* Red for Unloaded scene services */
 }
 
+/* Infinite icon colors are now handled in code based on exemption status */
+
 .service-item-container {
     flex-direction: row;
     justify-content: flex-start;
@@ -143,6 +154,8 @@
     margin-left: auto;
     position: absolute;
     right: 0;
+    flex-direction: row;
+    align-items: center;
 }
 
 .service-type {
