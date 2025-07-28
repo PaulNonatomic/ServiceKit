@@ -480,5 +480,69 @@ namespace Nonatomic.ServiceKit.Editor
 				}
 			}
 		}
+
+		/// <summary>
+		/// Debug method to compare ServiceKitLocator discovery methods
+		/// </summary>
+		[MenuItem("Tools/ServiceKit/Debug ServiceKitLocator Discovery")]
+		public static void DebugServiceKitLocatorDiscovery()
+		{
+			Debug.Log("=== ServiceKitLocator Discovery Debug ===");
+			
+			// Method 1: AssetUtils
+			var assetUtilsResults = AssetUtils.FindAssetsByType<ServiceKitLocator>();
+			Debug.Log($"\n[AssetUtils.FindAssetsByType] Found {assetUtilsResults?.Count ?? 0} ServiceKitLocator(s):");
+			if (assetUtilsResults != null)
+			{
+				foreach (var locator in assetUtilsResults)
+				{
+					var path = AssetDatabase.GetAssetPath(locator);
+					Debug.Log($"  • {locator.name} at {path}");
+				}
+			}
+			
+			// Method 2: Direct type search
+			var directSearchGuids = AssetDatabase.FindAssets("t:ServiceKitLocator");
+			Debug.Log($"\n[Direct type search 't:ServiceKitLocator'] Found {directSearchGuids.Length} GUID(s):");
+			foreach (var guid in directSearchGuids)
+			{
+				var path = AssetDatabase.GUIDToAssetPath(guid);
+				var asset = AssetDatabase.LoadAssetAtPath<ServiceKitLocator>(path);
+				Debug.Log($"  • {(asset != null ? asset.name : "null")} at {path}");
+			}
+			
+			// Method 3: ScriptableObject search
+			var scriptableObjectGuids = AssetDatabase.FindAssets("t:ScriptableObject");
+			var serviceKitLocators = new List<ServiceKitLocator>();
+			foreach (var guid in scriptableObjectGuids)
+			{
+				var path = AssetDatabase.GUIDToAssetPath(guid);
+				var asset = AssetDatabase.LoadAssetAtPath<ServiceKitLocator>(path);
+				if (asset != null) serviceKitLocators.Add(asset);
+			}
+			Debug.Log($"\n[ScriptableObject filtered] Found {serviceKitLocators.Count} ServiceKitLocator(s):");
+			foreach (var locator in serviceKitLocators)
+			{
+				var path = AssetDatabase.GetAssetPath(locator);
+				Debug.Log($"  • {locator.name} at {path}");
+			}
+			
+			// Method 4: Resources.FindObjectsOfTypeAll (includes loaded assets)
+			var allLoadedLocators = Resources.FindObjectsOfTypeAll<ServiceKitLocator>();
+			Debug.Log($"\n[Resources.FindObjectsOfTypeAll] Found {allLoadedLocators.Length} ServiceKitLocator(s) (includes loaded):");
+			foreach (var locator in allLoadedLocators)
+			{
+				var path = AssetDatabase.GetAssetPath(locator);
+				var isAsset = !string.IsNullOrEmpty(path);
+				if (isAsset)
+				{
+					Debug.Log($"  • {locator.name} at {path}");
+				}
+				else
+				{
+					Debug.Log($"  • {locator.name} (runtime instance, not an asset)");
+				}
+			}
+		}
 	}
 }

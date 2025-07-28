@@ -40,6 +40,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			AddToClassList("services-tab");
 
 			// Load persisted locator selection using GUID for uniqueness
+			// Note: If no persisted selection exists, will use the configured default from ServiceKitSettings
 			_persistedLocatorGuid = EditorPrefs.GetString(SELECTED_LOCATOR_PREF_KEY, "");
 
 			// Title bar
@@ -274,10 +275,11 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			// Force asset database refresh to find any new ServiceKitLocator assets
 			AssetDatabase.Refresh();
 
-			// Find all ServiceKitLocator assets
-			_serviceKitLocators = FindServiceKitLocatorAssets();
-
-			// Update dropdown choices
+			// Use the same discovery logic as ServiceKitLocatorDrawer
+			var result = PropertyDrawer.ServiceKitLocatorDrawer.GetAllServiceKitLocatorsWithDisplayNames();
+			_serviceKitLocators = result.locators;
+			
+			// Update dropdown choices with the discovered locators
 			UpdateDropdownChoices();
 
 			// Determine which locators to display
@@ -338,29 +340,10 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				return;
 			}
 
-			// First, create the ordered list
-			_orderedLocators = _serviceKitLocators.OrderBy(l => l.name).ToList();
-			
-			// Then create display names for the ordered list
-			var nameGroups = _orderedLocators.GroupBy(l => l.name).ToList();
-			
-			for (int i = 0; i < _orderedLocators.Count; i++)
-			{
-				var locator = _orderedLocators[i];
-				var group = nameGroups.First(g => g.Key == locator.name);
-				
-				if (group.Count() > 1)
-				{
-					// Multiple locators with same name - show path
-					var path = AssetDatabase.GetAssetPath(locator);
-					var folderPath = System.IO.Path.GetDirectoryName(path)?.Replace("Assets/", "") ?? "";
-					_locatorChoices.Add($"{locator.name} ({folderPath})");
-				}
-				else
-				{
-					_locatorChoices.Add(locator.name);
-				}
-			}
+			// Get the display names from ServiceKitLocatorDrawer
+			var result = PropertyDrawer.ServiceKitLocatorDrawer.GetAllServiceKitLocatorsWithDisplayNames();
+			_orderedLocators = result.locators;
+			_locatorChoices = result.displayNames.ToList();
 
 			_locatorDropdown.choices = _locatorChoices;
 			_locatorDropdown.SetEnabled(true);
@@ -381,10 +364,32 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 					AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(l)) == _persistedLocatorGuid);
 			}
 
-			// If no persisted selection or locator not found, select first available
+			// If no persisted selection or locator not found, use priority-based selection
 			if (locatorToSelect == null && _orderedLocators.Count > 0)
 			{
-				locatorToSelect = _orderedLocators[0];
+				// Check if there's a configured default in ServiceKitSettings
+				var configuredDefault = PropertyDrawer.ServiceKitLocatorDrawer.GetStaticPriorityBasedDefaultLocator();
+				
+				Debug.Log($"[ServiceKit Debug] ServiceKitServicesTab - No persisted selection, checking configured default");
+				Debug.Log($"[ServiceKit Debug] Configured default: {(configuredDefault != null ? configuredDefault.name : "null")}");
+				Debug.Log($"[ServiceKit Debug] Ordered locators count: {_orderedLocators.Count}");
+				if (_orderedLocators.Count > 0)
+				{
+					Debug.Log($"[ServiceKit Debug] First ordered locator: {_orderedLocators[0].name}");
+				}
+				
+				if (configuredDefault != null && _orderedLocators.Contains(configuredDefault))
+				{
+					// Use the configured default
+					locatorToSelect = configuredDefault;
+					Debug.Log($"[ServiceKit Debug] Using configured default: {configuredDefault.name}");
+				}
+				else
+				{
+					// Fall back to first item (which is sorted by priority already)
+					locatorToSelect = _orderedLocators[0];
+					Debug.Log($"[ServiceKit Debug] Using first ordered locator: {locatorToSelect.name}");
+				}
 			}
 
 			if (locatorToSelect != null)
@@ -461,12 +466,15 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		}
 
 		/// <summary>
-		///     Finds all ServiceKitLocator assets in the project.
+		/// Clear persisted ServiceKit window selection - useful for testing
 		/// </summary>
-		private static List<ServiceKitLocator> FindServiceKitLocatorAssets()
+		[MenuItem("Tools/ServiceKit/Clear ServiceKit Window Selection")]
+		public static void ClearPersistedSelection()
 		{
-			return AssetUtils.FindAssetsByType<ServiceKitLocator>();
+			EditorPrefs.DeleteKey(SELECTED_LOCATOR_PREF_KEY);
+			Debug.Log("[ServiceKit] Cleared persisted ServiceKit window selection. The window will now use the configured default.");
 		}
+
 
 		/// <summary>
 		///     Handles search field value changes.
