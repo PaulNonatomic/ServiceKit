@@ -151,16 +151,8 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		/// </summary>
 		private bool IsServiceMatch(ServiceItem serviceItem, string searchText)
 		{
-			// Get the service name text from the Label inside the ServiceItem
-			var serviceName = GetServiceName(serviceItem);
-
-			if (string.IsNullOrEmpty(serviceName))
-			{
-				return false;
-			}
-
-			// Simple case-insensitive contains check (basic fuzzy matching)
-			return serviceName.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0;
+			// Use ServiceItem's built-in search functionality which includes tag searching
+			return serviceItem.MatchesSearch(searchText);
 		}
 
 		/// <summary>

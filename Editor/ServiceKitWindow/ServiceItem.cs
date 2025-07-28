@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nonatomic.ServiceKit.Editor.Utils;
 using UnityEditor;
 using UnityEngine;
@@ -334,6 +335,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 		/// <summary>
 		///     Checks if this service matches the search text using fuzzy matching.
+		///     Searches both service name and tags.
 		/// </summary>
 		public bool MatchesSearch(string searchText)
 		{
@@ -342,7 +344,22 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				return true;
 			}
 
-			return FuzzyMatch(ServiceTypeName, searchText);
+			// First check service type name
+			if (FuzzyMatch(ServiceTypeName, searchText))
+			{
+				return true;
+			}
+
+			// Then check all tags
+			foreach (var tag in Tags)
+			{
+				if (FuzzyMatch(tag.name, searchText))
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		/// <summary>
