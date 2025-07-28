@@ -123,19 +123,15 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			_servicesScrollView = new();
 			Add(_servicesScrollView);
 
-			// Register panel callbacks to handle attachment/detachment
 			RegisterCallback<AttachToPanelEvent>(HandleAttachToPanel);
 			RegisterCallback<DetachFromPanelEvent>(HandleDetachFromPanel);
 
-			// Initial refresh
 			RefreshServices();
 		}
 
 		private void HandleAttachToPanel(AttachToPanelEvent evt)
 		{
-			// Listen for editor scene changes
 			EditorApplication.hierarchyChanged += HandleHierarchyChanged;
-			// Start periodic state checking
 			EditorApplication.update += CheckServiceStates;
 		}
 

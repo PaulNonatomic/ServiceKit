@@ -1,3 +1,7 @@
+## [1.0.4] - Jul 28, 2025
+- Added an infinite icon to the ServiceItems displayed in the ServiceKit Window. The icon is coloured when circular 
+  dependency detection is enabled for the service and greyed out when detection is disabled.
+
 ## [1.0.3] - Jul 27, 2025
 - As the ServiceKitLocator is a ScriptableObject it is capable of persisting state in Editor.
   I've added the ServiceKitPlayModeHandler to cleanup the state of the ServiceKitLocator when exiting play mode in editor.

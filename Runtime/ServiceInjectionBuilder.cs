@@ -496,6 +496,17 @@ namespace Nonatomic.ServiceKit
 				_circularExemptServices.Add(serviceType);
 			}
 		}
+		
+		/// <summary>
+		/// Check if a service type is exempt from circular dependency checks
+		/// </summary>
+		public static bool IsExemptFromCircularDependencyCheck(Type serviceType)
+		{
+			lock (_graphLock)
+			{
+				return _circularExemptServices.Contains(serviceType);
+			}
+		}
 
 		/// <summary>
 		/// Remove circular dependency exemption for a service type
