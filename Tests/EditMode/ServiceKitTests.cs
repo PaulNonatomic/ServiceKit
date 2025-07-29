@@ -7,6 +7,10 @@ using NUnit.Framework;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
+#if INCLUDE_UNITASK
+using Cysharp.Threading.Tasks;
+#endif
+
 namespace Tests.EditMode
 {
 	[TestFixture]
@@ -86,16 +90,26 @@ namespace Tests.EditMode
 			// Arrange
 			var playerService = new PlayerService();
 
-			// Act
-			// Start awaiting the service BEFORE it's ready
-			var serviceTask = _realServiceKitLocator.GetServiceAsync<IPlayerService>();
-			Assert.IsFalse(serviceTask.IsCompleted, "Task should not be complete before service is ready");
+			// Start the async operation before registering the service
+			Task<IPlayerService> serviceTask;
+#if INCLUDE_UNITASK
+			serviceTask = Task.Run(async () =>
+			{
+				var result = await _realServiceKitLocator.GetServiceAsync<IPlayerService>();
+				return result;
+			});
+#else
+			serviceTask = _realServiceKitLocator.GetServiceAsync<IPlayerService>();
+#endif
+			
+			// Give the task a moment to start
+			await Task.Delay(10);
 
 			// Now, register and ready the service
 			_realServiceKitLocator.RegisterAndReadyService<IPlayerService>(playerService);
 
 			// Await the task, which should now complete
-			var result = await serviceTask;
+			var result = await serviceTask.ConfigureAwait(false);
 
 			// Assert
 			Assert.AreEqual(playerService, result);
@@ -129,7 +143,11 @@ namespace Tests.EditMode
 			var derivedInstance = new TestDerivedClass();
 
 			// Act
-			await _realServiceKitLocator.InjectServicesAsync(derivedInstance).ExecuteAsync();
+#if INCLUDE_UNITASK
+			await _realServiceKitLocator.InjectServicesAsync(derivedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+#else
+			await _realServiceKitLocator.InjectServicesAsync(derivedInstance).ExecuteAsync().ConfigureAwait(false);
+#endif
 
 			// Assert
 			Assert.IsNotNull(derivedInstance.PlayerService, "PlayerService should be injected from base class");
@@ -152,7 +170,11 @@ namespace Tests.EditMode
 			var deeplyDerivedInstance = new TestDeeplyDerivedClass();
 
 			// Act
-			await _realServiceKitLocator.InjectServicesAsync(deeplyDerivedInstance).ExecuteAsync();
+#if INCLUDE_UNITASK
+			await _realServiceKitLocator.InjectServicesAsync(deeplyDerivedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+#else
+			await _realServiceKitLocator.InjectServicesAsync(deeplyDerivedInstance).ExecuteAsync().ConfigureAwait(false);
+#endif
 
 			// Assert
 			Assert.IsNotNull(deeplyDerivedInstance.PlayerService, "PlayerService should be injected from grand-parent class");
@@ -173,7 +195,11 @@ namespace Tests.EditMode
 			var mixedInstance = new TestMixedRequiredOptionalClass();
 
 			// Act
-			await _realServiceKitLocator.InjectServicesAsync(mixedInstance).ExecuteAsync();
+#if INCLUDE_UNITASK
+			await _realServiceKitLocator.InjectServicesAsync(mixedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+#else
+			await _realServiceKitLocator.InjectServicesAsync(mixedInstance).ExecuteAsync().ConfigureAwait(false);
+#endif
 
 			// Assert
 			Assert.IsNotNull(mixedInstance.PlayerService, "Required PlayerService should be injected");

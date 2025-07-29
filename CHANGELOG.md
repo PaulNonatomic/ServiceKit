@@ -1,3 +1,6 @@
+## [1.1.0] - Jul 29, 2025
+- Added UniTask support for performance gains out of the box
+
 ## [1.0.9] - Jul 28, 2025
 - Added support for service tags
 
