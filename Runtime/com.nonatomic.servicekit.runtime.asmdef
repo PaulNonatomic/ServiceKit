@@ -15,7 +15,7 @@
         {
             "name": "com.cysharp.unitask",
             "expression": "2.5.10",
-            "define": "INCLUDE_UNITASK"
+            "define": "SERVICEKIT_UNITASK"
         }
     ],
     "noEngineReferences": false

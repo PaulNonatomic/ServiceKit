@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using UnityEngine.SceneManagement;
 
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 using Cysharp.Threading.Tasks;
 #else
 using System.Threading.Tasks;
@@ -53,7 +53,7 @@ namespace Nonatomic.ServiceKit
 		object GetService(Type serviceType);
 		bool TryGetService<T>(out T service) where T : class;
 		bool TryGetService(Type serviceType, out object service);
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 		UniTask<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class;
 		UniTask<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default);
 #else

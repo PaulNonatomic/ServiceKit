@@ -1,3 +1,6 @@
+## [1.1.1] - Jul 29, 2025
+- Changed the define for Unitask inclusion from INCLUDE_UNITASK to SERVICEKIT_UNITASK
+
 ## [1.1.0] - Jul 29, 2025
 - Added UniTask support for performance gains out of the box
 

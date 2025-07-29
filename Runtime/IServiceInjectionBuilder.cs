@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading;
 
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 using Cysharp.Threading.Tasks;
 #else
 using System.Threading.Tasks;
@@ -18,7 +18,7 @@ namespace Nonatomic.ServiceKit
 		IServiceInjectionBuilder WithErrorHandling();
 
 		void Execute();
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 		UniTask ExecuteAsync();
 #else
 		Task ExecuteAsync();

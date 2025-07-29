@@ -1,28 +1,28 @@
 {
-  "name": "com.nonatomic.servicekit.tests.playmode",
-  "rootNamespace": "",
-  "references": [
-    "GUID:1b0144b25b4099e45a5beb8f8f7bee63",
-    "GUID:0acc523941302664db1f4e527237feb3",
-    "GUID:27619889b8ba8c24980f49ee34dbb44a"
-  ],
-  "includePlatforms": [],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "overrideReferences": true,
-  "precompiledReferences": [
-    "nunit.framework.dll"
-  ],
-  "autoReferenced": true,
-  "defineConstraints": [
-    "UNITY_INCLUDE_TESTS"
-  ],
-  "versionDefines": [
-    {
-      "name": "com.cysharp.unitask",
-      "expression": "2.5.10",
-      "define": "INCLUDE_UNITASK"
-    }
-  ],
-  "noEngineReferences": false
+    "name": "com.nonatomic.servicekit.tests.playmode",
+    "rootNamespace": "",
+    "references": [
+        "GUID:1b0144b25b4099e45a5beb8f8f7bee63",
+        "GUID:0acc523941302664db1f4e527237feb3",
+        "GUID:27619889b8ba8c24980f49ee34dbb44a"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.cysharp.unitask",
+            "expression": "2.5.10",
+            "define": "SERVICEKIT_UNITASK"
+        }
+    ],
+    "noEngineReferences": false
 }
