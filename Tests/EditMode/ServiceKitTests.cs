@@ -7,7 +7,7 @@ using NUnit.Framework;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 using Cysharp.Threading.Tasks;
 #endif
 
@@ -92,7 +92,7 @@ namespace Tests.EditMode
 
 			// Start the async operation before registering the service
 			Task<IPlayerService> serviceTask;
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 			serviceTask = Task.Run(async () =>
 			{
 				var result = await _realServiceKitLocator.GetServiceAsync<IPlayerService>();
@@ -143,7 +143,7 @@ namespace Tests.EditMode
 			var derivedInstance = new TestDerivedClass();
 
 			// Act
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 			await _realServiceKitLocator.InjectServicesAsync(derivedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
 #else
 			await _realServiceKitLocator.InjectServicesAsync(derivedInstance).ExecuteAsync().ConfigureAwait(false);
@@ -170,7 +170,7 @@ namespace Tests.EditMode
 			var deeplyDerivedInstance = new TestDeeplyDerivedClass();
 
 			// Act
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 			await _realServiceKitLocator.InjectServicesAsync(deeplyDerivedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
 #else
 			await _realServiceKitLocator.InjectServicesAsync(deeplyDerivedInstance).ExecuteAsync().ConfigureAwait(false);
@@ -195,7 +195,7 @@ namespace Tests.EditMode
 			var mixedInstance = new TestMixedRequiredOptionalClass();
 
 			// Act
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 			await _realServiceKitLocator.InjectServicesAsync(mixedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
 #else
 			await _realServiceKitLocator.InjectServicesAsync(mixedInstance).ExecuteAsync().ConfigureAwait(false);

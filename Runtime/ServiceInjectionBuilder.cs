@@ -5,7 +5,7 @@ using System.Reflection;
 using System.Threading;
 using UnityEngine;
 
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 using Cysharp.Threading.Tasks;
 #else
 using System.Threading.Tasks;
@@ -116,7 +116,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-	#if INCLUDE_UNITASK
+	#if SERVICEKIT_UNITASK
 	public async UniTask ExecuteAsync()
 #else
 	public async Task ExecuteAsync()
@@ -241,7 +241,7 @@ namespace Nonatomic.ServiceKit
 
 					try
 					{
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 						// Create tasks for all service retrievals
 						var serviceTasks = fieldsToInject.Select<FieldInfo, UniTask<(FieldInfo fieldInfo, object service, bool Required)>>(async fieldInfo =>
 #else
@@ -285,7 +285,7 @@ namespace Nonatomic.ServiceKit
 							}
 						}).ToList();
 
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 						// Wait for all services
 						var results = await UniTask.WhenAll(serviceTasks);
 #else
@@ -490,7 +490,7 @@ namespace Nonatomic.ServiceKit
 			return fields;
 		}
 
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 		private static async UniTask SwitchToUnityThread(SynchronizationContext unityContext)
 		{
 			if (SynchronizationContext.Current == unityContext) return;

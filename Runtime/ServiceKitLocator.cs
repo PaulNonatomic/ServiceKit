@@ -7,7 +7,7 @@ using System.Threading;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 using Cysharp.Threading.Tasks;
 #else
 using System.Threading.Tasks;
@@ -20,7 +20,7 @@ namespace Nonatomic.ServiceKit
 	{
 		private readonly Dictionary<Type, ServiceInfo> _readyServices = new Dictionary<Type, ServiceInfo>();
 		private readonly Dictionary<Type, RegisteredServiceInfo> _registeredServices = new Dictionary<Type, RegisteredServiceInfo>();
-	#if INCLUDE_UNITASK
+	#if SERVICEKIT_UNITASK
 	private readonly Dictionary<Type, UniTaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, UniTaskCompletionSource<object>>();
 #else
 	private readonly Dictionary<Type, TaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, TaskCompletionSource<object>>();
@@ -350,7 +350,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 		/// <summary>
 		/// Get a service asynchronously (waits until ready)
 		/// </summary>
@@ -788,7 +788,7 @@ namespace Nonatomic.ServiceKit
 
 		private void CompleteAwaiters(Type type, object service)
 		{
-#if INCLUDE_UNITASK
+#if SERVICEKIT_UNITASK
 			UniTaskCompletionSource<object> tcs;
 #else
 			TaskCompletionSource<object> tcs;
