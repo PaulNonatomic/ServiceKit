@@ -55,7 +55,7 @@ namespace Nonatomic.ServiceKit
 				// Fallback to runtime instance
 				_instance = CreateInstance<ServiceKitSettings>();
 				_instance.name = "ServiceKitSettings (Runtime)";
-                        
+
 				#if UNITY_EDITOR
 				Debug.LogWarning("[ServiceKit] No ServiceKitSettings asset found. Using runtime instance. " +
 								 "Create a ServiceKitSettings asset via Assets → Create → ServiceKit → Settings for persistent settings.");

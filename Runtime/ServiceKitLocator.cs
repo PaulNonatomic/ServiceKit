@@ -4,9 +4,14 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+
+#if INCLUDE_UNITASK
+using Cysharp.Threading.Tasks;
+#else
+using System.Threading.Tasks;
+#endif
 
 namespace Nonatomic.ServiceKit
 {
@@ -15,7 +20,11 @@ namespace Nonatomic.ServiceKit
 	{
 		private readonly Dictionary<Type, ServiceInfo> _readyServices = new Dictionary<Type, ServiceInfo>();
 		private readonly Dictionary<Type, RegisteredServiceInfo> _registeredServices = new Dictionary<Type, RegisteredServiceInfo>();
-		private readonly Dictionary<Type, TaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, TaskCompletionSource<object>>();
+	#if INCLUDE_UNITASK
+	private readonly Dictionary<Type, UniTaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, UniTaskCompletionSource<object>>();
+#else
+	private readonly Dictionary<Type, TaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, TaskCompletionSource<object>>();
+#endif
 		private readonly object _lock = new object();
 		private readonly HashSet<Scene> _trackedScenes = new HashSet<Scene>();
 
@@ -341,6 +350,56 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
+#if INCLUDE_UNITASK
+		/// <summary>
+		/// Get a service asynchronously (waits until ready)
+		/// </summary>
+		public async UniTask<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class
+		{
+			object service = await GetServiceAsync(typeof(T), cancellationToken);
+			return service as T;
+		}
+
+		/// <summary>
+		/// Get a service asynchronously by type (waits until ready)
+		/// </summary>
+		public async UniTask<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default)
+		{
+			UniTaskCompletionSource<object> tcs;
+
+			lock (_lock)
+			{
+				// Check if already ready
+				if (_readyServices.TryGetValue(serviceType, out var serviceInfo))
+				{
+					return serviceInfo.Service;
+				}
+
+				// Track that someone is waiting for this service
+				if (_registeredServices.TryGetValue(serviceType, out var registeredInfo))
+				{
+					// Service is registered but not ready - good case for waiting
+				}
+				else
+				{
+					// Service not even registered - still wait, it might register later
+					if (ServiceKitSettings.Instance.DebugLogging)
+					{
+						Debug.LogWarning($"[ServiceKit] Waiting for service {serviceType.Name} that isn't registered yet");
+					}
+				}
+
+				if (!_serviceAwaiters.TryGetValue(serviceType, out tcs))
+				{
+					tcs = new UniTaskCompletionSource<object>();
+					_serviceAwaiters[serviceType] = tcs;
+				}
+			}
+
+			cancellationToken.Register(() => tcs.TrySetCanceled());
+			return await tcs.Task;
+		}
+#else
 		/// <summary>
 		/// Get a service asynchronously (waits until ready)
 		/// </summary>
@@ -391,6 +450,7 @@ namespace Nonatomic.ServiceKit
 				return await tcs.Task;
 			}
 		}
+#endif
 
 		/// <summary>
 		/// Start fluent injection for an object
@@ -676,7 +736,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		private ServiceInfo CreateServiceInfo(object service, Type type, string registeredBy, ServiceTag[] tags = null)
+		private static ServiceInfo CreateServiceInfo(object service, Type type, string registeredBy, ServiceTag[] tags = null)
 		{
 			var info = new ServiceInfo
 			{
@@ -700,11 +760,13 @@ namespace Nonatomic.ServiceKit
 				info.SceneHandle = scene.handle;
 
 				// Check if it's in DontDestroyOnLoad
-				if (monoBehaviour.gameObject.scene.buildIndex == -1)
+				if (monoBehaviour.gameObject.scene.buildIndex != -1)
 				{
-					info.IsDontDestroyOnLoad = true;
-					info.SceneName = "DontDestroyOnLoad";
+					return info;
 				}
+
+				info.IsDontDestroyOnLoad = true;
+				info.SceneName = "DontDestroyOnLoad";
 			}
 			else
 			{
@@ -726,7 +788,11 @@ namespace Nonatomic.ServiceKit
 
 		private void CompleteAwaiters(Type type, object service)
 		{
+#if INCLUDE_UNITASK
+			UniTaskCompletionSource<object> tcs;
+#else
 			TaskCompletionSource<object> tcs;
+#endif
 			
 			lock (_lock)
 			{
@@ -739,7 +805,7 @@ namespace Nonatomic.ServiceKit
 			tcs?.TrySetResult(service);
 		}
 
-		private void CheckWaitingServices(Type newlyReadyType)
+		private static void CheckWaitingServices(Type newlyReadyType)
 		{
 			// This could be extended to track which services are waiting for which dependencies
 			// For now, we rely on ServiceInjectionBuilder to handle the waiting
@@ -799,15 +865,13 @@ namespace Nonatomic.ServiceKit
 			// First check in registered services
 			foreach (var registeredType in _registeredServices.Keys)
 			{
-				if (registeredType.Name == typeName)
-					return registeredType;
+				if (registeredType.Name == typeName) return registeredType;
 			}
 
 			// Then check in ready services
 			foreach (var readyType in _readyServices.Keys)
 			{
-				if (readyType.Name == typeName)
-					return readyType;
+				if (readyType.Name == typeName) return readyType;
 			}
 
 			return null;
@@ -846,14 +910,13 @@ namespace Nonatomic.ServiceKit
 					serviceInfo = registeredInfo.ServiceInfo;
 				}
 
-				if (serviceInfo != null)
+				if (serviceInfo == null) return;
+				
+				foreach (var tag in tags)
 				{
-					foreach (var tag in tags)
+					if (!string.IsNullOrWhiteSpace(tag.name) && !serviceInfo.Tags.Any(t => t.name == tag.name))
 					{
-						if (!string.IsNullOrWhiteSpace(tag.name) && !serviceInfo.Tags.Any(t => t.name == tag.name))
-						{
-							serviceInfo.Tags.Add(tag);
-						}
+						serviceInfo.Tags.Add(tag);
 					}
 				}
 			}
@@ -890,12 +953,11 @@ namespace Nonatomic.ServiceKit
 					serviceInfo = registeredInfo.ServiceInfo;
 				}
 
-				if (serviceInfo != null)
+				if (serviceInfo == null) return;
+				
+				foreach (var tagName in tags)
 				{
-					foreach (var tagName in tags)
-					{
-						serviceInfo.Tags.RemoveAll(t => t.name == tagName);
-					}
+					serviceInfo.Tags.RemoveAll(t => t.name == tagName);
 				}
 			}
 		}

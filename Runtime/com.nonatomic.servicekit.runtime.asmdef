@@ -1,14 +1,22 @@
 {
-  "name": "com.nonatomic.servicekit.runtime",
-  "rootNamespace": "Nonatomic.ServiceKit",
-  "references": [],
-  "includePlatforms": [],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "overrideReferences": true,
-  "precompiledReferences": [],
-  "autoReferenced": true,
-  "defineConstraints": [],
-  "versionDefines": [],
-  "noEngineReferences": false
+    "name": "com.nonatomic.servicekit.runtime",
+    "rootNamespace": "Nonatomic.ServiceKit",
+    "references": [
+        "GUID:f51ebe6a0ceec4240a699833d6309b23"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.cysharp.unitask",
+            "expression": "2.5.10",
+            "define": "INCLUDE_UNITASK"
+        }
+    ],
+    "noEngineReferences": false
 }

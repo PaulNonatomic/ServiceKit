@@ -1,6 +1,11 @@
 ﻿using System;
-using System.Threading.Tasks;
 using UnityEngine;
+
+#if INCLUDE_UNITASK
+using Cysharp.Threading.Tasks;
+#else
+using System.Threading.Tasks;
+#endif
 
 namespace Nonatomic.ServiceKit
 {
@@ -63,7 +68,11 @@ namespace Nonatomic.ServiceKit
 			ServiceKitLocator.UnregisterService(typeof(T));
 		}
 
-		protected virtual async Task InjectServicesAsync()
+	#if INCLUDE_UNITASK
+	protected virtual async UniTask InjectServicesAsync()
+#else
+	protected virtual async Task InjectServicesAsync()
+#endif
 		{
 			if (GuardAgainstUnassignedServiceKit()) return;
 			
@@ -88,12 +97,21 @@ namespace Nonatomic.ServiceKit
 		/// Override this to perform initialization after dependencies are injected
 		/// but before the service becomes ready
 		/// </summary>
+#if INCLUDE_UNITASK
+		protected virtual async UniTask InitializeServiceAsync()
+		{
+			// Default implementation does nothing
+			// Override in derived classes to perform initialization
+			await UniTask.CompletedTask;
+		}
+#else
 		protected virtual async Task InitializeServiceAsync()
 		{
 			// Default implementation does nothing
 			// Override in derived classes to perform initialization
 			await Task.CompletedTask;
 		}
+#endif
 
 		/// <summary>
 		/// Override this to perform initialization after dependencies are injected

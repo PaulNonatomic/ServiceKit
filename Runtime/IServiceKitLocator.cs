@@ -2,8 +2,13 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using UnityEngine.SceneManagement;
+
+#if INCLUDE_UNITASK
+using Cysharp.Threading.Tasks;
+#else
+using System.Threading.Tasks;
+#endif
 
 namespace Nonatomic.ServiceKit
 {
@@ -48,8 +53,13 @@ namespace Nonatomic.ServiceKit
 		object GetService(Type serviceType);
 		bool TryGetService<T>(out T service) where T : class;
 		bool TryGetService(Type serviceType, out object service);
+#if INCLUDE_UNITASK
+		UniTask<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class;
+		UniTask<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default);
+#else
 		Task<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class;
 		Task<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default);
+#endif
 		IServiceInjectionBuilder InjectServicesAsync(object target);
 		void ClearServices();
 

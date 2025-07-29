@@ -13,12 +13,15 @@ namespace Nonatomic.ServiceKit
 		{
 			get
 			{
-				if (_instance == null)
+				if (_instance != null)
 				{
-					var go = new GameObject("ServiceKitTimeoutManager");
-					DontDestroyOnLoad(go);
-					_instance = go.AddComponent<ServiceKitTimeoutManager>();
+					return _instance;
 				}
+
+				var go = new GameObject("ServiceKitTimeoutManager");
+				DontDestroyOnLoad(go);
+				_instance = go.AddComponent<ServiceKitTimeoutManager>();
+				
 				return _instance;
 			}
 		}
@@ -27,26 +30,25 @@ namespace Nonatomic.ServiceKit
 
 		public IDisposable RegisterTimeout(CancellationTokenSource cts, float duration)
 		{
-			float endTime = Time.time + duration;
+			var endTime = Time.time + duration;
 			_timeouts.Add((cts, endTime));
 			return new TimeoutRegistration(this, cts);
 		}
 
 		private void RemoveTimeout(CancellationTokenSource cts)
 		{
-			for (int i = _timeouts.Count - 1; i >= 0; i--)
+			for (var i = _timeouts.Count - 1; i >= 0; i--)
 			{
-				if (_timeouts[i].cts == cts)
-				{
-					_timeouts.RemoveAt(i);
-					break;
-				}
+				if (_timeouts[i].cts != cts) continue;
+				
+				_timeouts.RemoveAt(i);
+				break;
 			}
 		}
 
 		private void Update()
 		{
-			for (int i = _timeouts.Count - 1; i >= 0; i--)
+			for (var i = _timeouts.Count - 1; i >= 0; i--)
 			{
 				var (cts, endTime) = _timeouts[i];
 				if (cts.IsCancellationRequested)
@@ -55,11 +57,10 @@ namespace Nonatomic.ServiceKit
 					continue;
 				}
 
-				if (Time.time >= endTime)
-				{
-					cts.Cancel();
-					_timeouts.RemoveAt(i);
-				}
+				if (Time.time < endTime) continue;
+				
+				cts.Cancel();
+				_timeouts.RemoveAt(i);
 			}
 		}
 

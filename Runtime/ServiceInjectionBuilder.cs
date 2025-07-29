@@ -3,8 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
-using System.Threading.Tasks;
 using UnityEngine;
+
+#if INCLUDE_UNITASK
+using Cysharp.Threading.Tasks;
+#else
+using System.Threading.Tasks;
+#endif
 
 namespace Nonatomic.ServiceKit
 {
@@ -17,7 +22,6 @@ namespace Nonatomic.ServiceKit
 		private float _timeout = -1f;
 		private Action<Exception> _errorHandler;
 
-		// Static dependency tracking for circular dependency detection
 		private static readonly Dictionary<Type, DependencyNode> _dependencyGraph = new Dictionary<Type, DependencyNode>();
 		private static readonly Dictionary<Type, CancellationTokenSource> _resolvingCancellations = new Dictionary<Type, CancellationTokenSource>();
 		private static readonly HashSet<Type> _circularExemptServices = new HashSet<Type>();
@@ -51,7 +55,7 @@ namespace Nonatomic.ServiceKit
 			_targetServiceType = DetermineServiceType(target);
 		}
 
-		private Type DetermineServiceType(object target)
+		private static Type DetermineServiceType(object target)
 		{
 			// For ServiceKitBehaviour<T>, extract T
 			var targetType = target.GetType();
@@ -67,7 +71,6 @@ namespace Nonatomic.ServiceKit
 				baseType = baseType.BaseType;
 			}
 			
-			// Fallback to the target's type
 			return targetType;
 		}
 
@@ -113,7 +116,11 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public async Task ExecuteAsync()
+	#if INCLUDE_UNITASK
+	public async UniTask ExecuteAsync()
+#else
+	public async Task ExecuteAsync()
+#endif
 		{
 			var targetType = _target.GetType();
 			var fieldsToInject = GetFieldsToInject(targetType);
@@ -124,7 +131,7 @@ namespace Nonatomic.ServiceKit
 			}
 
 			// Create a cancellation token source for this resolution
-			CancellationTokenSource resolutionCts = new CancellationTokenSource();
+			var resolutionCts = new CancellationTokenSource();
 			
 			lock (_graphLock)
 			{
@@ -133,10 +140,8 @@ namespace Nonatomic.ServiceKit
 
 			try
 			{
-				// Update dependency graph
 				UpdateDependencyGraph(fieldsToInject);
 
-				// Mark as resolving early
 				lock (_graphLock)
 				{
 					if (_dependencyGraph.TryGetValue(_targetServiceType, out var node))
@@ -163,7 +168,7 @@ namespace Nonatomic.ServiceKit
 						
 						lock (_graphLock)
 						{
-							for (int i = 0; i < types.Length - 1; i++)
+							for (var i = 0; i < types.Length - 1; i++)
 							{
 								var fromTypeName = types[i].Trim();
 								var toTypeName = types[i + 1].Trim();
@@ -172,22 +177,19 @@ namespace Nonatomic.ServiceKit
 								var fieldFound = false;
 								foreach (var graphEntry in _dependencyGraph)
 								{
-									if (graphEntry.Key.Name == fromTypeName)
+									if (graphEntry.Key.Name != fromTypeName) continue;
+									
+									foreach (var dependency in graphEntry.Value.Dependencies)
 									{
-										foreach (var dependency in graphEntry.Value.Dependencies)
-										{
-											if (dependency.Name == toTypeName)
-											{
-												if (graphEntry.Value.DependencyFields.TryGetValue(dependency, out var fieldName))
-												{
-													errorMessage += $"\n  → {fromTypeName} has field '{fieldName}' that requires {toTypeName}";
-													fieldFound = true;
-													break;
-												}
-											}
-										}
-										if (fieldFound) break;
+										if (dependency.Name != toTypeName) continue;
+										if (!graphEntry.Value.DependencyFields.TryGetValue(dependency, out var fieldName)) continue;
+										
+										errorMessage += $"\n  → {fromTypeName} has field '{fieldName}' that requires {toTypeName}";
+										fieldFound = true;
+										break;
 									}
+									
+									if (fieldFound) break;
 								}
 								
 								if (!fieldFound)
@@ -203,14 +205,14 @@ namespace Nonatomic.ServiceKit
 					foreach (var typeName in typesInPath)
 					{
 						var trimmedTypeName = typeName.Trim();
+						
 						// Find the type in the dependency graph and mark it as having an error
 						foreach (var graphEntry in _dependencyGraph)
 						{
-							if (graphEntry.Key.Name == trimmedTypeName)
-							{
-								AddCircularDependencyError(graphEntry.Key);
-								break;
-							}
+							if (graphEntry.Key.Name != trimmedTypeName) continue;
+							
+							AddCircularDependencyError(graphEntry.Key);
+							break;
 						}
 					}
 					
@@ -239,8 +241,13 @@ namespace Nonatomic.ServiceKit
 
 					try
 					{
+#if INCLUDE_UNITASK
+						// Create tasks for all service retrievals
+						var serviceTasks = fieldsToInject.Select<FieldInfo, UniTask<(FieldInfo fieldInfo, object service, bool Required)>>(async fieldInfo =>
+#else
 						// Create tasks for all service retrievals
 						var serviceTasks = fieldsToInject.Select<FieldInfo, Task<(FieldInfo fieldInfo, object service, bool Required)>>(async fieldInfo =>
+#endif
 						{
 							var attribute = fieldInfo.GetCustomAttribute<InjectServiceAttribute>();
 							var serviceType = fieldInfo.FieldType;
@@ -252,18 +259,19 @@ namespace Nonatomic.ServiceKit
 							if (!attribute.Required)
 							{
 								var locator = _serviceKitLocator as ServiceKitLocator;
-								if (locator != null && locator.IsServiceReady(serviceType))
+								if (locator == null || !locator.IsServiceReady(serviceType))
 								{
-									object optionalService = _serviceKitLocator.GetService(serviceType);
-									return (fieldInfo, optionalService, attribute.Required);
+									return (fieldInfo, null, attribute.Required);
 								}
-								return (fieldInfo, null, attribute.Required);
+
+								var optionalService = _serviceKitLocator.GetService(serviceType);
+								return (fieldInfo, optionalService, attribute.Required);
 							}
 
 							// For required services, wait for them to become available
 							try
 							{
-								object requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
+								var requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
 								return (fieldInfo, requiredService, attribute.Required);
 							}
 							catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
@@ -277,8 +285,13 @@ namespace Nonatomic.ServiceKit
 							}
 						}).ToList();
 
+#if INCLUDE_UNITASK
+						// Wait for all services
+						var results = await UniTask.WhenAll(serviceTasks);
+#else
 						// Wait for all services
 						var results = await Task.WhenAll(serviceTasks);
+#endif
 
 						// Check for missing required services
 						var missingRequiredServices = results
@@ -309,7 +322,7 @@ namespace Nonatomic.ServiceKit
 							.Select(f => f.FieldType.Name)
 							.ToList();
 
-						string message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
+						var message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
 						if (missingServices.Any())
 						{
 							message += $" Missing required services: {string.Join(", ", missingServices)}.";
@@ -354,13 +367,15 @@ namespace Nonatomic.ServiceKit
 				// Cancel all resolving services in the chain
 				foreach (var kvp in _resolvingCancellations.ToList())
 				{
-					if (typeNames.Contains(kvp.Key.Name))
+					if (!typeNames.Contains(kvp.Key.Name)) continue;
+					
+					try
 					{
-						try
-						{
-							kvp.Value.Cancel();
-						}
-						catch { }
+						kvp.Value.Cancel();
+					}
+					catch
+					{
+						// ignored
 					}
 				}
 			}
@@ -401,15 +416,13 @@ namespace Nonatomic.ServiceKit
 			{
 				var path = new List<Type>();
 				var circularInfo = new CircularDependencyInfo();
+
+				if (!HasCircularDependency(_targetServiceType, path, circularInfo)) return null;
 				
-				if (HasCircularDependency(_targetServiceType, path, circularInfo))
-				{
-					// Format the circular dependency path
-					circularInfo.Path = string.Join(" → ", path.Select(t => t.Name));
-					return circularInfo;
-				}
-				
-				return null;
+				// Format the circular dependency path
+				circularInfo.Path = string.Join(" → ", path.Select(t => t.Name));
+				return circularInfo;
+
 			}
 		}
 
@@ -448,17 +461,8 @@ namespace Nonatomic.ServiceKit
 			{
 				foreach (var dependency in node.Dependencies)
 				{
-					// Skip if the dependency is exempt
-					if (_circularExemptServices.Contains(dependency))
-					{
-						continue;
-					}
-					
-					// Recursively check this dependency
-					if (HasCircularDependency(dependency, path, circularInfo))
-					{
-						return true;
-					}
+					if (_circularExemptServices.Contains(dependency)) continue;
+					if (HasCircularDependency(dependency, path, circularInfo)) return true;
 				}
 			}
 
@@ -486,7 +490,17 @@ namespace Nonatomic.ServiceKit
 			return fields;
 		}
 
-		private async Task SwitchToUnityThread(SynchronizationContext unityContext)
+#if INCLUDE_UNITASK
+		private static async UniTask SwitchToUnityThread(SynchronizationContext unityContext)
+		{
+			if (SynchronizationContext.Current == unityContext) return;
+
+			var tcs = new UniTaskCompletionSource<bool>();
+			unityContext.Post(_ => tcs.TrySetResult(true), null);
+			await tcs.Task;
+		}
+#else
+		private static async Task SwitchToUnityThread(SynchronizationContext unityContext)
 		{
 			if (SynchronizationContext.Current == unityContext) return;
 
@@ -494,6 +508,7 @@ namespace Nonatomic.ServiceKit
 			unityContext.Post(_ => tcs.SetResult(true), null);
 			await tcs.Task;
 		}
+#endif
 
 		private void DefaultErrorHandler(Exception exception)
 		{
@@ -501,21 +516,20 @@ namespace Nonatomic.ServiceKit
 			
 			// Check for circular dependencies and log them
 			var circularDep = DetectCircularDependency();
-			if (circularDep != null)
+			if (circularDep == null) return;
+			
+			Debug.LogError($"Circular dependency detected: {circularDep.Path}");
+				
+			// Mark the service types involved in the circular dependency as having errors
+			if (_targetServiceType != null)
 			{
-				Debug.LogError($"Circular dependency detected: {circularDep.Path}");
+				AddCircularDependencyError(_targetServiceType);
+			}
 				
-				// Mark the service types involved in the circular dependency as having errors
-				if (_targetServiceType != null)
-				{
-					AddCircularDependencyError(_targetServiceType);
-				}
-				
-				// Also mark the "to" type in the circular dependency
-				if (circularDep.ToType != null)
-				{
-					AddCircularDependencyError(circularDep.ToType);
-				}
+			// Also mark the "to" type in the circular dependency
+			if (circularDep.ToType != null)
+			{
+				AddCircularDependencyError(circularDep.ToType);
 			}
 		}
 

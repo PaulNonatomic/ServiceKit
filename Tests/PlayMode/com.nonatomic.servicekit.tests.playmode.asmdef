@@ -17,6 +17,12 @@
   "defineConstraints": [
     "UNITY_INCLUDE_TESTS"
   ],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.cysharp.unitask",
+      "expression": "2.5.10",
+      "define": "INCLUDE_UNITASK"
+    }
+  ],
   "noEngineReferences": false
 }
