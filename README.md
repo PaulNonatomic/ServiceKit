@@ -408,10 +408,10 @@ ServiceKit has been extensively benchmarked to ensure excellent performance acro
 #### ⚡ Lightning Fast Operations (< 0.1ms)
 | Operation | Average Time | Throughput | Category |
 |-----------|--------------|------------|----------|
-| **IsServiceRegistered** | 0.005ms | 220,614 ops/sec | 👑 **ABSOLUTE CHAMPION** |
+| **TryGetService** | 0.004ms | 245,700 ops/sec | 👑 **ABSOLUTE CHAMPION** |
+| **IsServiceRegistered** | 0.005ms | 220,614 ops/sec | 🏆 **ULTRA CHAMPION** |
 | **IsServiceReady** | 0.007ms | 147,477 ops/sec | 🏆 **ULTRA CHAMPION** |
-| **GetService (Synchronous)** | 0.013ms | 78,331 ops/sec | ⚡ Lightning Fast |
-| **TryGetService** | 0.014ms | 70,349 ops/sec | ⚡ Lightning Fast |
+| **GetService (Synchronous)** | 0.010ms | 103,000 ops/sec | ⚡ Lightning Fast |
 | **GetServiceAsync** | 0.018ms | 54,789 ops/sec | ⚡ Lightning Fast |
 | **GetAllServices** | 0.021ms | 47,491 ops/sec | ⚡ Lightning Fast |
 | **Service Status Checking** | 0.023ms | 42,610 ops/sec | ⚡ Lightning Fast |
@@ -425,20 +425,20 @@ ServiceKit has been extensively benchmarked to ensure excellent performance acro
 | **Clear All Services** | 0.024ms | 42,082 ops/sec | ⚡ Lightning Fast |
 | **Service Discovery** | 0.042ms | 23,805 ops/sec | ⚡ Lightning Fast |
 | **Tag System (Complex)** | 0.154ms | 6,491 ops/sec | 🏆 **TAG CHAMPION** |
-| **RegisterService Simple** | 0.577ms | 1,734 ops/sec | ⚡ Excellent |
-| **RegisterService WithTags** | 0.609ms | 1,643 ops/sec | ⚡ Excellent |
+| **RegisterService Simple** | 0.594ms | 1,686 ops/sec | ⚡ Excellent |
+| **RegisterService WithTags** | 0.600ms | 1,666 ops/sec | ⚡ Excellent |
 | **RegisterService WithDependencies** | 0.654ms | 1,529 ops/sec | ⚡ Excellent |
 | **RegisterService WithCircularExemption** | 1.158ms | 863 ops/sec | ⚡ Excellent |
-| **RegisterAndReadyService** | 1.212ms | 825 ops/sec | ⚡ Excellent |
+| **RegisterAndReadyService** | 1.196ms | 837 ops/sec | ⚡ Excellent |
 | **DontDestroyOnLoad Services** | 1.340ms | 746 ops/sec | ⚡ Excellent |
 | **MonoBehaviour Services** | 1.418ms | 705 ops/sec | ⚡ Excellent |
 | **Scene Service Management** | 1.522ms | 657 ops/sec | ⚡ Excellent |
-| **Complete Service Lifecycle** | 1.676ms | 597 ops/sec | ⚡ Excellent |
+| **Complete Service Lifecycle** | 1.722ms | 581 ops/sec | ⚡ Excellent |
 | **ReadyService** | 1.726ms | 579 ops/sec | ⚡ Excellent |
 | **Service Tag Management** | 1.791ms | 558 ops/sec | ⚡ Excellent |
 | **UnregisterService** | 1.880ms | 532 ops/sec | ⚡ Excellent |
 
-#### ✅ Good Performance Operations (2ms - 10ms)
+#### ✅ Good Performance Operations (2ms - 100ms)
 | Operation | Average Time | Throughput | Category |
 |-----------|--------------|------------|----------|
 | **High Volume Resolution (1000x)** | 2.763ms | 362 ops/sec | ⚡ Excellent |
@@ -447,7 +447,10 @@ ServiceKit has been extensively benchmarked to ensure excellent performance acro
 | **Inject Services With Timeout** | 5.431ms | 184 ops/sec | ✅ Good |
 | **ServiceKitTimeoutManager** | 6.107ms | 164 ops/sec | ⚠️ Moderate |
 | **Inject Services Complex Graph** | 7.755ms | 129 ops/sec | ✅ Good |
-| **Register Multiple Services (10x)** | 11.913ms | 84 ops/sec | ✅ Good |
+| **Register 10 Services** | 17.152ms | 58 ops/sec | ✅ Good |
+| **Register 25 Services** | 43.955ms | 23 ops/sec | ✅ Good |
+| **Memory Allocation - Service Creation** | 65.429ms | 15 ops/sec | ⚠️ Memory Intensive |
+| **Register 50 Services** | 91.096ms | 11 ops/sec | ✅ Good for Volume |
 
 #### 🔥 Stress Test Operations (High Volume/Concurrent)
 | Operation | Average Time | Throughput | Category |
@@ -462,9 +465,9 @@ ServiceKit has been extensively benchmarked to ensure excellent performance acro
 ### Key Performance Highlights
 
 **🏆 Outstanding Core Operations**
-- **Sub-millisecond service resolution**: IsServiceRegistered (0.005ms), IsServiceReady (0.007ms)
-- **Lightning-fast service access**: GetService operations consistently under 0.03ms
-- **Exceptional tag system**: Complex tag queries with 500 services perform at 0.154ms
+- **Sub-millisecond service resolution**: TryGetService (0.004ms), IsServiceRegistered (0.005ms), IsServiceReady (0.007ms)
+- **Lightning-fast service access**: GetService operations consistently under 0.02ms
+- **Exceptional tag system**: Complex tag queries with 5 service types perform at 0.154ms
 - **Perfect scaling**: Linear performance scaling with predictable overhead
 
 **⚡ Real-World Performance**
@@ -536,18 +539,18 @@ To validate performance on your specific hardware:
 
 **For Maximum Performance:**
 ```csharp
-// 🏆 FASTEST: Service status checking (0.005ms - 0.007ms)
+// 👑 ABSOLUTE FASTEST: Safe service access (0.004ms - 245,700 ops/sec)
+if (serviceKit.TryGetService<IPlayerService>(out var service))
+{
+    // Use service - this is the fastest pattern
+}
+
+// 🏆 ULTRA-FAST: Service status checking (0.005ms - 0.007ms)
 bool isRegistered = serviceKit.IsServiceRegistered<IPlayerService>();
 bool isReady = serviceKit.IsServiceReady<IPlayerService>();
 
-// ⚡ ULTRA-FAST: Direct service access (0.013ms)
+// ⚡ EXCELLENT: Direct service access (0.010ms)
 var playerService = serviceKit.GetService<IPlayerService>();
-
-// ⚡ EXCELLENT: Safe access pattern (0.014ms)
-if (serviceKit.TryGetService<IPlayerService>(out var service))
-{
-    // Use service
-}
 
 // ✅ Good: Async when services may not be ready (0.018ms)
 var playerService = await serviceKit.GetServiceAsync<IPlayerService>();
@@ -558,14 +561,14 @@ var performanceServices = serviceKit.GetServicesWithTag("performance");
 
 **Registration Optimization:**
 ```csharp
-// ⚡ FASTEST: Simple registration (0.577ms)
+// ⚡ FASTEST: Simple registration (0.594ms)
 serviceKit.RegisterService<IPlayerService>(playerServiceInstance);
 serviceKit.ReadyService<IPlayerService>();
 
-// ⚡ EXCELLENT: Combined operation (1.212ms)
+// ⚡ EXCELLENT: Combined operation (1.196ms)
 serviceKit.RegisterAndReadyService<IPlayerService>(playerServiceInstance);
 
-// ✅ Good: With tags for organization (0.609ms + ready time)
+// ✅ Good: With tags for organization (0.600ms + ready time)
 serviceKit.RegisterService<IPlayerService>(playerService, 
     new[] { new ServiceTag("core"), new ServiceTag("player") });
 ```
@@ -578,7 +581,7 @@ serviceKit.RegisterAndReadyService<IPlayerService>(playerServiceInstance);
 // ✅ Use ServiceKitBehaviour for optimal lifecycle management
 public class PlayerController : ServiceKitBehaviour<IPlayerController>
 {
-    // Automatic registration (0.577ms), injection (~5ms), and cleanup (1.880ms)
+    // Automatic registration (0.594ms), injection (~5ms), and cleanup (1.880ms)
 }
 ```
 
@@ -599,8 +602,8 @@ var (player, inventory, audio) = await UniTask.WhenAll(
 ```
 
 **UniTask Performance Boost:**
-- **Async operations maintain excellent performance** (0.018ms vs 0.013ms sync)
-- **Minimal async overhead** - only 39% slower than synchronous
+- **Async operations maintain excellent performance** (0.018ms vs 0.010ms sync)
+- **Minimal async overhead** - only 80% slower than synchronous
 - **Excellent concurrent handling** - 1000+ operations without failure
 - **Zero-allocation** async for most operations when UniTask is installed
 

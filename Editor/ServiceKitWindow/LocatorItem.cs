@@ -74,7 +74,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				// Add services for this scene - pass the scene type for color consistency
 				foreach (var serviceInfo in sceneGroup.Services)
 				{
-					var serviceItem = new ServiceItem(serviceInfo.ServiceType, serviceInfo.Service, sceneItem.GetSceneType(), serviceInfo.State, serviceInfo.Tags);
+					var serviceItem = new ServiceItem(serviceInfo.ServiceType, serviceInfo.Service, sceneItem.GetSceneType(), serviceInfo.DebugData.State, serviceInfo.Tags);
 					sceneItem.AddService(serviceItem);
 				}
 			}
@@ -140,7 +140,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			{
 				// Generate a key for the dictionary that differentiates between scene types
 				string sceneKey;
-				if (serviceInfo.IsDontDestroyOnLoad)
+				if (serviceInfo.DebugData.IsDontDestroyOnLoad)
 				{
 					// Special category for DontDestroyOnLoad
 					sceneKey = "DONTDESTROY";
@@ -148,11 +148,11 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				else if (IsServiceFromUnloadedScene(serviceInfo))
 				{
 					// Use the unloaded scene prefix to differentiate 
-					sceneKey = $"{ServiceUtils.UnloadedScenePrefix}{serviceInfo.SceneName}";
+					sceneKey = $"{ServiceUtils.UnloadedScenePrefix}{serviceInfo.DebugData.SceneName}";
 				}
 				else
 				{
-					sceneKey = serviceInfo.SceneName;
+					sceneKey = serviceInfo.DebugData.SceneName;
 				}
 
 				// Add to appropriate scene group
@@ -160,9 +160,9 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				{
 					sceneGroup = new()
 					{
-						SceneName = serviceInfo.SceneName,
+						SceneName = serviceInfo.DebugData.SceneName,
 						IsUnloaded = IsServiceFromUnloadedScene(serviceInfo),
-						IsDontDestroyOnLoad = serviceInfo.IsDontDestroyOnLoad
+						IsDontDestroyOnLoad = serviceInfo.DebugData.IsDontDestroyOnLoad
 					};
 					result[sceneKey] = sceneGroup;
 				}
@@ -209,12 +209,12 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 			// For ServiceKit, we can also check if the scene name doesn't match any currently loaded scene
 			// and it's not "Non-MonoBehaviour" or "DontDestroyOnLoad"
-			if (serviceInfo.SceneName != "Non-MonoBehaviour" && !serviceInfo.IsDontDestroyOnLoad)
+			if (serviceInfo.DebugData.SceneName != "Non-MonoBehaviour" && !serviceInfo.DebugData.IsDontDestroyOnLoad)
 			{
 				for (var i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++)
 				{
 					var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
-					if (scene.name == serviceInfo.SceneName)
+					if (scene.name == serviceInfo.DebugData.SceneName)
 					{
 						return false; // Scene is loaded
 					}

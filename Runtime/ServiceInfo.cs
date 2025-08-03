@@ -17,6 +17,26 @@ namespace Nonatomic.ServiceKit
 		public Type ServiceType { get; set; }
 		
 		/// <summary>
+		/// Custom tags associated with this service (e.g. "ThirdParty", "Firebase", "Debug")
+		/// </summary>
+		public List<ServiceTag> Tags { get; set; } = new ();
+
+#if UNITY_EDITOR
+		/// <summary>
+		/// Editor-only debug metadata for ServiceKit Window and debugging
+		/// </summary>
+		public ServiceInfoDebugData DebugData { get; set; } = new();
+#endif
+	}
+
+#if UNITY_EDITOR
+	/// <summary>
+	/// Editor-only debug information for services (used by ServiceKit Window)
+	/// </summary>
+	[Serializable]
+	public class ServiceInfoDebugData
+	{
+		/// <summary>
 		/// The name of the scene where the service was registered
 		/// </summary>
 		public string SceneName { get; set; }
@@ -45,10 +65,6 @@ namespace Nonatomic.ServiceKit
 		/// Current state of the service: "Registered" or "Ready"
 		/// </summary>
 		public string State { get; set; }
-		
-		/// <summary>
-		/// Custom tags associated with this service (e.g. "ThirdParty", "Firebase", "Debug")
-		/// </summary>
-		public List<ServiceTag> Tags { get; set; } = new ();
 	}
+#endif
 }
