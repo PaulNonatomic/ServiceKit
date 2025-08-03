@@ -1,14 +1,13 @@
 {
-    "name": "com.nonatomic.servicekit.tests.playmode",
-    "rootNamespace": "",
+    "name": "com.nonatomic.servicekit.tests.performance",
+    "rootNamespace": "Tests.PerformanceTests",
     "references": [
         "GUID:1b0144b25b4099e45a5beb8f8f7bee63",
-        "GUID:0acc523941302664db1f4e527237feb3",
-        "GUID:27619889b8ba8c24980f49ee34dbb44a",
-        "GUID:21fe0dc32b1a00a4cb3b454a43226cfa",
         "GUID:f51ebe6a0ceec4240a699833d6309b23"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
