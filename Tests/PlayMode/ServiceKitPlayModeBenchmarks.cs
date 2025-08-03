@@ -263,7 +263,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 					bool foundDontDestroy = false;
 					foreach (var serviceInfo in allServices)
 					{
-						if (serviceInfo.IsDontDestroyOnLoad)
+						if (serviceInfo.DebugData.IsDontDestroyOnLoad)
 						{
 							foundDontDestroy = true;
 							break;

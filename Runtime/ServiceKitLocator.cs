@@ -20,19 +20,23 @@ namespace Nonatomic.ServiceKit
 	{
 		private readonly Dictionary<Type, ServiceInfo> _readyServices = new Dictionary<Type, ServiceInfo>();
 		private readonly Dictionary<Type, RegisteredServiceInfo> _registeredServices = new Dictionary<Type, RegisteredServiceInfo>();
-	#if SERVICEKIT_UNITASK
-	private readonly Dictionary<Type, UniTaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, UniTaskCompletionSource<object>>();
+		
+#if SERVICEKIT_UNITASK
+		private readonly Dictionary<Type, UniTaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, UniTaskCompletionSource<object>>();
 #else
-	private readonly Dictionary<Type, TaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, TaskCompletionSource<object>>();
+		private readonly Dictionary<Type, TaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, TaskCompletionSource<object>>();
 #endif
+		
 		private readonly object _lock = new object();
 		private readonly HashSet<Scene> _trackedScenes = new HashSet<Scene>();
 
 		private class RegisteredServiceInfo
 		{
 			public ServiceInfo ServiceInfo { get; set; }
+#if UNITY_EDITOR
 			public DateTime RegisteredAt { get; set; }
 			public List<Type> WaitingForDependencies { get; set; } = new List<Type>();
+#endif
 		}
 
 		/// <summary>
@@ -80,20 +84,24 @@ namespace Nonatomic.ServiceKit
 				// Check if already exists
 				if (_readyServices.ContainsKey(type))
 				{
+#if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
 						Debug.LogWarning($"[ServiceKit] Service {type.Name} is already ready. Use UnregisterService first.");
 					}
+#endif
 					
 					return;
 				}
 
 				if (_registeredServices.ContainsKey(type))
 				{
+#if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
 						Debug.LogWarning($"[ServiceKit] Service {type.Name} is already registered. Updating registration.");
 					}
+#endif
 				}
 
 				// Track circular dependency exemption
@@ -101,10 +109,12 @@ namespace Nonatomic.ServiceKit
 				{
 					ServiceInjectionBuilder.AddCircularDependencyExemption(type);
 					
+#if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
 						Debug.Log($"[ServiceKit] Service {type.Name} is exempt from circular dependency checks");
 					}
+#endif
 				}
 
 				// Analyze dependencies and check for circular dependencies at registration time
@@ -131,10 +141,12 @@ namespace Nonatomic.ServiceKit
 							}
 						}
 						
+#if UNITY_EDITOR
 						if (ServiceKitSettings.Instance.DebugLogging)
 						{
 							Debug.LogError($"[ServiceKit] Circular dependency detected during registration: {circularDependency}");
 						}
+#endif
 					}
 				}
 
@@ -145,16 +157,21 @@ namespace Nonatomic.ServiceKit
 				}
 
 				// Add to registered services
-				_registeredServices[type] = new RegisteredServiceInfo
+				var registeredInfo = new RegisteredServiceInfo
 				{
-					ServiceInfo = serviceInfo,
-					RegisteredAt = DateTime.Now
+					ServiceInfo = serviceInfo
 				};
+#if UNITY_EDITOR
+				registeredInfo.RegisteredAt = DateTime.Now;
+#endif
+				_registeredServices[type] = registeredInfo;
 
+#if UNITY_EDITOR
 				if (ServiceKitSettings.Instance.DebugLogging)
 				{
-					Debug.Log($"[ServiceKit] Registered {type.Name} (not ready yet) from scene '{serviceInfo.SceneName}' by {registeredBy}");
+					Debug.Log($"[ServiceKit] Registered {type.Name} (not ready yet) from scene '{serviceInfo.DebugData.SceneName}' by {registeredBy}");
 				}
+#endif
 			}
 		}
 
@@ -183,8 +200,10 @@ namespace Nonatomic.ServiceKit
 
 				if (_readyServices.ContainsKey(serviceType))
 				{
+#if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 						Debug.LogWarning($"Service {serviceType.Name} is already ready");
+#endif
 					return;
 				}
 
@@ -192,11 +211,13 @@ namespace Nonatomic.ServiceKit
 				_registeredServices.Remove(serviceType);
 				_readyServices[serviceType] = registeredInfo.ServiceInfo;
 
+#if UNITY_EDITOR
 				if (ServiceKitSettings.Instance.DebugLogging)
 				{
 					var initTime = (DateTime.Now - registeredInfo.RegisteredAt).TotalMilliseconds;
 					Debug.Log($"[ServiceKit] Service {serviceType.Name} is now READY (init took {initTime:F0}ms)");
 				}
+#endif
 			}
 
 			// Complete any awaiters
@@ -383,10 +404,12 @@ namespace Nonatomic.ServiceKit
 				else
 				{
 					// Service not even registered - still wait, it might register later
+#if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
 						Debug.LogWarning($"[ServiceKit] Waiting for service {serviceType.Name} that isn't registered yet");
 					}
+#endif
 				}
 
 				if (!_serviceAwaiters.TryGetValue(serviceType, out tcs))
@@ -432,10 +455,12 @@ namespace Nonatomic.ServiceKit
 				else
 				{
 					// Service not even registered - still wait, it might register later
+#if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
 						Debug.LogWarning($"[ServiceKit] Waiting for service {serviceType.Name} that isn't registered yet");
 					}
+#endif
 				}
 
 				if (!_serviceAwaiters.TryGetValue(serviceType, out tcs))
@@ -480,10 +505,12 @@ namespace Nonatomic.ServiceKit
 				// Also remove from exemptions
 				ServiceInjectionBuilder.RemoveCircularDependencyExemption(serviceType);
 				
+#if UNITY_EDITOR
 				if (removed && ServiceKitSettings.Instance.DebugLogging)
 				{
 					Debug.Log($"[ServiceKit] Unregistered {serviceType.Name}");
 				}
+#endif
 				
 				// Cancel any awaiters
 				if (_serviceAwaiters.TryGetValue(serviceType, out var tcs))
@@ -514,8 +541,12 @@ namespace Nonatomic.ServiceKit
 				
 				if (_registeredServices.TryGetValue(serviceType, out var info))
 				{
+#if UNITY_EDITOR
 					var waitTime = (DateTime.Now - info.RegisteredAt).TotalSeconds;
 					return $"Registered (waiting {waitTime:F1}s)";
+#else
+					return "Registered";
+#endif
 				}
 				
 				return "Not registered";
@@ -534,14 +565,18 @@ namespace Nonatomic.ServiceKit
 				// Add ready services
 				foreach (var kvp in _readyServices)
 				{
-					kvp.Value.State = "Ready";
+#if UNITY_EDITOR
+					kvp.Value.DebugData.State = "Ready";
+#endif
 					allServices.Add(kvp.Value);
 				}
 				
 				// Add registered but not ready services
 				foreach (var kvp in _registeredServices)
 				{
-					kvp.Value.ServiceInfo.State = "Registered";
+#if UNITY_EDITOR
+					kvp.Value.ServiceInfo.DebugData.State = "Registered";
+#endif
 					allServices.Add(kvp.Value.ServiceInfo);
 				}
 				
@@ -558,13 +593,15 @@ namespace Nonatomic.ServiceKit
 			{
 				var services = new List<ServiceInfo>();
 				
+#if UNITY_EDITOR
 				// Add ready services in scene
-				services.AddRange(_readyServices.Values.Where(s => s.SceneName == sceneName));
+				services.AddRange(_readyServices.Values.Where(s => s.DebugData.SceneName == sceneName));
 				
 				// Add registered services in scene
 				services.AddRange(_registeredServices.Values
-					.Where(r => r.ServiceInfo.SceneName == sceneName)
+					.Where(r => r.ServiceInfo.DebugData.SceneName == sceneName)
 					.Select(r => r.ServiceInfo));
+#endif
 				
 				return services;
 			}
@@ -579,13 +616,15 @@ namespace Nonatomic.ServiceKit
 			{
 				var services = new List<ServiceInfo>();
 				
+#if UNITY_EDITOR
 				// Add ready DontDestroyOnLoad services
-				services.AddRange(_readyServices.Values.Where(s => s.IsDontDestroyOnLoad));
+				services.AddRange(_readyServices.Values.Where(s => s.DebugData.IsDontDestroyOnLoad));
 				
 				// Add registered DontDestroyOnLoad services
 				services.AddRange(_registeredServices.Values
-					.Where(r => r.ServiceInfo.IsDontDestroyOnLoad)
+					.Where(r => r.ServiceInfo.DebugData.IsDontDestroyOnLoad)
 					.Select(r => r.ServiceInfo));
+#endif
 				
 				return services;
 			}
@@ -609,17 +648,20 @@ namespace Nonatomic.ServiceKit
 					if (!(serviceInfo.Service is MonoBehaviour))
 						continue;
 
+#if UNITY_EDITOR
 					// Skip DontDestroyOnLoad services
-					if (serviceInfo.IsDontDestroyOnLoad)
+					if (serviceInfo.DebugData.IsDontDestroyOnLoad)
 						continue;
 
 					// Check if service belongs to the unloaded scene
-					if (serviceInfo.SceneHandle == scene.handle)
+					if (serviceInfo.DebugData.SceneHandle == scene.handle)
 					{
 						servicesToRemove.Add(kvp.Key);
 					}
 					// Also check if the MonoBehaviour has been destroyed
-					else if (serviceInfo.Service is MonoBehaviour mb && mb == null)
+					else 
+#endif
+					if (serviceInfo.Service is MonoBehaviour mb && mb == null)
 					{
 						servicesToRemove.Add(kvp.Key);
 					}
@@ -634,17 +676,20 @@ namespace Nonatomic.ServiceKit
 					if (!(serviceInfo.Service is MonoBehaviour))
 						continue;
 
+#if UNITY_EDITOR
 					// Skip DontDestroyOnLoad services
-					if (serviceInfo.IsDontDestroyOnLoad)
+					if (serviceInfo.DebugData.IsDontDestroyOnLoad)
 						continue;
 
 					// Check if service belongs to the unloaded scene
-					if (serviceInfo.SceneHandle == scene.handle)
+					if (serviceInfo.DebugData.SceneHandle == scene.handle)
 					{
 						servicesToRemove.Add(kvp.Key);
 					}
 					// Also check if the MonoBehaviour has been destroyed
-					else if (serviceInfo.Service is MonoBehaviour mb && mb == null)
+					else 
+#endif
+					if (serviceInfo.Service is MonoBehaviour mb && mb == null)
 					{
 						servicesToRemove.Add(kvp.Key);
 					}
@@ -656,10 +701,12 @@ namespace Nonatomic.ServiceKit
 					_readyServices.Remove(type);
 					_registeredServices.Remove(type);
 
+#if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
 						Debug.Log($"[ServiceKit] Auto-unregistered {type.Name} from unloaded scene '{scene.name}'");
 					}
+#endif
 
 					// Cancel any pending requests for this service
 					if (_serviceAwaiters.TryGetValue(type, out var tcs))
@@ -705,10 +752,12 @@ namespace Nonatomic.ServiceKit
 					_readyServices.Remove(type);
 					_registeredServices.Remove(type);
 
+#if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
 						Debug.Log($"[ServiceKit] Cleaned up destroyed service: {type.Name}");
 					}
+#endif
 				}
 			}
 		}
@@ -741,9 +790,7 @@ namespace Nonatomic.ServiceKit
 			var info = new ServiceInfo
 			{
 				Service = service,
-				ServiceType = type,
-				RegisteredAt = DateTime.Now,
-				RegisteredBy = registeredBy ?? "Unknown"
+				ServiceType = type
 			};
 			
 			// Add tags if provided
@@ -752,12 +799,17 @@ namespace Nonatomic.ServiceKit
 				info.Tags.AddRange(tags);
 			}
 
+#if UNITY_EDITOR
+			// Initialize debug data for Editor
+			info.DebugData.RegisteredAt = DateTime.Now;
+			info.DebugData.RegisteredBy = registeredBy ?? "Unknown";
+
 			// Determine scene information
 			if (service is MonoBehaviour monoBehaviour && monoBehaviour != null)
 			{
 				var scene = monoBehaviour.gameObject.scene;
-				info.SceneName = scene.name;
-				info.SceneHandle = scene.handle;
+				info.DebugData.SceneName = scene.name;
+				info.DebugData.SceneHandle = scene.handle;
 
 				// Check if it's in DontDestroyOnLoad
 				if (monoBehaviour.gameObject.scene.buildIndex != -1)
@@ -765,14 +817,15 @@ namespace Nonatomic.ServiceKit
 					return info;
 				}
 
-				info.IsDontDestroyOnLoad = true;
-				info.SceneName = "DontDestroyOnLoad";
+				info.DebugData.IsDontDestroyOnLoad = true;
+				info.DebugData.SceneName = "DontDestroyOnLoad";
 			}
 			else
 			{
-				info.SceneName = "Non-MonoBehaviour";
-				info.SceneHandle = -1;
+				info.DebugData.SceneName = "Non-MonoBehaviour";
+				info.DebugData.SceneHandle = -1;
 			}
+#endif
 
 			return info;
 		}
@@ -877,7 +930,7 @@ namespace Nonatomic.ServiceKit
 			return null;
 		}
 
-		#region Tag Management
+#region Tag Management
 
 		/// <summary>
 		/// Add tags to an existing service
@@ -1101,6 +1154,6 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		#endregion
+#endregion
 	}
 }

@@ -184,7 +184,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			var currentStates = new Dictionary<Type, string>();
 			foreach (var service in allServices)
 			{
-				currentStates[service.ServiceType] = service.State;
+				currentStates[service.ServiceType] = service.DebugData.State;
 			}
 			
 			// Check for changes
@@ -314,7 +314,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			var allServices = _selectedLocator.GetAllServices();
 			foreach (var service in allServices)
 			{
-				_serviceStateCache[service.ServiceType] = service.State;
+				_serviceStateCache[service.ServiceType] = service.DebugData.State;
 			}
 		}
 
