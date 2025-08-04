@@ -27,40 +27,52 @@ namespace Nonatomic.ServiceKit
 		}
 
 		private List<(CancellationTokenSource cts, float endTime)> _timeouts = new List<(CancellationTokenSource, float)>();
+		private readonly object _timeoutsLock = new object();
 
 		public IDisposable RegisterTimeout(CancellationTokenSource cts, float duration)
 		{
 			var endTime = Time.time + duration;
-			_timeouts.Add((cts, endTime));
+			lock (_timeoutsLock)
+			{
+				_timeouts.Add((cts, endTime));
+			}
 			return new TimeoutRegistration(this, cts);
 		}
 
 		private void RemoveTimeout(CancellationTokenSource cts)
 		{
-			for (var i = _timeouts.Count - 1; i >= 0; i--)
+			lock (_timeoutsLock)
 			{
-				if (_timeouts[i].cts != cts) continue;
-				
-				_timeouts.RemoveAt(i);
-				break;
+				for (var i = _timeouts.Count - 1; i >= 0; i--)
+				{
+					if (_timeouts[i].cts != cts) continue;
+					
+					_timeouts.RemoveAt(i);
+					break;
+				}
 			}
 		}
 
 		private void Update()
 		{
-			for (var i = _timeouts.Count - 1; i >= 0; i--)
+			lock (_timeoutsLock)
 			{
-				var (cts, endTime) = _timeouts[i];
-				if (cts.IsCancellationRequested)
+				for (var i = _timeouts.Count - 1; i >= 0; i--)
 				{
-					_timeouts.RemoveAt(i);
-					continue;
-				}
+					if (i >= _timeouts.Count) continue;
+					
+					var (cts, endTime) = _timeouts[i];
+					if (cts.IsCancellationRequested)
+					{
+						_timeouts.RemoveAt(i);
+						continue;
+					}
 
-				if (Time.time < endTime) continue;
-				
-				cts.Cancel();
-				_timeouts.RemoveAt(i);
+					if (Time.time < endTime) continue;
+					
+					cts.Cancel();
+					_timeouts.RemoveAt(i);
+				}
 			}
 		}
 
