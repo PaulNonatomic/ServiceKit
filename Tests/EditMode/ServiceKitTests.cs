@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nonatomic.ServiceKit;
@@ -205,6 +206,117 @@ namespace Tests.EditMode
 			Assert.IsNotNull(mixedInstance.PlayerService, "Required PlayerService should be injected");
 			Assert.IsNull(mixedInstance.InventoryService, "Optional InventoryService should be null when not registered");
 			Assert.AreEqual(playerService, mixedInstance.PlayerService);
+		}
+
+		[Test]
+		public async Task ServiceKitTimeoutManager_ThreadSafetyTest_NoExceptionThrown()
+		{
+			// Arrange - Test the thread safety of ServiceKitTimeoutManager operations
+			// This test validates that the lock-based fix prevents ArgumentOutOfRangeException
+			// We'll test on the main thread but simulate rapid add/remove operations
+			
+			const int numOperations = 100;
+			const float timeoutDuration = 0.01f; // Very short timeout
+			var exceptions = new List<Exception>();
+			var registrations = new List<IDisposable>();
+
+			// Create a ServiceKitTimeoutManager on a GameObject for testing
+			var go = new GameObject("TestTimeoutManager");
+			var timeoutManager = go.AddComponent<ServiceKitTimeoutManager>();
+			
+			try
+			{
+				// Act - Rapidly register and dispose timeouts on main thread to test the fixed race condition
+				// This simulates the scenario where GameObjects are created/destroyed rapidly
+				
+				// First, register a bunch of timeouts
+				for (int i = 0; i < numOperations; i++)
+				{
+					try
+					{
+						var cts = new CancellationTokenSource();
+						var registration = timeoutManager.RegisterTimeout(cts, timeoutDuration);
+						registrations.Add(registration);
+					}
+					catch (Exception ex)
+					{
+						exceptions.Add(ex);
+					}
+				}
+
+				// Then rapidly dispose them while Update() might be processing
+				// This tests the exact race condition that was fixed
+				var disposalTasks = new List<Task>();
+				
+				// Create multiple tasks that dispose registrations concurrently
+				for (int taskIndex = 0; taskIndex < 3; taskIndex++)
+				{
+					int startIndex = taskIndex * (registrations.Count / 3);
+					int endIndex = Math.Min((taskIndex + 1) * (registrations.Count / 3), registrations.Count);
+					
+					disposalTasks.Add(Task.Run(async () =>
+					{
+						try
+						{
+							for (int i = startIndex; i < endIndex; i++)
+							{
+								if (i < registrations.Count)
+								{
+									registrations[i]?.Dispose();
+								}
+								await Task.Yield(); // Allow other tasks to run
+							}
+						}
+						catch (Exception ex)
+						{
+							lock (exceptions)
+							{
+								exceptions.Add(ex);
+							}
+						}
+					}));
+				}
+
+				// Wait for disposal tasks to complete
+				await Task.WhenAll(disposalTasks);
+				
+				// Give some time for Update() to process any remaining timeouts
+				await Task.Delay(100);
+
+				// Test additional rapid operations to stress test the locks
+				for (int i = 0; i < 50; i++)
+				{
+					try
+					{
+						var cts = new CancellationTokenSource();
+						var registration = timeoutManager.RegisterTimeout(cts, timeoutDuration);
+						
+						// Immediately dispose to test rapid add/remove
+						registration.Dispose();
+					}
+					catch (Exception ex)
+					{
+						exceptions.Add(ex);
+					}
+				}
+
+				// Give final processing time
+				await Task.Delay(50);
+
+				// Assert - No ArgumentOutOfRangeException should occur with the lock-based fix
+				if (exceptions.Count > 0)
+				{
+					var aggregateException = new AggregateException(exceptions);
+					Assert.Fail($"Thread safety test failed with {exceptions.Count} exceptions: {aggregateException}");
+				}
+				
+				Assert.Pass("No race condition exceptions occurred - the lock-based fix is working correctly");
+			}
+			finally
+			{
+				// Clean up the test GameObject
+				Object.DestroyImmediate(go);
+			}
 		}
 
 		// Test classes for inheritance testing

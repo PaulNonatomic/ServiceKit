@@ -1,3 +1,7 @@
+## [1.2.1] - Aug 04, 2025
+- Hotfix for race condition in ServiceKitTimeoutManager
+- Added tests for race condition
+
 ## [1.2.0] - Aug 04, 2025
 - Added performance tests
 - Added documentation on performance
