@@ -1,3 +1,6 @@
+## [1.2.2] - Aug 10, 2025
+- Updated package path in README
+
 ## [1.2.1] - Aug 04, 2025
 - Hotfix for race condition in ServiceKitTimeoutManager
 - Added tests for race condition
