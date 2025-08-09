@@ -38,7 +38,7 @@ Add this line to your `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.nonatomic.servicekit": "[https://github.com/PaulNonatomic/ServiceKit.git](https://github.com/PaulNonatomic/ServiceKit.git)"
+    "com.nonatomic.servicekit": "https://github.com/PaulNonatomic/ServiceKit.git"
   }
 }
 ```
