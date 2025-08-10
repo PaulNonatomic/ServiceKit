@@ -10,6 +10,13 @@
   "dependencies": {
     "com.unity.test-framework": "1.3.9"
   },
+  "samples": [
+    {
+      "displayName": "Roslyn Analyzer: SK001",
+      "description": "Warns when [InjectService] targets a non-interface type.",
+      "path": "Samples~/RoslynAnalyzers"
+    }
+  ],
   "keywords": [
     "Unity",
     "Package",
@@ -25,8 +32,6 @@
   "repository": {
     "type": "git",
     "url": "git@github.com:PaulNonatomic/ServiceKit.git"
-  },
-  "samples": [
-  ]
+  }
 }
   

@@ -1,0 +1,10 @@
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\bin\Release\netstandard2.0\ServiceKit.Analyzers.deps.json
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\bin\Release\netstandard2.0\ServiceKit.Analyzers.dll
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\bin\Release\netstandard2.0\ServiceKit.Analyzers.pdb
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\obj\Release\netstandard2.0\ServiceKit.Analyzers.csproj.AssemblyReference.cache
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\obj\Release\netstandard2.0\ServiceKit.Analyzers.GeneratedMSBuildEditorConfig.editorconfig
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\obj\Release\netstandard2.0\ServiceKit.Analyzers.AssemblyInfoInputs.cache
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\obj\Release\netstandard2.0\ServiceKit.Analyzers.AssemblyInfo.cs
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\obj\Release\netstandard2.0\ServiceKit.Analyzers.csproj.CoreCompileInputs.cache
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\obj\Release\netstandard2.0\ServiceKit.Analyzers.dll
+D:\Repos\Nonatomic\PackageWorkshop\Packages\ServiceKit\tools\analyzers\ServiceKit.Analyzers\obj\Release\netstandard2.0\ServiceKit.Analyzers.pdb
