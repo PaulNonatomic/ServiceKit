@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "b9+iUor17y9ejcXIXqfRRsexPPnZGc3BR/p1x/oRBpTkS5LPF/yXNq25VECc7yHRImIaONLusGPca+ONIf1Z0w==",
+  "dgSpecHash": "cmfa7sN0PvOwJBVYXV43ScOeUMh3k3WHdvEofyKJ89Wkr1hjXGXpwIL3x1rGvcro1pUuot+s5Y+in8VbVh9lgA==",
   "success": true,
-  "projectFilePath": "D:\\Repos\\Nonatomic\\PackageWorkshop\\Packages\\ServiceKit\\tools\\analyzers\\ServiceKit.Analyzers\\ServiceKit.Analyzers.csproj",
+  "projectFilePath": "D:\\Repos\\Nonatomic\\ServiceKit\\Tools~\\analyzers\\ServiceKit.Analyzers\\ServiceKit.Analyzers.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Paul\\.nuget\\packages\\microsoft.codeanalysis.analyzers\\3.3.4\\microsoft.codeanalysis.analyzers.3.3.4.nupkg.sha512",
     "C:\\Users\\Paul\\.nuget\\packages\\microsoft.codeanalysis.common\\4.10.0\\microsoft.codeanalysis.common.4.10.0.nupkg.sha512",

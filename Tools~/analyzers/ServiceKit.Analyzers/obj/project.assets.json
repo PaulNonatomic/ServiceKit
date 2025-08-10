@@ -1392,11 +1392,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\Repos\\Nonatomic\\PackageWorkshop\\Packages\\ServiceKit\\tools\\analyzers\\ServiceKit.Analyzers\\ServiceKit.Analyzers.csproj",
+      "projectUniqueName": "D:\\Repos\\Nonatomic\\ServiceKit\\Tools~\\analyzers\\ServiceKit.Analyzers\\ServiceKit.Analyzers.csproj",
       "projectName": "ServiceKit.Analyzers",
-      "projectPath": "D:\\Repos\\Nonatomic\\PackageWorkshop\\Packages\\ServiceKit\\tools\\analyzers\\ServiceKit.Analyzers\\ServiceKit.Analyzers.csproj",
+      "projectPath": "D:\\Repos\\Nonatomic\\ServiceKit\\Tools~\\analyzers\\ServiceKit.Analyzers\\ServiceKit.Analyzers.csproj",
       "packagesPath": "C:\\Users\\Paul\\.nuget\\packages\\",
-      "outputPath": "D:\\Repos\\Nonatomic\\PackageWorkshop\\Packages\\ServiceKit\\tools\\analyzers\\ServiceKit.Analyzers\\obj\\",
+      "outputPath": "D:\\Repos\\Nonatomic\\ServiceKit\\Tools~\\analyzers\\ServiceKit.Analyzers\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\Paul\\AppData\\Roaming\\NuGet\\NuGet.Config"
