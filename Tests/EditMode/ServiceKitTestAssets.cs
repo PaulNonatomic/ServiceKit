@@ -54,11 +54,11 @@ namespace Tests.EditMode
 			_serviceKit.RegisterService<IInventoryService>(new InventoryService());
 
 			// Inject services
-			_serviceKit.InjectServicesAsync(this)
+			await _serviceKit.InjectServicesAsync(this)
 				.WithCancellation(destroyCancellationToken)
 				.WithTimeout(5f)
 				.WithErrorHandling(HandleServiceKitError)
-				.Execute();
+				.ExecuteAsync();
 		}
 
 		private void HandleServiceKitError(Exception ex)
@@ -87,5 +87,12 @@ namespace Tests.EditMode
 		
 		[InjectService] private IPlayerService _playerService;
 		[InjectService] private IInventoryService _inventoryService;
+	}
+
+	// Test class that doesn't implement its interface (for testing error scenarios)
+	public class BrokenPlayerController : ServiceKitBehaviour<IPlayerController>
+	{
+		// This class intentionally doesn't implement IPlayerController
+		// This should trigger our improved error messages
 	}
 }
