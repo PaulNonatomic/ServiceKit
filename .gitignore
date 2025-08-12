@@ -81,5 +81,10 @@ crashlytics-build.properties
 CLAUDE.md
 CLAUDE.md.meta
 .claude/
+.claude*/
 claude.json
 .claude.json
+claude-*
+.claude-*
+*.claude
+.clauderc

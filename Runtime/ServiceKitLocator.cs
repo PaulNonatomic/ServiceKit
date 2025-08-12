@@ -20,13 +20,13 @@ namespace Nonatomic.ServiceKit
 	{
 		private readonly Dictionary<Type, ServiceInfo> _readyServices = new Dictionary<Type, ServiceInfo>();
 		private readonly Dictionary<Type, RegisteredServiceInfo> _registeredServices = new Dictionary<Type, RegisteredServiceInfo>();
-		
+
 #if SERVICEKIT_UNITASK
 		private readonly Dictionary<Type, UniTaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, UniTaskCompletionSource<object>>();
 #else
 		private readonly Dictionary<Type, TaskCompletionSource<object>> _serviceAwaiters = new Dictionary<Type, TaskCompletionSource<object>>();
 #endif
-		
+
 		private readonly object _lock = new object();
 		private readonly HashSet<Scene> _trackedScenes = new HashSet<Scene>();
 
@@ -39,34 +39,21 @@ namespace Nonatomic.ServiceKit
 #endif
 		}
 
-		/// <summary>
-		/// Register a service instance (Phase 1) - Service is NOT available for injection yet
-		/// </summary>
 		public void RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			RegisterService(service, false, null, registeredBy);
 		}
 
-		/// <summary>
-		/// Register a service with tags (Phase 1) - Service is NOT available for injection yet
-		/// </summary>
 		public void RegisterService<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			RegisterService(service, false, tags, registeredBy);
 		}
 
-		/// <summary>
-		/// Register a service with circular dependency exemption (Phase 1)
-		/// Use this for immutable third-party services that cannot have dependencies on your project
-		/// </summary>
 		public void RegisterServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			RegisterService(service, true, null, registeredBy);
 		}
 
-		/// <summary>
-		/// Register a service with circular dependency exemption and tags (Phase 1)
-		/// </summary>
 		public void RegisterServiceWithCircularExemption<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			RegisterService(service, true, tags, registeredBy);
@@ -81,7 +68,6 @@ namespace Nonatomic.ServiceKit
 				var type = typeof(T);
 				var serviceInfo = CreateServiceInfo(service, type, registeredBy, tags);
 
-				// Check if already exists
 				if (_readyServices.ContainsKey(type))
 				{
 #if UNITY_EDITOR
@@ -90,7 +76,6 @@ namespace Nonatomic.ServiceKit
 						Debug.LogWarning($"[ServiceKit] Service {type.Name} is already ready. Use UnregisterService first.");
 					}
 #endif
-					
 					return;
 				}
 
@@ -107,8 +92,7 @@ namespace Nonatomic.ServiceKit
 				// Track circular dependency exemption
 				if (exemptFromCircularDependencyCheck)
 				{
-					ServiceInjectionBuilder.AddCircularDependencyExemption(type);
-					
+					ServiceDependencyGraph.AddCircularDependencyExemption(type);
 #if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
@@ -121,26 +105,25 @@ namespace Nonatomic.ServiceKit
 				if (!exemptFromCircularDependencyCheck)
 				{
 					var fieldsToInject = GetInjectableFields(service.GetType());
-					ServiceInjectionBuilder.UpdateDependencyGraphForRegistration(type, fieldsToInject);
-					
-					var circularDependency = ServiceInjectionBuilder.DetectCircularDependencyAtRegistration(type);
+					ServiceDependencyGraph.UpdateForRegistration(type, fieldsToInject);
+
+					var circularDependency = ServiceDependencyGraph.DetectCircularDependencyAtRegistration(type);
 					if (circularDependency != null)
 					{
-						ServiceInjectionBuilder.AddCircularDependencyError(type);
-						
+						ServiceDependencyGraph.AddCircularDependencyError(type);
+
 						// Mark all services in the circular dependency chain as having errors
 						var typesInPath = circularDependency.Split(new[] { " → " }, StringSplitOptions.None);
 						foreach (var typeName in typesInPath)
 						{
 							var trimmedTypeName = typeName.Trim();
-							// Find the type and mark it as having an error
 							var foundType = FindTypeByName(trimmedTypeName);
 							if (foundType != null)
 							{
-								ServiceInjectionBuilder.AddCircularDependencyError(foundType);
+								ServiceDependencyGraph.AddCircularDependencyError(foundType);
 							}
 						}
-						
+
 #if UNITY_EDITOR
 						if (ServiceKitSettings.Instance.DebugLogging)
 						{
@@ -150,13 +133,11 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 
-				// Track the scene if it's a MonoBehaviour
 				if (service is MonoBehaviour monoBehaviour && monoBehaviour != null)
 				{
 					TrackServiceScene(monoBehaviour);
 				}
 
-				// Add to registered services
 				var registeredInfo = new RegisteredServiceInfo
 				{
 					ServiceInfo = serviceInfo
@@ -175,39 +156,33 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Mark a service as ready (Phase 3) - Service becomes available for injection
-		/// </summary>
 		public void ReadyService<T>() where T : class
 		{
 			ReadyService(typeof(T));
 		}
 
-		/// <summary>
-		/// Mark a service as ready by type (Phase 3)
-		/// </summary>
 		public void ReadyService(Type serviceType)
 		{
 			RegisteredServiceInfo registeredInfo;
-			
+
 			lock (_lock)
 			{
 				if (!_registeredServices.TryGetValue(serviceType, out registeredInfo))
 				{
-					throw new InvalidOperationException(
-						$"Cannot ready service {serviceType.Name} - it must be registered first");
+					throw new InvalidOperationException($"Cannot ready service {serviceType.Name} - it must be registered first");
 				}
 
 				if (_readyServices.ContainsKey(serviceType))
 				{
 #if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
+					{
 						Debug.LogWarning($"Service {serviceType.Name} is already ready");
+					}
 #endif
 					return;
 				}
 
-				// Move from registered to ready
 				_registeredServices.Remove(serviceType);
 				_readyServices[serviceType] = registeredInfo.ServiceInfo;
 
@@ -220,60 +195,39 @@ namespace Nonatomic.ServiceKit
 #endif
 			}
 
-			// Complete any awaiters
 			CompleteAwaiters(serviceType, registeredInfo.ServiceInfo.Service);
-			
-			// Check if any registered services were waiting for this
 			CheckWaitingServices(serviceType);
 		}
 
-		/// <summary>
-		/// Register and immediately ready a service (for services without dependencies/initialization)
-		/// </summary>
 		public void RegisterAndReadyService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			RegisterService(service, false, null, registeredBy);
 			ReadyService<T>();
 		}
 
-		/// <summary>
-		/// Register and immediately ready a service with tags
-		/// </summary>
 		public void RegisterAndReadyService<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			RegisterService(service, false, tags, registeredBy);
 			ReadyService<T>();
 		}
 
-		/// <summary>
-		/// Register and immediately ready a service with circular dependency exemption
-		/// </summary>
 		public void RegisterAndReadyServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			RegisterService(service, true, null, registeredBy);
 			ReadyService<T>();
 		}
 
-		/// <summary>
-		/// Register and immediately ready a service with circular dependency exemption and tags
-		/// </summary>
 		public void RegisterAndReadyServiceWithCircularExemption<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			RegisterService(service, true, tags, registeredBy);
 			ReadyService<T>();
 		}
 
-		/// <summary>
-		/// Get a service synchronously (returns null if not ready)
-		/// </summary>
 		public T GetService<T>() where T : class
 		{
 			return GetService(typeof(T)) as T;
 		}
 
-		/// <summary>
-		/// Get a service synchronously by type (returns null if not ready)
-		/// </summary>
 		public object GetService(Type serviceType)
 		{
 			lock (_lock)
@@ -284,17 +238,11 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Check if a service is registered (but maybe not ready)
-		/// </summary>
 		public bool IsServiceRegistered<T>() where T : class
 		{
 			return IsServiceRegistered(typeof(T));
 		}
 
-		/// <summary>
-		/// Check if a service is registered by type
-		/// </summary>
 		public bool IsServiceRegistered(Type serviceType)
 		{
 			lock (_lock)
@@ -303,17 +251,11 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Check if a service is ready
-		/// </summary>
 		public bool IsServiceReady<T>() where T : class
 		{
 			return IsServiceReady(typeof(T));
 		}
 
-		/// <summary>
-		/// Check if a service is ready by type
-		/// </summary>
 		public bool IsServiceReady(Type serviceType)
 		{
 			lock (_lock)
@@ -322,28 +264,19 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Check if a service is exempt from circular dependency checks
-		/// </summary>
 		public bool IsServiceCircularDependencyExempt<T>() where T : class
 		{
 			return IsServiceCircularDependencyExempt(typeof(T));
 		}
 
-		/// <summary>
-		/// Check if a service is exempt from circular dependency checks by type
-		/// </summary>
 		public bool IsServiceCircularDependencyExempt(Type serviceType)
 		{
-			return ServiceInjectionBuilder.IsCircularDependencyExempt(serviceType);
+			return ServiceDependencyGraph.IsCircularDependencyExempt(serviceType);
 		}
 
-		/// <summary>
-		/// Try to get a service synchronously
-		/// </summary>
 		public bool TryGetService<T>(out T service) where T : class
 		{
-			if (TryGetService(typeof(T), out object serviceObj))
+			if (TryGetService(typeof(T), out var serviceObj))
 			{
 				service = serviceObj as T;
 				return service != null;
@@ -353,9 +286,6 @@ namespace Nonatomic.ServiceKit
 			return false;
 		}
 
-		/// <summary>
-		/// Try to get a service synchronously by type
-		/// </summary>
 		public bool TryGetService(Type serviceType, out object service)
 		{
 			lock (_lock)
@@ -372,44 +302,21 @@ namespace Nonatomic.ServiceKit
 		}
 
 #if SERVICEKIT_UNITASK
-		/// <summary>
-		/// Get a service asynchronously (waits until ready)
-		/// </summary>
 		public async UniTask<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class
 		{
-			object service = await GetServiceAsync(typeof(T), cancellationToken);
+			var service = await GetServiceAsync(typeof(T), cancellationToken);
 			return service as T;
 		}
 
-		/// <summary>
-		/// Get a service asynchronously by type (waits until ready)
-		/// </summary>
 		public async UniTask<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default)
 		{
 			UniTaskCompletionSource<object> tcs;
 
 			lock (_lock)
 			{
-				// Check if already ready
 				if (_readyServices.TryGetValue(serviceType, out var serviceInfo))
 				{
 					return serviceInfo.Service;
-				}
-
-				// Track that someone is waiting for this service
-				if (_registeredServices.TryGetValue(serviceType, out var registeredInfo))
-				{
-					// Service is registered but not ready - good case for waiting
-				}
-				else
-				{
-					// Service not even registered - still wait, it might register later
-#if UNITY_EDITOR
-					if (ServiceKitSettings.Instance.DebugLogging)
-					{
-						Debug.LogWarning($"[ServiceKit] Waiting for service {serviceType.Name} that isn't registered yet");
-					}
-#endif
 				}
 
 				if (!_serviceAwaiters.TryGetValue(serviceType, out tcs))
@@ -423,44 +330,21 @@ namespace Nonatomic.ServiceKit
 			return await tcs.Task;
 		}
 #else
-		/// <summary>
-		/// Get a service asynchronously (waits until ready)
-		/// </summary>
 		public async Task<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class
 		{
-			object service = await GetServiceAsync(typeof(T), cancellationToken);
+			var service = await GetServiceAsync(typeof(T), cancellationToken);
 			return service as T;
 		}
 
-		/// <summary>
-		/// Get a service asynchronously by type (waits until ready)
-		/// </summary>
 		public async Task<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default)
 		{
 			TaskCompletionSource<object> tcs;
 
 			lock (_lock)
 			{
-				// Check if already ready
 				if (_readyServices.TryGetValue(serviceType, out var serviceInfo))
 				{
 					return serviceInfo.Service;
-				}
-
-				// Track that someone is waiting for this service
-				if (_registeredServices.TryGetValue(serviceType, out var registeredInfo))
-				{
-					// Service is registered but not ready - good case for waiting
-				}
-				else
-				{
-					// Service not even registered - still wait, it might register later
-#if UNITY_EDITOR
-					if (ServiceKitSettings.Instance.DebugLogging)
-					{
-						Debug.LogWarning($"[ServiceKit] Waiting for service {serviceType.Name} that isn't registered yet");
-					}
-#endif
 				}
 
 				if (!_serviceAwaiters.TryGetValue(serviceType, out tcs))
@@ -477,42 +361,31 @@ namespace Nonatomic.ServiceKit
 		}
 #endif
 
-		/// <summary>
-		/// Start fluent injection for an object
-		/// </summary>
 		public IServiceInjectionBuilder InjectServicesAsync(object target)
 		{
 			return new ServiceInjectionBuilder(this, target);
 		}
 
-		/// <summary>
-		/// Unregister a service (removes from both registered and ready)
-		/// </summary>
 		public void UnregisterService<T>() where T : class
 		{
 			UnregisterService(typeof(T));
 		}
 
-		/// <summary>
-		/// Unregister a service by type
-		/// </summary>
 		public void UnregisterService(Type serviceType)
 		{
 			lock (_lock)
 			{
 				var removed = _readyServices.Remove(serviceType) || _registeredServices.Remove(serviceType);
-				
-				// Also remove from exemptions
-				ServiceInjectionBuilder.RemoveCircularDependencyExemption(serviceType);
-				
+
+				ServiceDependencyGraph.RemoveCircularDependencyExemption(serviceType);
+
 #if UNITY_EDITOR
 				if (removed && ServiceKitSettings.Instance.DebugLogging)
 				{
 					Debug.Log($"[ServiceKit] Unregistered {serviceType.Name}");
 				}
 #endif
-				
-				// Cancel any awaiters
+
 				if (_serviceAwaiters.TryGetValue(serviceType, out var tcs))
 				{
 					_serviceAwaiters.Remove(serviceType);
@@ -521,24 +394,20 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Get debug information about a service
-		/// </summary>
 		public string GetServiceStatus<T>() where T : class
 		{
 			return GetServiceStatus(typeof(T));
 		}
 
-		/// <summary>
-		/// Get debug information about a service by type
-		/// </summary>
 		public string GetServiceStatus(Type serviceType)
 		{
 			lock (_lock)
 			{
 				if (_readyServices.ContainsKey(serviceType))
+				{
 					return "Ready";
-				
+				}
+
 				if (_registeredServices.TryGetValue(serviceType, out var info))
 				{
 #if UNITY_EDITOR
@@ -548,21 +417,17 @@ namespace Nonatomic.ServiceKit
 					return "Registered";
 #endif
 				}
-				
+
 				return "Not registered";
 			}
 		}
 
-		/// <summary>
-		/// Get all services with their current status
-		/// </summary>
 		public IReadOnlyList<ServiceInfo> GetAllServices()
 		{
 			lock (_lock)
 			{
 				var allServices = new List<ServiceInfo>();
-				
-				// Add ready services
+
 				foreach (var kvp in _readyServices)
 				{
 #if UNITY_EDITOR
@@ -570,8 +435,7 @@ namespace Nonatomic.ServiceKit
 #endif
 					allServices.Add(kvp.Value);
 				}
-				
-				// Add registered but not ready services
+
 				foreach (var kvp in _registeredServices)
 				{
 #if UNITY_EDITOR
@@ -579,87 +443,63 @@ namespace Nonatomic.ServiceKit
 #endif
 					allServices.Add(kvp.Value.ServiceInfo);
 				}
-				
+
 				return allServices;
 			}
 		}
 
-		/// <summary>
-		/// Get services filtered by scene
-		/// </summary>
 		public IReadOnlyList<ServiceInfo> GetServicesInScene(string sceneName)
 		{
 			lock (_lock)
 			{
 				var services = new List<ServiceInfo>();
-				
 #if UNITY_EDITOR
-				// Add ready services in scene
 				services.AddRange(_readyServices.Values.Where(s => s.DebugData.SceneName == sceneName));
-				
-				// Add registered services in scene
 				services.AddRange(_registeredServices.Values
 					.Where(r => r.ServiceInfo.DebugData.SceneName == sceneName)
 					.Select(r => r.ServiceInfo));
 #endif
-				
 				return services;
 			}
 		}
 
-		/// <summary>
-		/// Get services marked as DontDestroyOnLoad
-		/// </summary>
 		public IReadOnlyList<ServiceInfo> GetDontDestroyOnLoadServices()
 		{
 			lock (_lock)
 			{
 				var services = new List<ServiceInfo>();
-				
 #if UNITY_EDITOR
-				// Add ready DontDestroyOnLoad services
 				services.AddRange(_readyServices.Values.Where(s => s.DebugData.IsDontDestroyOnLoad));
-				
-				// Add registered DontDestroyOnLoad services
 				services.AddRange(_registeredServices.Values
 					.Where(r => r.ServiceInfo.DebugData.IsDontDestroyOnLoad)
 					.Select(r => r.ServiceInfo));
 #endif
-				
 				return services;
 			}
 		}
 
-		/// <summary>
-		/// Unregister all services from a specific scene
-		/// </summary>
 		public void UnregisterServicesFromScene(Scene scene)
 		{
 			lock (_lock)
 			{
 				var servicesToRemove = new List<Type>();
 
-				// Check ready services
 				foreach (var kvp in _readyServices)
 				{
 					var serviceInfo = kvp.Value;
 
-					// Skip non-MonoBehaviour services
 					if (!(serviceInfo.Service is MonoBehaviour))
 						continue;
 
 #if UNITY_EDITOR
-					// Skip DontDestroyOnLoad services
 					if (serviceInfo.DebugData.IsDontDestroyOnLoad)
 						continue;
 
-					// Check if service belongs to the unloaded scene
 					if (serviceInfo.DebugData.SceneHandle == scene.handle)
 					{
 						servicesToRemove.Add(kvp.Key);
 					}
-					// Also check if the MonoBehaviour has been destroyed
-					else 
+					else
 #endif
 					if (serviceInfo.Service is MonoBehaviour mb && mb == null)
 					{
@@ -667,27 +507,22 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 
-				// Check registered services
 				foreach (var kvp in _registeredServices)
 				{
 					var serviceInfo = kvp.Value.ServiceInfo;
 
-					// Skip non-MonoBehaviour services
 					if (!(serviceInfo.Service is MonoBehaviour))
 						continue;
 
 #if UNITY_EDITOR
-					// Skip DontDestroyOnLoad services
 					if (serviceInfo.DebugData.IsDontDestroyOnLoad)
 						continue;
 
-					// Check if service belongs to the unloaded scene
 					if (serviceInfo.DebugData.SceneHandle == scene.handle)
 					{
 						servicesToRemove.Add(kvp.Key);
 					}
-					// Also check if the MonoBehaviour has been destroyed
-					else 
+					else
 #endif
 					if (serviceInfo.Service is MonoBehaviour mb && mb == null)
 					{
@@ -695,7 +530,6 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 
-				// Remove identified services
 				foreach (var type in servicesToRemove)
 				{
 					_readyServices.Remove(type);
@@ -708,7 +542,6 @@ namespace Nonatomic.ServiceKit
 					}
 #endif
 
-					// Cancel any pending requests for this service
 					if (_serviceAwaiters.TryGetValue(type, out var tcs))
 					{
 						tcs.TrySetCanceled();
@@ -720,16 +553,12 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Manually clean up destroyed MonoBehaviour services
-		/// </summary>
 		public void CleanupDestroyedServices()
 		{
 			lock (_lock)
 			{
 				var servicesToRemove = new List<Type>();
 
-				// Check ready services
 				foreach (var kvp in _readyServices)
 				{
 					if (kvp.Value.Service is MonoBehaviour mb && mb == null)
@@ -738,7 +567,6 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 
-				// Check registered services
 				foreach (var kvp in _registeredServices)
 				{
 					if (kvp.Value.ServiceInfo.Service is MonoBehaviour mb && mb == null)
@@ -762,9 +590,6 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Clear all registered services
-		/// </summary>
 		public void ClearServices()
 		{
 			lock (_lock)
@@ -773,15 +598,14 @@ namespace Nonatomic.ServiceKit
 				_registeredServices.Clear();
 				_trackedScenes.Clear();
 
-				// Cancel all pending service requests
 				foreach (var kvp in _serviceAwaiters)
 				{
 					kvp.Value.TrySetCanceled();
 				}
 				_serviceAwaiters.Clear();
-				
+
 				// Clear dependency graph and exemptions
-				ServiceInjectionBuilder.ClearDependencyGraph();
+				ServiceDependencyGraph.ClearAll();
 			}
 		}
 
@@ -792,33 +616,31 @@ namespace Nonatomic.ServiceKit
 				Service = service,
 				ServiceType = type
 			};
-			
-			// Add tags if provided
+
 			if (tags != null && tags.Length > 0)
 			{
 				info.Tags.AddRange(tags);
 			}
 
 #if UNITY_EDITOR
-			// Initialize debug data for Editor
 			info.DebugData.RegisteredAt = DateTime.Now;
 			info.DebugData.RegisteredBy = registeredBy ?? "Unknown";
 
-			// Determine scene information
 			if (service is MonoBehaviour monoBehaviour && monoBehaviour != null)
 			{
 				var scene = monoBehaviour.gameObject.scene;
 				info.DebugData.SceneName = scene.name;
 				info.DebugData.SceneHandle = scene.handle;
 
-				// Check if it's in DontDestroyOnLoad
-				if (monoBehaviour.gameObject.scene.buildIndex != -1)
+				if (monoBehaviour.gameObject.scene.buildIndex == -1)
 				{
-					return info;
+					info.DebugData.IsDontDestroyOnLoad = true;
+					info.DebugData.SceneName = "DontDestroyOnLoad";
 				}
-
-				info.DebugData.IsDontDestroyOnLoad = true;
-				info.DebugData.SceneName = "DontDestroyOnLoad";
+				else
+				{
+					// normal scene object
+				}
 			}
 			else
 			{
@@ -846,7 +668,6 @@ namespace Nonatomic.ServiceKit
 #else
 			TaskCompletionSource<object> tcs;
 #endif
-			
 			lock (_lock)
 			{
 				if (_serviceAwaiters.TryGetValue(type, out tcs))
@@ -854,15 +675,12 @@ namespace Nonatomic.ServiceKit
 					_serviceAwaiters.Remove(type);
 				}
 			}
-			
 			tcs?.TrySetResult(service);
 		}
 
 		private static void CheckWaitingServices(Type newlyReadyType)
 		{
-			// This could be extended to track which services are waiting for which dependencies
-			// For now, we rely on ServiceInjectionBuilder to handle the waiting
-			// In a future enhancement, we could maintain a dependency graph here
+			// Placeholder: could track dependent registrations and signal here.
 		}
 
 		private void OnSceneUnloaded(Scene scene)
@@ -888,15 +706,11 @@ namespace Nonatomic.ServiceKit
 			ClearServices();
 		}
 
-		/// <summary>
-		/// Get injectable fields from a service type (used for dependency analysis at registration time)
-		/// </summary>
 		private List<FieldInfo> GetInjectableFields(Type serviceType)
 		{
 			var fields = new List<FieldInfo>();
 			var currentType = serviceType;
 
-			// Walk up the inheritance hierarchy
 			while (currentType != null && currentType != typeof(object))
 			{
 				var typeFields = currentType
@@ -910,39 +724,26 @@ namespace Nonatomic.ServiceKit
 			return fields;
 		}
 
-		/// <summary>
-		/// Find a type by its name (helper for circular dependency error marking)
-		/// </summary>
 		private Type FindTypeByName(string typeName)
 		{
-			// First check in registered services
 			foreach (var registeredType in _registeredServices.Keys)
 			{
 				if (registeredType.Name == typeName) return registeredType;
 			}
-
-			// Then check in ready services
 			foreach (var readyType in _readyServices.Keys)
 			{
 				if (readyType.Name == typeName) return readyType;
 			}
-
 			return null;
 		}
 
 #region Tag Management
 
-		/// <summary>
-		/// Add tags to an existing service
-		/// </summary>
 		public void AddTagsToService<T>(params ServiceTag[] tags) where T : class
 		{
 			AddTagsToService(typeof(T), tags);
 		}
 
-		/// <summary>
-		/// Add tags to an existing service by type
-		/// </summary>
 		public void AddTagsToService(Type serviceType, params ServiceTag[] tags)
 		{
 			if (serviceType == null) throw new ArgumentNullException(nameof(serviceType));
@@ -952,19 +753,17 @@ namespace Nonatomic.ServiceKit
 			{
 				ServiceInfo serviceInfo = null;
 
-				// Check ready services first
 				if (_readyServices.TryGetValue(serviceType, out var readyInfo))
 				{
 					serviceInfo = readyInfo;
 				}
-				// Then check registered services
 				else if (_registeredServices.TryGetValue(serviceType, out var registeredInfo))
 				{
 					serviceInfo = registeredInfo.ServiceInfo;
 				}
 
 				if (serviceInfo == null) return;
-				
+
 				foreach (var tag in tags)
 				{
 					if (!string.IsNullOrWhiteSpace(tag.name) && !serviceInfo.Tags.Any(t => t.name == tag.name))
@@ -975,17 +774,11 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Remove tags from an existing service
-		/// </summary>
 		public void RemoveTagsFromService<T>(params string[] tags) where T : class
 		{
 			RemoveTagsFromService(typeof(T), tags);
 		}
 
-		/// <summary>
-		/// Remove tags from an existing service by type
-		/// </summary>
 		public void RemoveTagsFromService(Type serviceType, params string[] tags)
 		{
 			if (serviceType == null) throw new ArgumentNullException(nameof(serviceType));
@@ -995,19 +788,17 @@ namespace Nonatomic.ServiceKit
 			{
 				ServiceInfo serviceInfo = null;
 
-				// Check ready services first
 				if (_readyServices.TryGetValue(serviceType, out var readyInfo))
 				{
 					serviceInfo = readyInfo;
 				}
-				// Then check registered services
 				else if (_registeredServices.TryGetValue(serviceType, out var registeredInfo))
 				{
 					serviceInfo = registeredInfo.ServiceInfo;
 				}
 
 				if (serviceInfo == null) return;
-				
+
 				foreach (var tagName in tags)
 				{
 					serviceInfo.Tags.RemoveAll(t => t.name == tagName);
@@ -1015,17 +806,11 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Get tags for a service
-		/// </summary>
 		public IReadOnlyList<string> GetServiceTags<T>() where T : class
 		{
 			return GetServiceTags(typeof(T));
 		}
 
-		/// <summary>
-		/// Get tags for a service by type
-		/// </summary>
 		public IReadOnlyList<string> GetServiceTags(Type serviceType)
 		{
 			if (serviceType == null) throw new ArgumentNullException(nameof(serviceType));
@@ -1034,12 +819,10 @@ namespace Nonatomic.ServiceKit
 			{
 				ServiceInfo serviceInfo = null;
 
-				// Check ready services first
 				if (_readyServices.TryGetValue(serviceType, out var readyInfo))
 				{
 					serviceInfo = readyInfo;
 				}
-				// Then check registered services
 				else if (_registeredServices.TryGetValue(serviceType, out var registeredInfo))
 				{
 					serviceInfo = registeredInfo.ServiceInfo;
@@ -1049,9 +832,6 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Get all services with a specific tag
-		/// </summary>
 		public IReadOnlyList<ServiceInfo> GetServicesWithTag(string tag)
 		{
 			if (string.IsNullOrWhiteSpace(tag)) return new List<ServiceInfo>().AsReadOnly();
@@ -1060,7 +840,6 @@ namespace Nonatomic.ServiceKit
 			{
 				var result = new List<ServiceInfo>();
 
-				// Check ready services
 				foreach (var kvp in _readyServices)
 				{
 					if (kvp.Value.Tags.Any(t => t.name == tag))
@@ -1069,7 +848,6 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 
-				// Check registered services
 				foreach (var kvp in _registeredServices)
 				{
 					if (kvp.Value.ServiceInfo.Tags.Any(t => t.name == tag) && !result.Contains(kvp.Value.ServiceInfo))
@@ -1082,9 +860,6 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Get all services with any of the specified tags
-		/// </summary>
 		public IReadOnlyList<ServiceInfo> GetServicesWithAnyTag(params string[] tags)
 		{
 			if (tags == null || tags.Length == 0) return new List<ServiceInfo>().AsReadOnly();
@@ -1093,10 +868,8 @@ namespace Nonatomic.ServiceKit
 			{
 				var result = new List<ServiceInfo>();
 				var validTags = tags.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
-
 				if (validTags.Count == 0) return result.AsReadOnly();
 
-				// Check ready services
 				foreach (var kvp in _readyServices)
 				{
 					if (kvp.Value.Tags.Any(t => validTags.Contains(t.name)))
@@ -1105,7 +878,6 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 
-				// Check registered services
 				foreach (var kvp in _registeredServices)
 				{
 					if (kvp.Value.ServiceInfo.Tags.Any(t => validTags.Contains(t.name)) && !result.Contains(kvp.Value.ServiceInfo))
@@ -1118,9 +890,6 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		/// <summary>
-		/// Get all services with all of the specified tags
-		/// </summary>
 		public IReadOnlyList<ServiceInfo> GetServicesWithAllTags(params string[] tags)
 		{
 			if (tags == null || tags.Length == 0) return new List<ServiceInfo>().AsReadOnly();
@@ -1129,10 +898,8 @@ namespace Nonatomic.ServiceKit
 			{
 				var result = new List<ServiceInfo>();
 				var validTags = tags.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
-
 				if (validTags.Count == 0) return result.AsReadOnly();
 
-				// Check ready services
 				foreach (var kvp in _readyServices)
 				{
 					if (validTags.All(tagName => kvp.Value.Tags.Any(serviceTag => serviceTag.name == tagName)))
@@ -1141,7 +908,6 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 
-				// Check registered services
 				foreach (var kvp in _registeredServices)
 				{
 					if (validTags.All(tagName => kvp.Value.ServiceInfo.Tags.Any(serviceTag => serviceTag.name == tagName)) && !result.Contains(kvp.Value.ServiceInfo))
