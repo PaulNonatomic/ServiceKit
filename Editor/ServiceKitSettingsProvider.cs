@@ -1,5 +1,8 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
 using Nonatomic.ServiceKit.Editor.Utils;
 using UnityEditor;
 using UnityEngine;
@@ -26,6 +29,8 @@ namespace Nonatomic.ServiceKit.Editor
 			DrawDefaultLocatorSection();
 			EditorGUILayout.Space();
 			DrawGeneralSettings();
+			EditorGUILayout.Space();
+			DrawDeveloperTools();
 		}
 
 		/// <summary>
@@ -241,6 +246,315 @@ namespace Nonatomic.ServiceKit.Editor
 			}
 
 			EditorGUI.indentLevel--;
+		}
+
+		/// <summary>
+		/// Draw developer tools section including Roslyn Analyzers
+		/// </summary>
+		private void DrawDeveloperTools()
+		{
+			EditorGUILayout.LabelField("Developer Tools", EditorStyles.boldLabel);
+			
+			EditorGUI.indentLevel++;
+
+			DrawRoslynAnalyzersSection();
+
+			EditorGUI.indentLevel--;
+		}
+
+		/// <summary>
+		/// Draw the Roslyn Analyzers section
+		/// </summary>
+		private void DrawRoslynAnalyzersSection()
+		{
+			EditorGUILayout.LabelField("Roslyn Analyzers", EditorStyles.miniBoldLabel);
+			
+			var analyzerPath = Path.Combine(Application.dataPath, "Analyzers", "ServiceKit");
+			var dllPath = Path.Combine(analyzerPath, "ServiceKit.Analyzers.dll");
+			var analyzerExists = File.Exists(dllPath);
+
+			if (analyzerExists)
+			{
+				EditorGUILayout.BeginHorizontal();
+				EditorGUILayout.LabelField("✓ Analyzer DLL Available", EditorStyles.boldLabel);
+				if (GUILayout.Button("Show in Explorer", EditorStyles.miniButton, GUILayout.Width(120)))
+				{
+					EditorUtility.RevealInFinder(analyzerPath);
+				}
+				EditorGUILayout.EndHorizontal();
+				
+				var fileInfo = new FileInfo(dllPath);
+				EditorGUILayout.LabelField($"Size: {fileInfo.Length / 1024:N0} KB", EditorStyles.miniLabel);
+				EditorGUILayout.LabelField($"Modified: {fileInfo.LastWriteTime:yyyy-MM-dd HH:mm}", EditorStyles.miniLabel);
+				
+				EditorGUILayout.HelpBox(
+					"ServiceKit Roslyn Analyzers are available and ready to provide code analysis and suggestions for ServiceKit development.",
+					MessageType.Info
+				);
+			}
+			else
+			{
+				EditorGUILayout.HelpBox(
+					"ServiceKit Roslyn Analyzers are not installed. Click the button below to download the latest analyzer DLL from GitHub releases.",
+					MessageType.Warning
+				);
+			}
+
+			EditorGUILayout.BeginHorizontal();
+			
+			if (GUILayout.Button(analyzerExists ? "Update Analyzers" : "Download Analyzers", EditorStyles.miniButton))
+			{
+				DownloadAnalyzersAsync();
+			}
+			
+			if (analyzerExists && GUILayout.Button("Remove Analyzers", EditorStyles.miniButton))
+			{
+				if (EditorUtility.DisplayDialog("Remove ServiceKit Analyzers", 
+					"Are you sure you want to remove the ServiceKit Roslyn Analyzers?", 
+					"Remove", "Cancel"))
+				{
+					RemoveAnalyzers();
+				}
+			}
+			
+			EditorGUILayout.EndHorizontal();
+		}
+
+		/// <summary>
+		/// Download the ServiceKit Analyzers from GitHub releases
+		/// </summary>
+		private async void DownloadAnalyzersAsync()
+		{
+			const string downloadUrl = "https://github.com/PaulNonatomic/ServiceKitAnalyzers/releases/download/0.0.0/ServiceKit.Analyzers.dll";
+			
+			try
+			{
+				EditorUtility.DisplayProgressBar("ServiceKit Analyzers", "Downloading analyzers...", 0.1f);
+				
+				var analyzerPath = Path.Combine(Application.dataPath, "Analyzers", "ServiceKit");
+				var dllPath = Path.Combine(analyzerPath, "ServiceKit.Analyzers.dll");
+				
+				// Create directory if it doesn't exist
+				if (!Directory.Exists(analyzerPath))
+				{
+					Directory.CreateDirectory(analyzerPath);
+				}
+
+				EditorUtility.DisplayProgressBar("ServiceKit Analyzers", "Downloading from GitHub...", 0.3f);
+				
+				var downloadResult = await DownloadFileFromUrl(downloadUrl, dllPath);
+				
+				EditorUtility.DisplayProgressBar("ServiceKit Analyzers", "Refreshing Asset Database...", 0.9f);
+				
+				// Refresh the Asset Database so Unity recognizes the new file
+				if (downloadResult)
+				{
+					AssetDatabase.Refresh();
+					ConfigureAnalyzerDllSettings(dllPath);
+				}
+				
+				EditorUtility.DisplayProgressBar("ServiceKit Analyzers", "Download complete", 1.0f);
+				EditorUtility.ClearProgressBar();
+				
+				if (downloadResult)
+				{
+					Debug.Log($"[ServiceKit] Successfully downloaded ServiceKit.Analyzers to {dllPath}");
+					EditorUtility.DisplayDialog("Success", "ServiceKit Roslyn Analyzers have been downloaded successfully!", "OK");
+				}
+				else
+				{
+					Debug.LogError("[ServiceKit] Failed to download ServiceKit.Analyzers");
+					EditorUtility.DisplayDialog("Error", "Failed to download ServiceKit Analyzers. Check the Console for details.", "OK");
+				}
+			}
+			catch (System.Exception ex)
+			{
+				EditorUtility.ClearProgressBar();
+				Debug.LogError($"[ServiceKit] Exception while downloading analyzers: {ex}");
+				EditorUtility.DisplayDialog("Error", $"Exception occurred: {ex.Message}", "OK");
+			}
+		}
+
+		/// <summary>
+		/// Download a file from URL to local path
+		/// </summary>
+		private async Task<bool> DownloadFileFromUrl(string url, string localPath)
+		{
+			try
+			{
+				using (var client = new HttpClient())
+				{
+					client.Timeout = System.TimeSpan.FromMinutes(5);
+					
+					var response = await client.GetAsync(url);
+					
+					if (response.IsSuccessStatusCode)
+					{
+						var content = await response.Content.ReadAsByteArrayAsync();
+						await File.WriteAllBytesAsync(localPath, content);
+						return true;
+					}
+					else
+					{
+						Debug.LogError($"[ServiceKit] HTTP error downloading analyzer: {response.StatusCode} - {response.ReasonPhrase}");
+						return false;
+					}
+				}
+			}
+			catch (System.Exception ex)
+			{
+				Debug.LogError($"[ServiceKit] Failed to download analyzer: {ex.Message}");
+				return false;
+			}
+		}
+
+		/// <summary>
+		/// Remove the analyzer DLL files
+		/// </summary>
+		private void RemoveAnalyzers()
+		{
+			try
+			{
+				var analyzerPath = Path.Combine(Application.dataPath, "Analyzers", "ServiceKit");
+				var dllPath = Path.Combine(analyzerPath, "ServiceKit.Analyzers.dll");
+
+				if (File.Exists(dllPath))
+				{
+					File.Delete(dllPath);
+					AssetDatabase.Refresh();
+				}
+
+				Debug.Log("[ServiceKit] Removed ServiceKit Analyzer DLL");
+				EditorUtility.DisplayDialog("Success", "ServiceKit Analyzer DLL has been removed.", "OK");
+			}
+			catch (System.Exception ex)
+			{
+				Debug.LogError($"[ServiceKit] Failed to remove analyzer DLL: {ex}");
+				EditorUtility.DisplayDialog("Error", $"Failed to remove analyzer DLL: {ex.Message}", "OK");
+			}
+		}
+
+		/// <summary>
+		/// Configure the analyzer DLL import settings to work as a Roslyn analyzer
+		/// </summary>
+		private void ConfigureAnalyzerDllSettings(string dllPath)
+		{
+			try
+			{
+				EditorUtility.DisplayProgressBar("ServiceKit Analyzers", "Configuring DLL settings...", 0.95f);
+				
+				// Convert absolute path to relative path from Assets folder
+				var relativePath = "Assets" + dllPath.Substring(Application.dataPath.Length).Replace('\\', '/');
+				
+				// Get the asset importer for the DLL
+				var importer = AssetImporter.GetAtPath(relativePath) as PluginImporter;
+				
+				if (importer != null)
+				{
+					// Critical: Disable auto reference - this prevents Unity from automatically referencing the DLL
+					importer.SetCompatibleWithAnyPlatform(false);
+					importer.SetCompatibleWithEditor(false);
+					
+					// Disable all platform targets to ensure it's not included in builds
+					importer.SetCompatibleWithPlatform(BuildTarget.StandaloneWindows, false);
+					importer.SetCompatibleWithPlatform(BuildTarget.StandaloneWindows64, false);
+					importer.SetCompatibleWithPlatform(BuildTarget.StandaloneLinux64, false);
+					importer.SetCompatibleWithPlatform(BuildTarget.StandaloneOSX, false);
+					importer.SetCompatibleWithPlatform(BuildTarget.Android, false);
+					importer.SetCompatibleWithPlatform(BuildTarget.iOS, false);
+					importer.SetCompatibleWithPlatform(BuildTarget.WebGL, false);
+					
+					// Additional settings to ensure it's treated as analyzer only
+					importer.isPreloaded = false;
+					
+					// Save these settings first
+					importer.SaveAndReimport();
+					
+					// Now directly modify the meta file to ensure proper analyzer configuration
+					ConfigureMetaFileAsAnalyzer(relativePath);
+					
+					Debug.Log("[ServiceKit] Configured ServiceKit.Analyzers.dll as Roslyn analyzer with all platforms and auto-reference disabled");
+				}
+				else
+				{
+					Debug.LogError($"[ServiceKit] Could not find PluginImporter for {relativePath}");
+				}
+			}
+			catch (System.Exception ex)
+			{
+				Debug.LogError($"[ServiceKit] Failed to configure analyzer DLL settings: {ex}");
+			}
+		}
+
+		/// <summary>
+		/// Configure the meta file to mark the DLL as a Roslyn analyzer and disable auto reference
+		/// </summary>
+		private void ConfigureMetaFileAsAnalyzer(string relativePath)
+		{
+			try
+			{
+				var metaPath = relativePath + ".meta";
+				
+				// Read the current meta file content
+				if (File.Exists(metaPath))
+				{
+					var metaContent = File.ReadAllText(metaPath);
+					
+					// Replace the entire meta file with a properly configured one for Roslyn analyzers
+					var newMetaContent = GenerateAnalyzerMetaFile();
+					
+					File.WriteAllText(metaPath, newMetaContent);
+					AssetDatabase.Refresh();
+					
+					Debug.Log($"[ServiceKit] Completely reconfigured meta file for Roslyn analyzer with disabled auto-reference: {metaPath}");
+				}
+			}
+			catch (System.Exception ex)
+			{
+				Debug.LogError($"[ServiceKit] Failed to configure meta file as analyzer: {ex}");
+			}
+		}
+
+		/// <summary>
+		/// Generate a complete meta file configuration for a Roslyn analyzer
+		/// </summary>
+		private string GenerateAnalyzerMetaFile()
+		{
+			return @"fileFormatVersion: 2
+guid: " + System.Guid.NewGuid().ToString("N") + @"
+PluginImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  iconMap: {}
+  executionOrder: {}
+  defineConstraints: []
+  isPreloaded: 0
+  isOverridable: 0
+  isExplicitlyReferenced: 0
+  validateReferences: 0
+  platformData:
+  - first:
+      Any: 
+    second:
+      enabled: 0
+      settings:
+        RoslynAnalyzer: 1
+  - first:
+      Editor: Editor
+    second:
+      enabled: 0
+      settings:
+        RoslynAnalyzer: 1
+        DefaultValueInitialized: true
+  - first:
+      Windows Store Apps: WindowsStoreApps
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: ";
 		}
 
 		[SettingsProvider]

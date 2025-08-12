@@ -1,3 +1,7 @@
+## [1.3.0] - Aug 12, 2025
+- Abstracted some functionality out of the ServiceInjectionBuilder as it was bloated
+- Added a convieniance method to execute and cancel a services injection request.
+
 ## [1.2.2] - Aug 10, 2025
 - Updated package path in README
 

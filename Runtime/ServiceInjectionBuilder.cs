@@ -13,65 +13,24 @@ using System.Threading.Tasks;
 
 namespace Nonatomic.ServiceKit
 {
+	/// <summary>
+	/// Builds and executes service field injection for a target object.
+	/// Dependency-graph logic lives in <see cref="ServiceDependencyGraph"/>.
+	/// Thread switching lives in <see cref="ServiceKitThreading"/>.
+	/// </summary>
 	public class ServiceInjectionBuilder : IServiceInjectionBuilder
 	{
-		private readonly IServiceKitLocator _serviceKitLocator;
-		private readonly object _target;
-		private readonly Type _targetServiceType;
-		private CancellationToken _cancellationToken = CancellationToken.None;
-		private float _timeout = -1f;
-		private Action<Exception> _errorHandler;
+		public static bool IsExemptFromCircularDependencyCheck(Type serviceType)
+			=> ServiceDependencyGraph.IsCircularDependencyExempt(serviceType);
 
-		private static readonly Dictionary<Type, DependencyNode> _dependencyGraph = new Dictionary<Type, DependencyNode>();
-		private static readonly Dictionary<Type, CancellationTokenSource> _resolvingCancellations = new Dictionary<Type, CancellationTokenSource>();
-		private static readonly HashSet<Type> _circularExemptServices = new HashSet<Type>();
-		private static readonly HashSet<Type> _servicesWithCircularDependencyErrors = new HashSet<Type>();
-		private static readonly object _graphLock = new object();
-
-		private class DependencyNode
-		{
-			public Type ServiceType { get; set; }
-			public HashSet<Type> Dependencies { get; set; } = new HashSet<Type>();
-			public Dictionary<Type, string> DependencyFields { get; set; } = new Dictionary<Type, string>();
-			public bool IsResolving { get; set; }
-			public List<Type> ResolutionPath { get; set; } = new List<Type>();
-		}
-
-		private class CircularDependencyInfo
-		{
-			public string Path { get; set; }
-			public string DetailedPath { get; set; }
-			public Type FromType { get; set; }
-			public Type ToType { get; set; }
-			public string FieldName { get; set; }
-		}
-
-		internal ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target)
+		public static bool HasCircularDependencyError(Type serviceType)
+			=> ServiceDependencyGraph.HasCircularDependencyError(serviceType);
+		
+		public ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target)
 		{
 			_serviceKitLocator = serviceKitLocator;
 			_target = target;
-			
-			// Try to determine the service type this target provides
 			_targetServiceType = DetermineServiceType(target);
-		}
-
-		private static Type DetermineServiceType(object target)
-		{
-			// For ServiceKitBehaviour<T>, extract T
-			var targetType = target.GetType();
-			var baseType = targetType.BaseType;
-			
-			while (baseType != null)
-			{
-				if (baseType.IsGenericType && 
-					baseType.GetGenericTypeDefinition().Name.StartsWith("ServiceKitBehaviour"))
-				{
-					return baseType.GetGenericArguments()[0];
-				}
-				baseType = baseType.BaseType;
-			}
-			
-			return targetType;
 		}
 
 		public IServiceInjectionBuilder WithCancellation(CancellationToken cancellationToken)
@@ -116,603 +75,236 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-	#if SERVICEKIT_UNITASK
-	public async UniTask ExecuteAsync()
+#if SERVICEKIT_UNITASK
+		public UniTask ExecuteWithCancellationAsync(CancellationToken destroyCancellationToken)
 #else
-	public async Task ExecuteAsync()
+		public Task ExecuteWithCancellationAsync(CancellationToken destroyCancellationToken)
+#endif
+		{
+			return WithCancellation(destroyCancellationToken).ExecuteAsync();
+		}
+
+		public async void ExecuteWithCancellation(CancellationToken destroyCancellationToken)
+		{
+			try
+			{
+#if SERVICEKIT_UNITASK
+				await ExecuteWithCancellationAsync(destroyCancellationToken);
+#else
+				await ExecuteWithCancellationAsync(destroyCancellationToken);
+#endif
+			}
+			catch (Exception ex)
+			{
+				_errorHandler?.Invoke(ex);
+			}
+		}
+
+#if SERVICEKIT_UNITASK
+		public async UniTask ExecuteAsync()
+#else
+		public async Task ExecuteAsync()
 #endif
 		{
 			var targetType = _target.GetType();
 			var fieldsToInject = GetFieldsToInject(targetType);
-
 			if (fieldsToInject.Count == 0)
 			{
 				return;
 			}
 
-			// Create a cancellation token source for this resolution
 			var resolutionCts = new CancellationTokenSource();
-			
-			lock (_graphLock)
-			{
-				_resolvingCancellations[_targetServiceType] = resolutionCts;
-			}
+			ServiceDependencyGraph.RegisterResolving(_targetServiceType, resolutionCts);
 
 			try
 			{
-				UpdateDependencyGraph(fieldsToInject);
+				ServiceDependencyGraph.UpdateForTarget(_targetServiceType, fieldsToInject);
+				ServiceDependencyGraph.SetResolving(_targetServiceType, true);
 
-				lock (_graphLock)
+				var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+				if (circular != null)
 				{
-					if (_dependencyGraph.TryGetValue(_targetServiceType, out var node))
-					{
-						node.IsResolving = true;
-					}
+					ServiceDependencyGraph.CancelCircularChain(circular.Path);
+					ServiceDependencyGraph.MarkAllInPathAsError(circular.Path);
+					throw new ServiceInjectionException($"Circular dependency detected: {circular.Path}");
 				}
 
-				// Check for circular dependencies before starting any async operations
-				var circularDependency = DetectCircularDependency();
-				if (circularDependency != null)
-				{
-					// Cancel all services in the circular dependency chain
-					CancelCircularDependencyChain(circularDependency.Path);
-					
-					// Build complete error message with field details
-					var errorMessage = $"Circular dependency detected: {circularDependency.Path}";
-					
-					// Extract types from the path
-					var types = circularDependency.Path.Split(new[] { " → " }, StringSplitOptions.None);
-					if (types.Length > 1)
-					{
-						errorMessage += "\n\nCircular dependency chain:";
-						
-						lock (_graphLock)
-						{
-							for (var i = 0; i < types.Length - 1; i++)
-							{
-								var fromTypeName = types[i].Trim();
-								var toTypeName = types[i + 1].Trim();
-								
-								// Find the field that creates this dependency
-								var fieldFound = false;
-								foreach (var graphEntry in _dependencyGraph)
-								{
-									if (graphEntry.Key.Name != fromTypeName) continue;
-									
-									foreach (var dependency in graphEntry.Value.Dependencies)
-									{
-										if (dependency.Name != toTypeName) continue;
-										if (!graphEntry.Value.DependencyFields.TryGetValue(dependency, out var fieldName)) continue;
-										
-										errorMessage += $"\n  → {fromTypeName} has field '{fieldName}' that requires {toTypeName}";
-										fieldFound = true;
-										break;
-									}
-									
-									if (fieldFound) break;
-								}
-								
-								if (!fieldFound)
-								{
-									errorMessage += $"\n  → {fromTypeName} requires {toTypeName}";
-								}
-							}
-						}
-					}
-					
-					// Mark all services in the circular dependency as having errors
-					var typesInPath = circularDependency.Path.Split(new[] { " → " }, StringSplitOptions.None);
-					foreach (var typeName in typesInPath)
-					{
-						var trimmedTypeName = typeName.Trim();
-						
-						// Find the type in the dependency graph and mark it as having an error
-						foreach (var graphEntry in _dependencyGraph)
-						{
-							if (graphEntry.Key.Name != trimmedTypeName) continue;
-							
-							AddCircularDependencyError(graphEntry.Key);
-							break;
-						}
-					}
-					
-					throw new ServiceInjectionException(errorMessage);
-				}
-
-				// Create timeout cancellation if needed
 				CancellationTokenSource timeoutCts = null;
-				IDisposable timeoutRegistration = null;
-				if (_timeout > 0)
+				IDisposable timeoutReg = null;
+
+				if (_timeout > 0f)
 				{
 					timeoutCts = new CancellationTokenSource();
-					timeoutRegistration = ServiceKitTimeoutManager.Instance.RegisterTimeout(timeoutCts, _timeout);
+					timeoutReg = ServiceKitTimeoutManager.Instance.RegisterTimeout(timeoutCts, _timeout);
 				}
 
-				using (timeoutRegistration)
-				using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-					_cancellationToken, 
+				using (timeoutReg)
+				using (var linked = CancellationTokenSource.CreateLinkedTokenSource(
+					_cancellationToken,
 					resolutionCts.Token,
 					timeoutCts?.Token ?? CancellationToken.None))
 				{
-					var finalToken = linkedCts.Token;
-
-					// Capture Unity thread context
+					var finalToken = linked.Token;
 					var unityContext = SynchronizationContext.Current;
 
-					try
+#if SERVICEKIT_UNITASK
+					var tasks = fieldsToInject.Select<FieldInfo, UniTask<(FieldInfo field, object service, bool required)>>(async field =>
+#else
+					var tasks = fieldsToInject.Select<FieldInfo, Task<(FieldInfo field, object service, bool required)>>(async field =>
+#endif
 					{
-#if SERVICEKIT_UNITASK
-						// Create tasks for all service retrievals
-						var serviceTasks = fieldsToInject.Select<FieldInfo, UniTask<(FieldInfo fieldInfo, object service, bool Required)>>(async fieldInfo =>
-#else
-						// Create tasks for all service retrievals
-						var serviceTasks = fieldsToInject.Select<FieldInfo, Task<(FieldInfo fieldInfo, object service, bool Required)>>(async fieldInfo =>
-#endif
+						var attr = field.GetCustomAttribute<InjectServiceAttribute>();
+						var serviceType = field.FieldType;
+
+						finalToken.ThrowIfCancellationRequested();
+
+						if (!attr.Required)
 						{
-							var attribute = fieldInfo.GetCustomAttribute<InjectServiceAttribute>();
-							var serviceType = fieldInfo.FieldType;
-
-							// Check if we've been cancelled due to circular dependency
-							finalToken.ThrowIfCancellationRequested();
-
-							// For optional services, try to get them immediately without waiting
-							if (!attribute.Required)
+							var locator = _serviceKitLocator as ServiceKitLocator;
+							if (locator == null || !locator.IsServiceReady(serviceType))
 							{
-								var locator = _serviceKitLocator as ServiceKitLocator;
-								if (locator == null || !locator.IsServiceReady(serviceType))
-								{
-									return (fieldInfo, null, attribute.Required);
-								}
-
-								var optionalService = _serviceKitLocator.GetService(serviceType);
-								return (fieldInfo, optionalService, attribute.Required);
+								return (field, null, attr.Required);
 							}
 
-							// For required services, wait for them to become available
-							try
-							{
-								var requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
-								return (fieldInfo, requiredService, attribute.Required);
-							}
-							catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
-							{
-								// This was cancelled due to circular dependency
-								// Mark the service as having a circular dependency error
-								AddCircularDependencyError(serviceType);
-								AddCircularDependencyError(_targetServiceType);
-								
-								throw new ServiceInjectionException($"Injection cancelled due to circular dependency involving {serviceType.Name}");
-							}
-						}).ToList();
-
-#if SERVICEKIT_UNITASK
-						// Wait for all services
-						var results = await UniTask.WhenAll(serviceTasks);
-#else
-						// Wait for all services
-						var results = await Task.WhenAll(serviceTasks);
-#endif
-
-						// Check for missing required services
-						var missingRequiredServices = results
-							.Where(r => r.service == null && r.Required)
-							.Select(r => r.fieldInfo.FieldType.Name)
-							.ToList();
-
-						if (missingRequiredServices.Any())
-						{
-							throw new ServiceInjectionException(
-								$"Required services not available: {string.Join(", ", missingRequiredServices)}");
+							var optional = _serviceKitLocator.GetService(serviceType);
+							return (field, optional, attr.Required);
 						}
 
-						// Switch back to Unity thread for injection
-						await SwitchToUnityThread(unityContext);
-
-						// Inject all services (including null for optional services)
-						foreach ((var field, object service, bool _) in results)
+						try
 						{
-							field.SetValue(_target, service);
+#if SERVICEKIT_UNITASK
+							var requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
+#else
+							var requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
+#endif
+							return (field, requiredService, attr.Required);
 						}
+						catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
+						{
+							ServiceDependencyGraph.AddCircularDependencyError(serviceType);
+							ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
+							throw new ServiceInjectionException($"Injection cancelled due to circular dependency involving {serviceType.Name}");
+						}
+					}).ToList();
+
+#if SERVICEKIT_UNITASK
+					var results = await UniTask.WhenAll(tasks);
+#else
+					var results = await Task.WhenAll(tasks);
+#endif
+
+					var missing = results
+						.Where(r => r.service == null && r.required)
+						.Select(r => r.field.FieldType.Name)
+						.ToList();
+
+					if (missing.Count > 0)
+					{
+						throw new ServiceInjectionException($"Required services not available: {string.Join(", ", missing)}");
 					}
-					catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
+
+					await ServiceKitThreading.SwitchToUnityThread(unityContext);
+
+					foreach (var (field, service, _) in results)
 					{
-						var requiredFields = fieldsToInject.Where(f => f.GetCustomAttribute<InjectServiceAttribute>().Required);
-						var missingServices = requiredFields
-							.Where(f => _serviceKitLocator.GetService(f.FieldType) == null)
-							.Select(f => f.FieldType.Name)
-							.ToList();
-
-						var message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
-						if (missingServices.Any())
-						{
-							message += $" Missing required services: {string.Join(", ", missingServices)}.";
-						}
-
-						// Check if timeout is due to circular dependency
-						var circularDep = DetectCircularDependency();
-						if (circularDep != null)
-						{
-							message += $"\n\nCircular dependency detected: {circularDep.Path}";
-						}
-
-						throw new TimeoutException(message);
+						field.SetValue(_target, service);
 					}
 				}
+			}
+			catch (OperationCanceledException) when (_timeout > 0f)
+			{
+				var requiredFields = fieldsToInject.Where(f => f.GetCustomAttribute<InjectServiceAttribute>().Required);
+				var missing = requiredFields
+					.Where(f => _serviceKitLocator.GetService(f.FieldType) == null)
+					.Select(f => f.FieldType.Name)
+					.ToList();
+
+				var message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
+				if (missing.Count > 0)
+				{
+					message += $" Missing required services: {string.Join(", ", missing)}.";
+				}
+
+				var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+				if (circular != null)
+				{
+					message += $"\n\nCircular dependency detected: {circular.Path}";
+				}
+
+				throw new TimeoutException(message);
 			}
 			finally
 			{
-				// Clean up
-				lock (_graphLock)
-				{
-					if (_dependencyGraph.TryGetValue(_targetServiceType, out var node))
-					{
-						node.IsResolving = false;
-					}
-					
-					_resolvingCancellations.Remove(_targetServiceType);
-				}
-				
-				resolutionCts?.Dispose();
+				ServiceDependencyGraph.SetResolving(_targetServiceType, false);
+				ServiceDependencyGraph.UnregisterResolving(_targetServiceType);
+				resolutionCts.Dispose();
 			}
 		}
 
-		private void CancelCircularDependencyChain(string circularDependencyPath)
+		private static Type DetermineServiceType(object target)
 		{
-			// Extract just the type names from the path (before any field details)
-			var pathParts = circularDependencyPath.Split('\n')[0]; // Get first line only
-			var typeNames = pathParts.Split(new[] { " → " }, StringSplitOptions.None);
-			
-			lock (_graphLock)
+			var targetType = target.GetType();
+			var baseType = targetType.BaseType;
+
+			while (baseType != null)
 			{
-				// Cancel all resolving services in the chain
-				foreach (var kvp in _resolvingCancellations.ToList())
+				if (baseType.IsGenericType &&
+					baseType.GetGenericTypeDefinition().Name.StartsWith("ServiceKitBehaviour", StringComparison.Ordinal))
 				{
-					if (!typeNames.Contains(kvp.Key.Name)) continue;
-					
-					try
-					{
-						kvp.Value.Cancel();
-					}
-					catch
-					{
-						// ignored
-					}
+					return baseType.GetGenericArguments()[0];
 				}
+				baseType = baseType.BaseType;
 			}
+
+			return targetType;
 		}
 
-		private void UpdateDependencyGraph(List<FieldInfo> fieldsToInject)
-		{
-			lock (_graphLock)
-			{
-				// Use the service type (interface), not the concrete type
-				var serviceType = _targetServiceType;
-				
-				if (!_dependencyGraph.ContainsKey(serviceType))
-				{
-					_dependencyGraph[serviceType] = new DependencyNode
-					{
-						ServiceType = serviceType
-					};
-				}
-
-				var node = _dependencyGraph[serviceType];
-				node.Dependencies.Clear();
-				node.DependencyFields.Clear();
-
-				foreach (var field in fieldsToInject)
-				{
-					var attribute = field.GetCustomAttribute<InjectServiceAttribute>();
-					// Track ALL dependencies, not just required ones, for circular dependency detection
-					node.Dependencies.Add(field.FieldType);
-					node.DependencyFields[field.FieldType] = field.Name;
-				}
-			}
-		}
-
-		private CircularDependencyInfo DetectCircularDependency()
-		{
-			lock (_graphLock)
-			{
-				var path = new List<Type>();
-				var circularInfo = new CircularDependencyInfo();
-
-				if (!HasCircularDependency(_targetServiceType, path, circularInfo)) return null;
-				
-				// Format the circular dependency path
-				circularInfo.Path = string.Join(" → ", path.Select(t => t.Name));
-				return circularInfo;
-
-			}
-		}
-
-		private static bool HasCircularDependency(Type serviceType, List<Type> path, CircularDependencyInfo circularInfo)
-		{
-			// Check if this service is exempt from circular dependency checks
-			if (_circularExemptServices.Contains(serviceType))
-			{
-				return false;
-			}
-			
-			// Check if this type is already in our path (circular dependency)
-			if (path.Contains(serviceType))
-			{
-				// Found a cycle! Add it once more to complete the circle
-				path.Add(serviceType);
-				
-				// Find the last occurrence that completes the cycle
-				var lastIndex = path.Count - 2; // The one before we just added
-				if (lastIndex >= 0 && _dependencyGraph.TryGetValue(path[lastIndex], out var lastNode) &&
-					lastNode.DependencyFields.TryGetValue(serviceType, out var completingField))
-				{
-					circularInfo.FromType = path[lastIndex];
-					circularInfo.ToType = serviceType;
-					circularInfo.FieldName = completingField;
-				}
-				
-				return true;
-			}
-			
-			// Add to path
-			path.Add(serviceType);
-
-			// Check if this service has dependencies
-			if (_dependencyGraph.TryGetValue(serviceType, out var node))
-			{
-				foreach (var dependency in node.Dependencies)
-				{
-					if (_circularExemptServices.Contains(dependency)) continue;
-					if (HasCircularDependency(dependency, path, circularInfo)) return true;
-				}
-			}
-
-			// Backtrack
-			path.RemoveAt(path.Count - 1);
-			return false;
-		}
-
-		private List<FieldInfo> GetFieldsToInject(Type targetType)
+		private static List<FieldInfo> GetFieldsToInject(Type targetType)
 		{
 			var fields = new List<FieldInfo>();
-			var currentType = targetType;
-	
-			// Walk up the inheritance hierarchy
-			while (currentType != null && currentType != typeof(object))
+			var current = targetType;
+
+			while (current != null && current != typeof(object))
 			{
-				var typeFields = currentType
+				var typeFields = current
 					.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly)
 					.Where(f => f.GetCustomAttribute<InjectServiceAttribute>() != null);
-			
+
 				fields.AddRange(typeFields);
-				currentType = currentType.BaseType;
+				current = current.BaseType;
 			}
-	
+
 			return fields;
 		}
-
-#if SERVICEKIT_UNITASK
-		private static async UniTask SwitchToUnityThread(SynchronizationContext unityContext)
-		{
-			if (SynchronizationContext.Current == unityContext) return;
-
-			var tcs = new UniTaskCompletionSource<bool>();
-			unityContext.Post(_ => tcs.TrySetResult(true), null);
-			await tcs.Task;
-		}
-#else
-		private static async Task SwitchToUnityThread(SynchronizationContext unityContext)
-		{
-			if (SynchronizationContext.Current == unityContext) return;
-
-			var tcs = new TaskCompletionSource<bool>();
-			unityContext.Post(_ => tcs.SetResult(true), null);
-			await tcs.Task;
-		}
-#endif
 
 		private void DefaultErrorHandler(Exception exception)
 		{
 			Debug.LogError($"Failed to inject required services: {exception.Message}");
-			
-			// Check for circular dependencies and log them
-			var circularDep = DetectCircularDependency();
-			if (circularDep == null) return;
-			
-			Debug.LogError($"Circular dependency detected: {circularDep.Path}");
-				
-			// Mark the service types involved in the circular dependency as having errors
-			if (_targetServiceType != null)
+
+			var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+			if (circular == null)
 			{
-				AddCircularDependencyError(_targetServiceType);
+				return;
 			}
-				
-			// Also mark the "to" type in the circular dependency
-			if (circularDep.ToType != null)
+
+			Debug.LogError($"Circular dependency detected: {circular.Path}");
+			ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
+
+			if (circular.ToType != null)
 			{
-				AddCircularDependencyError(circularDep.ToType);
+				ServiceDependencyGraph.AddCircularDependencyError(circular.ToType);
 			}
 		}
 
-		/// <summary>
-		/// Mark a service type as exempt from circular dependency checks
-		/// </summary>
-		public static void AddCircularDependencyExemption(Type serviceType)
-		{
-			lock (_graphLock)
-			{
-				_circularExemptServices.Add(serviceType);
-			}
-		}
-		
-		/// <summary>
-		/// Check if a service type is exempt from circular dependency checks
-		/// </summary>
-		public static bool IsExemptFromCircularDependencyCheck(Type serviceType)
-		{
-			lock (_graphLock)
-			{
-				return _circularExemptServices.Contains(serviceType);
-			}
-		}
-		
-		/// <summary>
-		/// Check if a service type has circular dependency errors
-		/// </summary>
-		public static bool HasCircularDependencyError(Type serviceType)
-		{
-			lock (_graphLock)
-			{
-				return _servicesWithCircularDependencyErrors.Contains(serviceType);
-			}
-		}
-		
-		/// <summary>
-		/// Mark a service type as having circular dependency errors
-		/// </summary>
-		public static void AddCircularDependencyError(Type serviceType)
-		{
-			lock (_graphLock)
-			{
-				_servicesWithCircularDependencyErrors.Add(serviceType);
-			}
-		}
+		public Type TargetServiceType => _targetServiceType;
 
-		/// <summary>
-		/// Remove circular dependency exemption for a service type
-		/// </summary>
-		public static void RemoveCircularDependencyExemption(Type serviceType)
-		{
-			lock (_graphLock)
-			{
-				_circularExemptServices.Remove(serviceType);
-			}
-		}
+		[SerializeField]
+		private float _timeout = -1f;
 
-		/// <summary>
-		/// Check if a service type is exempt from circular dependency checks
-		/// </summary>
-		public static bool IsCircularDependencyExempt(Type serviceType)
-		{
-			lock (_graphLock)
-			{
-				return _circularExemptServices.Contains(serviceType);
-			}
-		}
-
-		/// <summary>
-		/// Get a report of all current dependencies in the system
-		/// </summary>
-		public static string GetDependencyReport()
-		{
-			lock (_graphLock)
-			{
-				var report = "Dependency Graph:\n";
-				
-				foreach (var kvp in _dependencyGraph)
-				{
-					report += $"\n{kvp.Key.Name}";
-					
-					// Check if exempt
-					if (_circularExemptServices.Contains(kvp.Key))
-					{
-						report += " [CIRCULAR EXEMPT]";
-					}
-					
-					if (kvp.Value.Dependencies.Count > 0)
-					{
-						report += " depends on:";
-						foreach (var dep in kvp.Value.Dependencies)
-						{
-							var fieldName = kvp.Value.DependencyFields.TryGetValue(dep, out var field) ? field : "unknown";
-							report += $"\n  - {dep.Name} (field: {fieldName})";
-							
-							if (_circularExemptServices.Contains(dep))
-							{
-								report += " [EXEMPT]";
-							}
-						}
-					}
-					else
-					{
-						report += " (no dependencies)";
-					}
-					
-					if (kvp.Value.IsResolving)
-					{
-						report += " [RESOLVING]";
-					}
-				}
-				
-				return report;
-			}
-		}
-
-		/// <summary>
-		/// Clear the dependency graph (useful for testing)
-		/// </summary>
-		public static void ClearDependencyGraph()
-		{
-			lock (_graphLock)
-			{
-				_dependencyGraph.Clear();
-				_circularExemptServices.Clear();
-				_servicesWithCircularDependencyErrors.Clear();
-				
-				// Cancel any pending resolutions
-				foreach (var cts in _resolvingCancellations.Values)
-				{
-					try { cts.Cancel(); } catch { }
-				}
-				_resolvingCancellations.Clear();
-			}
-		}
-
-		/// <summary>
-		/// Update dependency graph at registration time (called from ServiceKitLocator)
-		/// </summary>
-		public static void UpdateDependencyGraphForRegistration(Type serviceType, List<FieldInfo> fieldsToInject)
-		{
-			lock (_graphLock)
-			{
-				if (!_dependencyGraph.ContainsKey(serviceType))
-				{
-					_dependencyGraph[serviceType] = new DependencyNode
-					{
-						ServiceType = serviceType
-					};
-				}
-
-				var node = _dependencyGraph[serviceType];
-				node.Dependencies.Clear();
-				node.DependencyFields.Clear();
-
-				foreach (var field in fieldsToInject)
-				{
-					// Track ALL dependencies for circular dependency detection
-					node.Dependencies.Add(field.FieldType);
-					node.DependencyFields[field.FieldType] = field.Name;
-				}
-			}
-		}
-
-		/// <summary>
-		/// Detect circular dependency at registration time
-		/// </summary>
-		public static string DetectCircularDependencyAtRegistration(Type serviceType)
-		{
-			lock (_graphLock)
-			{
-				var path = new List<Type>();
-				var circularInfo = new CircularDependencyInfo();
-				
-				if (HasCircularDependency(serviceType, path, circularInfo))
-				{
-					// Format the circular dependency path
-					return string.Join(" → ", path.Select(t => t.Name));
-				}
-				
-				return null;
-			}
-		}
+		private readonly IServiceKitLocator _serviceKitLocator;
+		private readonly object _target;
+		private readonly Type _targetServiceType;
+		private CancellationToken _cancellationToken = CancellationToken.None;
+		private Action<Exception> _errorHandler;
 	}
 }

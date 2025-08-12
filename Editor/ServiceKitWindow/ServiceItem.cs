@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nonatomic.ServiceKit.Editor.Utils;
 using UnityEditor;
 using UnityEngine;
@@ -33,10 +32,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			// Determine if service is ready
 			var isReady = state == "Ready";
 			
-			// Check if service is exempt from circular dependency checks
 			var isExempt = ServiceInjectionBuilder.IsExemptFromCircularDependencyCheck(serviceType);
-			
-			// Check if service has circular dependency errors
 			var hasCircularDependencyError = ServiceInjectionBuilder.HasCircularDependencyError(serviceType);
 			
 			// Add state class
