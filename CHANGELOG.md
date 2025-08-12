@@ -1,3 +1,7 @@
+## [1.3.1] - Aug 12, 2025
+- hotfix to remove the hidden tools directory. The content has been moved to it's own repo for ServiceKit Roslyn Analyzers
+- updated the path to retrieve the Roslyn Analyzers dll to always pull the latest.
+
 ## [1.3.0] - Aug 12, 2025
 - Abstracted some functionality out of the ServiceInjectionBuilder as it was bloated
 - Added a convieniance method to execute and cancel a services injection request.

@@ -325,7 +325,7 @@ namespace Nonatomic.ServiceKit.Editor
 		/// </summary>
 		private async void DownloadAnalyzersAsync()
 		{
-			const string downloadUrl = "https://github.com/PaulNonatomic/ServiceKitAnalyzers/releases/download/0.0.0/ServiceKit.Analyzers.dll";
+			const string downloadUrl = "https://github.com/PaulNonatomic/ServiceKitAnalyzers/releases/latest/download/ServiceKit.Analyzers.dll";
 			
 			try
 			{
