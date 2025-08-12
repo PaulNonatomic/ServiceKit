@@ -3,8 +3,6 @@ using System.Threading;
 
 #if SERVICEKIT_UNITASK
 using Cysharp.Threading.Tasks;
-#else
-using System.Threading.Tasks;
 #endif
 
 namespace Nonatomic.ServiceKit
@@ -12,16 +10,17 @@ namespace Nonatomic.ServiceKit
 	public interface IServiceInjectionBuilder
 	{
 		IServiceInjectionBuilder WithCancellation(CancellationToken cancellationToken);
-		IServiceInjectionBuilder WithTimeout(float timeoutSeconds);
 		IServiceInjectionBuilder WithTimeout();
+		IServiceInjectionBuilder WithTimeout(float timeoutSeconds);
 		IServiceInjectionBuilder WithErrorHandling(Action<Exception> errorHandler);
 		IServiceInjectionBuilder WithErrorHandling();
 
-		void Execute();
-#if SERVICEKIT_UNITASK
+		#if SERVICEKIT_UNITASK
 		UniTask ExecuteAsync();
-#else
-		Task ExecuteAsync();
-#endif
+		UniTask ExecuteWithCancellationAsync(CancellationToken cancellationToken);
+		#else
+		System.Threading.Tasks.Task ExecuteAsync();
+		System.Threading.Tasks.Task ExecuteWithCancellationAsync(CancellationToken cancellationToken);
+		#endif
 	}
 }
