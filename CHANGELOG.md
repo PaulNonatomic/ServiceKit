@@ -1,3 +1,9 @@
+## [1.3.3] - Aug 12, 2025
+- Improved error handling for service registration failures
+- Enhanced null service detection to identify missing interface implementations
+- Added detailed error messages showing which interfaces a ServiceKitBehaviour failed to implement
+- ServiceKitBehaviour now provides proactive error checking before attempting registration
+
 ## [1.3.2] - Aug 12, 2025
 - Hotfix added the ExecuteWithCancellationAsync method to the IServiceInjectionBuilder
 

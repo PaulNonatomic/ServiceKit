@@ -86,6 +86,17 @@ namespace Tests.EditMode
 		}
 
 		[Test]
+		public void RegisterService_ThrowsInvalidOperationException_WhenServiceIsNull()
+		{
+			// Act & Assert
+			var ex = Assert.Throws<InvalidOperationException>(() =>
+				_realServiceKitLocator.RegisterService<IPlayerService>(null));
+			
+			Assert.That(ex.Message, Does.Contain("Service registration failed"));
+			Assert.That(ex.Message, Does.Contain("IPlayerService"));
+		}
+
+		[Test]
 		public async Task GetServiceAsync_WaitsForServiceToBeReady()
 		{
 			// Arrange

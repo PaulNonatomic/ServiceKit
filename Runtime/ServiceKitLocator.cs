@@ -61,7 +61,27 @@ namespace Nonatomic.ServiceKit
 
 		private void RegisterService<T>(T service, bool exemptFromCircularDependencyCheck, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
 		{
-			if (service == null) throw new ArgumentNullException(nameof(service));
+			if (service == null)
+			{
+				var typeT = typeof(T);
+				var callerType = registeredBy != null ? GetCallerTypeFromStackTrace() : null;
+				
+				// Check if this is likely a failed interface cast from ServiceKitBehaviour
+				if (typeT.IsInterface && callerType != null)
+				{
+					var interfaceList = string.Join(", ", callerType.GetInterfaces().Select(i => i.Name));
+					var errorMessage = $"Service registration failed for type '{typeT.Name}'. " +
+									  $"The service object is null, which often occurs when a ServiceKitBehaviour<{typeT.Name}> " +
+									  $"does not implement the interface '{typeT.Name}'. " +
+									  $"Caller type: '{callerType.Name}' " +
+									  $"Implements interfaces: [{interfaceList}]. " +
+									  $"Please ensure that '{callerType.Name}' implements '{typeT.Name}'.";
+					throw new InvalidOperationException(errorMessage);
+				}
+				
+				throw new ArgumentNullException(nameof(service), 
+					$"Service registration failed for type '{typeT.Name}'. The service object cannot be null.");
+			}
 
 			lock (_lock)
 			{
@@ -733,6 +753,38 @@ namespace Nonatomic.ServiceKit
 			foreach (var readyType in _readyServices.Keys)
 			{
 				if (readyType.Name == typeName) return readyType;
+			}
+			return null;
+		}
+
+		private Type GetCallerTypeFromStackTrace()
+		{
+			try
+			{
+				var stackTrace = new System.Diagnostics.StackTrace();
+				// Skip frames: GetCallerTypeFromStackTrace, RegisterService, and public RegisterService wrapper
+				for (int i = 3; i < stackTrace.FrameCount; i++)
+				{
+					var method = stackTrace.GetFrame(i)?.GetMethod();
+					if (method != null && method.DeclaringType != null)
+					{
+						// Skip ServiceKit internal types
+						if (!method.DeclaringType.Namespace?.StartsWith("Nonatomic.ServiceKit") ?? false)
+						{
+							return method.DeclaringType;
+						}
+						// Check if it's a ServiceKitBehaviour derived type
+						if (method.DeclaringType.IsSubclassOf(typeof(MonoBehaviour)) && 
+							method.DeclaringType.Name.Contains("ServiceKitBehaviour"))
+						{
+							return method.DeclaringType;
+						}
+					}
+				}
+			}
+			catch
+			{
+				// Silently fail if we can't get stack trace
 			}
 			return null;
 		}

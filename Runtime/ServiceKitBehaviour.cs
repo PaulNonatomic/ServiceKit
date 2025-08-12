@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using UnityEngine;
 
 #if SERVICEKIT_UNITASK
@@ -36,7 +37,23 @@ namespace Nonatomic.ServiceKit
 		{
 			if (GuardAgainstUnassignedServiceKit()) return;
 			
-			ServiceKitLocator.RegisterService<T>(this as T);
+			var serviceInstance = this as T;
+			if (serviceInstance == null)
+			{
+				var typeT = typeof(T);
+				var thisType = GetType();
+				var interfaceList = string.Join(", ", thisType.GetInterfaces().Select(i => i.Name));
+				
+				var errorMessage = $"Failed to register service for '{thisType.Name}' as '{typeT.Name}'. " +
+								  $"This typically means '{thisType.Name}' does not implement interface '{typeT.Name}'. " +
+								  $"Current class '{thisType.Name}' implements: [{interfaceList}]. " +
+								  $"Please ensure '{thisType.Name}' properly implements '{typeT.Name}'.";
+				
+				Debug.LogError($"[ServiceKit] {errorMessage}", this);
+				throw new InvalidOperationException(errorMessage);
+			}
+			
+			ServiceKitLocator.RegisterService<T>(serviceInstance);
 			Registered = true;
 			
 			if (ServiceKitSettings.Instance.DebugLogging)
