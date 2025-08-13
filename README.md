@@ -193,6 +193,56 @@ var (player, inventory, audio) = await UniTask.WhenAll(
 - **Frame-Critical Code**: Use for smooth 60fps gameplay where every allocation matters
 - **Memory-Constrained Platforms**: VR, WebGL, and older devices benefit significantly
 
+## Roslyn Analyzer Support
+
+ServiceKit includes integrated support for Roslyn Analyzers to help you write better code with real-time analysis and suggestions specifically tailored for ServiceKit development.
+
+### Features
+
+The ServiceKit Analyzers provide:
+- **Code analysis** for common ServiceKit patterns and best practices
+- **Real-time suggestions** to improve your service implementations
+- **Compile-time warnings** for potential issues with dependency injection
+- **Code fixes** to automatically resolve common problems
+
+### Installation
+
+ServiceKit includes a built-in tool to download and manage the Roslyn Analyzers:
+
+1. Open the ServiceKit Settings window: `Edit > Project Settings > ServiceKit`
+2. Navigate to the **Developer Tools** section
+3. Click **Download Analyzers** to automatically fetch the latest version from GitHub
+4. The analyzers will be installed to `Assets/Analyzers/ServiceKit/`
+
+### Manual Installation
+
+You can also manually download the analyzers:
+1. Visit the [ServiceKit Analyzers releases page](https://github.com/PaulNonatomic/ServiceKitAnalyzers/releases)
+2. Download the latest `ServiceKit.Analyzers.dll`
+3. Place it in `Assets/Analyzers/ServiceKit/` in your Unity project
+4. Unity will automatically recognize and apply the analyzers
+
+### Managing Analyzers
+
+Through the ServiceKit Settings window, you can:
+- **Update**: Download the latest version to get new analysis rules and improvements
+- **Remove**: Uninstall the analyzers if you no longer need them
+- **View Details**: See the installed version, file size, and last modified date
+
+### Contributing to Analyzers
+
+The ServiceKit Analyzers are open source! If you'd like to contribute new analysis rules or improvements:
+- Visit the [ServiceKit Analyzers repository](https://github.com/PaulNonatomic/ServiceKitAnalyzers)
+- Check out the contribution guidelines
+- Submit issues for bugs or feature requests
+- Create pull requests with your improvements
+
+The analyzer repository includes documentation on:
+- How to build custom analyzers for ServiceKit
+- Adding new diagnostic rules
+- Creating code fix providers
+- Testing analyzer implementations
+
 ## Advanced Usage
 
 ### Using `ServiceKitBehaviour` Base Class
