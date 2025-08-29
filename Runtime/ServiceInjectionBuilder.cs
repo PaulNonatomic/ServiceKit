@@ -161,13 +161,46 @@ namespace Nonatomic.ServiceKit
 						if (!attr.Required)
 						{
 							var locator = _serviceKitLocator as ServiceKitLocator;
-							if (locator == null || !locator.IsServiceReady(serviceType))
+							if (locator == null)
 							{
 								return (field, null, attr.Required);
 							}
-
-							var optional = _serviceKitLocator.GetService(serviceType);
-							return (field, optional, attr.Required);
+							
+							// 3-state logic for optional dependencies:
+							// 1. Service is ready -> inject immediately
+							// 2. Service is registered but not ready -> wait for it (treat as required)
+							// 3. Service is not registered -> skip it (inject null)
+							
+							if (locator.IsServiceReady(serviceType))
+							{
+								// State 1: Service is ready - inject immediately
+								var readyService = _serviceKitLocator.GetService(serviceType);
+								return (field, readyService, attr.Required);
+							}
+							else if (locator.IsServiceRegistered(serviceType))
+							{
+								// State 2: Service is registered but not ready - wait for it
+								try
+								{
+#if SERVICEKIT_UNITASK
+									var pendingService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
+#else
+									var pendingService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
+#endif
+									return (field, pendingService, attr.Required);
+								}
+								catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
+								{
+									ServiceDependencyGraph.AddCircularDependencyError(serviceType);
+									ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
+									throw new ServiceInjectionException($"Injection cancelled due to circular dependency involving {serviceType.Name}");
+								}
+							}
+							else
+							{
+								// State 3: Service is not registered - skip it
+								return (field, null, attr.Required);
+							}
 						}
 
 						try
