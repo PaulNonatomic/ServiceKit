@@ -37,29 +37,46 @@ namespace Nonatomic.ServiceKit
 		{
 			if (GuardAgainstUnassignedServiceKit()) return;
 			
+			var serviceInstance = CastToServiceInterface();
+			RegisterServiceInstance(serviceInstance);
+			LogServiceRegistration();
+		}
+
+		private T CastToServiceInterface()
+		{
 			var serviceInstance = this as T;
-			if (serviceInstance == null)
-			{
-				var typeT = typeof(T);
-				var thisType = GetType();
-				var interfaceList = string.Join(", ", thisType.GetInterfaces().Select(i => i.Name));
-				
-				var errorMessage = $"Failed to register service for '{thisType.Name}' as '{typeT.Name}'. " +
-								  $"This typically means '{thisType.Name}' does not implement interface '{typeT.Name}'. " +
-								  $"Current class '{thisType.Name}' implements: [{interfaceList}]. " +
-								  $"Please ensure '{thisType.Name}' properly implements '{typeT.Name}'.";
-				
-				Debug.LogError($"[ServiceKit] {errorMessage}", this);
-				throw new InvalidOperationException(errorMessage);
-			}
+			if (serviceInstance != null) return serviceInstance;
+
+			ThrowServiceCastException();
+			return null; // Never reached due to exception
+		}
+
+		private void ThrowServiceCastException()
+		{
+			var serviceType = typeof(T);
+			var implementationType = GetType();
+			var implementedInterfaces = string.Join(", ", implementationType.GetInterfaces().Select(i => i.Name));
 			
+			var errorMessage = $"Failed to register service for '{implementationType.Name}' as '{serviceType.Name}'. " +
+							  $"This typically means '{implementationType.Name}' does not implement interface '{serviceType.Name}'. " +
+							  $"Current class '{implementationType.Name}' implements: [{implementedInterfaces}]. " +
+							  $"Please ensure '{implementationType.Name}' properly implements '{serviceType.Name}'.";
+			
+			Debug.LogError($"[ServiceKit] {errorMessage}", this);
+			throw new InvalidOperationException(errorMessage);
+		}
+
+		private void RegisterServiceInstance(T serviceInstance)
+		{
 			ServiceKitLocator.RegisterService<T>(serviceInstance);
 			Registered = true;
+		}
+
+		private void LogServiceRegistration()
+		{
+			if (!ServiceKitSettings.Instance.DebugLogging) return;
 			
-			if (ServiceKitSettings.Instance.DebugLogging)
-			{
-				Debug.Log($"[{GetType().Name}] Service registered (not ready yet)");
-			}
+			Debug.Log($"[{GetType().Name}] Service registered (not ready yet)");
 		}
 
 		protected virtual void MarkServiceReady()
@@ -67,21 +84,39 @@ namespace Nonatomic.ServiceKit
 			if (GuardAgainstUnassignedServiceKit()) return;
 			if (!Registered) return;
 			
+			SetServiceAsReady();
+			LogServiceReady();
+		}
+
+		private void SetServiceAsReady()
+		{
 			ServiceKitLocator.ReadyService<T>();
 			Ready = true;
+		}
+
+		private void LogServiceReady()
+		{
+			if (!ServiceKitSettings.Instance.DebugLogging) return;
 			
-			if (ServiceKitSettings.Instance.DebugLogging)
-			{
-				Debug.Log($"[{GetType().Name}] Service is now READY!");
-			}
+			Debug.Log($"[{GetType().Name}] Service is now READY!");
 		}
 	   
 		protected virtual void UnregisterService()
 		{
 			if (GuardAgainstUnassignedServiceKit()) return;
 			
+			ClearServiceState();
+			RemoveServiceFromLocator();
+		}
+
+		private void ClearServiceState()
+		{
 			Registered = false;
 			Ready = false;
+		}
+
+		private void RemoveServiceFromLocator()
+		{
 			ServiceKitLocator.UnregisterService(typeof(T));
 		}
 
@@ -93,21 +128,36 @@ namespace Nonatomic.ServiceKit
 		{
 			if (GuardAgainstUnassignedServiceKit()) return;
 			
-			if (ServiceKitSettings.Instance.DebugLogging)
-			{
-				Debug.Log($"[{GetType().Name}] Waiting for dependencies...");
-			}
+			LogDependencyWaiting();
+			await ExecuteDependencyInjection();
+			LogDependencyCompletion();
+		}
+
+		private void LogDependencyWaiting()
+		{
+			if (!ServiceKitSettings.Instance.DebugLogging) return;
 			
+			Debug.Log($"[{GetType().Name}] Waiting for dependencies...");
+		}
+
+#if SERVICEKIT_UNITASK
+		private async UniTask ExecuteDependencyInjection()
+#else
+		private async Task ExecuteDependencyInjection()
+#endif
+		{
 			await ServiceKitLocator.InjectServicesAsync(this)
 				.WithCancellation(destroyCancellationToken) 
 				.WithTimeout()
 				.WithErrorHandling(OnServiceInjectionFailed)
 				.ExecuteAsync();
+		}
+
+		private void LogDependencyCompletion()
+		{
+			if (!ServiceKitSettings.Instance.DebugLogging) return;
 			
-			if (ServiceKitSettings.Instance.DebugLogging)
-			{
-				Debug.Log($"[{GetType().Name}] Dependencies injected!");
-			}
+			Debug.Log($"[{GetType().Name}] Dependencies injected!");
 		}
 
 		/// <summary>
@@ -148,12 +198,17 @@ namespace Nonatomic.ServiceKit
 			Debug.LogError($"Failed to inject required services: {exception.Message}", this);
 		}
 	   
-		protected bool GuardAgainstUnassignedServiceKit()
+		private bool GuardAgainstUnassignedServiceKit()
 		{
-			if (ServiceKitLocator) return false;
+			if (ServiceKitLocator != null) return false;
 			
-			Debug.LogError($"{GetType().Name} requires a reference to a ServiceKitLocator.", this);
+			LogMissingServiceKitError();
 			return true;
+		}
+
+		private void LogMissingServiceKitError()
+		{
+			Debug.LogError($"{GetType().Name} requires a reference to a ServiceKitLocator.", this);
 		}
 	}
 }

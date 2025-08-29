@@ -106,28 +106,16 @@ namespace Nonatomic.ServiceKit
 		public async Task ExecuteAsync()
 #endif
 		{
-			var targetType = _target.GetType();
-			var fieldsToInject = GetFieldsToInject(targetType);
-			if (fieldsToInject.Count == 0)
-			{
-				return;
-			}
+			var fieldsToInject = GetFieldsToInject(_target.GetType());
+			if (fieldsToInject.Count == 0) return;
 
 			var resolutionCts = new CancellationTokenSource();
 			ServiceDependencyGraph.RegisterResolving(_targetServiceType, resolutionCts);
 
 			try
 			{
-				ServiceDependencyGraph.UpdateForTarget(_targetServiceType, fieldsToInject);
-				ServiceDependencyGraph.SetResolving(_targetServiceType, true);
-
-				var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
-				if (circular != null)
-				{
-					ServiceDependencyGraph.CancelCircularChain(circular.Path);
-					ServiceDependencyGraph.MarkAllInPathAsError(circular.Path);
-					throw new ServiceInjectionException($"Circular dependency detected: {circular.Path}");
-				}
+				PrepareForInjection(fieldsToInject);
+				ThrowIfCircularDependencyDetected();
 
 				CancellationTokenSource timeoutCts = null;
 				IDisposable timeoutReg = null;
@@ -147,78 +135,7 @@ namespace Nonatomic.ServiceKit
 					var finalToken = linked.Token;
 					var unityContext = SynchronizationContext.Current;
 
-#if SERVICEKIT_UNITASK
-					var tasks = fieldsToInject.Select<FieldInfo, UniTask<(FieldInfo field, object service, bool required)>>(async field =>
-#else
-					var tasks = fieldsToInject.Select<FieldInfo, Task<(FieldInfo field, object service, bool required)>>(async field =>
-#endif
-					{
-						var attr = field.GetCustomAttribute<InjectServiceAttribute>();
-						var serviceType = field.FieldType;
-
-						finalToken.ThrowIfCancellationRequested();
-
-						if (!attr.Required)
-						{
-							var locator = _serviceKitLocator as ServiceKitLocator;
-							if (locator == null)
-							{
-								return (field, null, attr.Required);
-							}
-							
-							// 3-state logic for optional dependencies:
-							// 1. Service is ready -> inject immediately
-							// 2. Service is registered but not ready -> wait for it (treat as required)
-							// 3. Service is not registered -> skip it (inject null)
-							
-							if (locator.IsServiceReady(serviceType))
-							{
-								// State 1: Service is ready - inject immediately
-								var readyService = _serviceKitLocator.GetService(serviceType);
-								return (field, readyService, attr.Required);
-							}
-							else if (locator.IsServiceRegistered(serviceType))
-							{
-								// State 2: Service is registered but not ready - wait for it
-								try
-								{
-#if SERVICEKIT_UNITASK
-									var pendingService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
-#else
-									var pendingService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
-#endif
-									return (field, pendingService, attr.Required);
-								}
-								catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
-								{
-									ServiceDependencyGraph.AddCircularDependencyError(serviceType);
-									ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
-									throw new ServiceInjectionException($"Injection cancelled due to circular dependency involving {serviceType.Name}");
-								}
-							}
-							else
-							{
-								// State 3: Service is not registered - skip it
-								return (field, null, attr.Required);
-							}
-						}
-
-						try
-						{
-#if SERVICEKIT_UNITASK
-							var requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
-#else
-							var requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, finalToken);
-#endif
-							return (field, requiredService, attr.Required);
-						}
-						catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
-						{
-							ServiceDependencyGraph.AddCircularDependencyError(serviceType);
-							ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
-							throw new ServiceInjectionException($"Injection cancelled due to circular dependency involving {serviceType.Name}");
-						}
-					}).ToList();
+					var tasks = fieldsToInject.Select(field => ResolveServiceForField(field, finalToken, resolutionCts)).ToList();
 
 #if SERVICEKIT_UNITASK
 					var results = await UniTask.WhenAll(tasks);
@@ -310,15 +227,103 @@ namespace Nonatomic.ServiceKit
 			return fields;
 		}
 
+		private void PrepareForInjection(List<FieldInfo> fieldsToInject)
+		{
+			ServiceDependencyGraph.UpdateForTarget(_targetServiceType, fieldsToInject);
+			ServiceDependencyGraph.SetResolving(_targetServiceType, true);
+		}
+
+		private void ThrowIfCircularDependencyDetected()
+		{
+			var circularDependency = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+			if (circularDependency == null) return;
+
+			ServiceDependencyGraph.CancelCircularChain(circularDependency.Path);
+			ServiceDependencyGraph.MarkAllInPathAsError(circularDependency.Path);
+			throw new ServiceInjectionException($"Circular dependency detected: {circularDependency.Path}");
+		}
+
+#if SERVICEKIT_UNITASK
+		private async UniTask<(FieldInfo field, object service, bool required)> ResolveServiceForField(FieldInfo field, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
+#else
+		private async Task<(FieldInfo field, object service, bool required)> ResolveServiceForField(FieldInfo field, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
+#endif
+		{
+			var serviceAttribute = field.GetCustomAttribute<InjectServiceAttribute>();
+			var serviceType = field.FieldType;
+
+			cancellationToken.ThrowIfCancellationRequested();
+
+			if (!serviceAttribute.Required)
+			{
+				return await ResolveOptionalService(field, serviceType, serviceAttribute, cancellationToken, resolutionCts);
+			}
+
+			return await ResolveRequiredService(field, serviceType, serviceAttribute, cancellationToken, resolutionCts);
+		}
+
+#if SERVICEKIT_UNITASK
+		private async UniTask<(FieldInfo field, object service, bool required)> ResolveOptionalService(FieldInfo field, Type serviceType, InjectServiceAttribute serviceAttribute, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
+#else
+		private async Task<(FieldInfo field, object service, bool required)> ResolveOptionalService(FieldInfo field, Type serviceType, InjectServiceAttribute serviceAttribute, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
+#endif
+		{
+			var locator = _serviceKitLocator as ServiceKitLocator;
+			if (locator == null) return (field, null, serviceAttribute.Required);
+
+			if (locator.IsServiceReady(serviceType))
+			{
+				var readyService = _serviceKitLocator.GetService(serviceType);
+				return (field, readyService, serviceAttribute.Required);
+			}
+
+			if (!locator.IsServiceRegistered(serviceType))
+			{
+				return (field, null, serviceAttribute.Required);
+			}
+
+			try
+			{
+				var pendingService = await _serviceKitLocator.GetServiceAsync(serviceType, cancellationToken);
+				return (field, pendingService, serviceAttribute.Required);
+			}
+			catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
+			{
+				HandleCircularDependencyError(serviceType);
+				throw new ServiceInjectionException($"Injection cancelled due to circular dependency involving {serviceType.Name}");
+			}
+		}
+
+#if SERVICEKIT_UNITASK
+		private async UniTask<(FieldInfo field, object service, bool required)> ResolveRequiredService(FieldInfo field, Type serviceType, InjectServiceAttribute serviceAttribute, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
+#else
+		private async Task<(FieldInfo field, object service, bool required)> ResolveRequiredService(FieldInfo field, Type serviceType, InjectServiceAttribute serviceAttribute, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
+#endif
+		{
+			try
+			{
+				var requiredService = await _serviceKitLocator.GetServiceAsync(serviceType, cancellationToken);
+				return (field, requiredService, serviceAttribute.Required);
+			}
+			catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
+			{
+				HandleCircularDependencyError(serviceType);
+				throw new ServiceInjectionException($"Injection cancelled due to circular dependency involving {serviceType.Name}");
+			}
+		}
+
+		private void HandleCircularDependencyError(Type serviceType)
+		{
+			ServiceDependencyGraph.AddCircularDependencyError(serviceType);
+			ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
+		}
+
 		private void DefaultErrorHandler(Exception exception)
 		{
 			Debug.LogError($"Failed to inject required services: {exception.Message}");
 
 			var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
-			if (circular == null)
-			{
-				return;
-			}
+			if (circular == null) return;
 
 			Debug.LogError($"Circular dependency detected: {circular.Path}");
 			ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
