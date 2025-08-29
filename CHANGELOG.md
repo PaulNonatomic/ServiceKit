@@ -1,3 +1,23 @@
+## [1.4.0] - Aug 29, 2025
+### Added
+- **Intelligent 3-State Dependency Resolution**: Enhanced `InjectService` attribute with smart behavior when `Required = false`
+  - **Service is ready** → Inject immediately
+  - **Service is registered but not ready** → Wait for it (treat as required temporarily)
+  - **Service is not registered** → Skip injection (field remains null)
+- Comprehensive test coverage for all three dependency resolution states
+- Mixed scenario testing for complex dependency graphs
+
+### Changed
+- **BREAKING CHANGE**: Enhanced `Required = false` behavior - now uses intelligent resolution instead of simple ready-check
+- Updated `InjectServiceAttribute` documentation to reflect new 3-state behavior
+- Updated README.md with detailed explanation of intelligent dependency resolution
+
+### Improved
+- Eliminates guesswork in optional dependency management
+- More predictable behavior for developers
+- Better handling of services that are "coming soon" vs "never coming"
+- Maintains backward compatibility for `Required = true` (default behavior unchanged)
+
 ## [1.3.3] - Aug 12, 2025
 - Improved error handling for service registration failures
 - Enhanced null service detection to identify missing interface implementations

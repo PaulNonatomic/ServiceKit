@@ -327,13 +327,13 @@ public class LateInitializer : MonoBehaviour
 
 ### Optional Dependencies
 
-Services can be marked as optional and won't cause injection to fail if unavailable:
+Services can be marked as optional using intelligent 3-state dependency resolution:
 
 ```csharp
 public class AnalyticsReporter : MonoBehaviour
 {
     [InjectService(Required = false)]
-    private IAnalyticsService _analyticsService; // Won't fail if missing
+    private IAnalyticsService _analyticsService; // Uses intelligent resolution
 
     [InjectService]
     private IPlayerService _playerService; // Required - will fail if missing
@@ -341,6 +341,18 @@ public class AnalyticsReporter : MonoBehaviour
     // ...
 }
 ```
+
+**When `Required = false`, ServiceKit uses intelligent 3-state resolution:**
+
+- **Service is ready** → Inject immediately
+- **Service is registered but not ready** → Wait for it (treat as required temporarily)
+- **Service is not registered** → Skip injection (field remains null)
+
+This eliminates guesswork - you don't need to predict whether a service will be available. The system automatically waits for registered services that are "coming soon" while skipping services that will "never come."
+
+**When `Required = true` (default):**
+- Always wait for the service regardless of registration status
+- Timeout and fail if service is not available within the specified timeout period
 
 ### Exempting Services from Circular Dependency Checks
 

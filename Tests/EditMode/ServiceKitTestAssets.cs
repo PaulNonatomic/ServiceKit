@@ -16,6 +16,12 @@ namespace Tests.EditMode
 		void RemoveItem(string itemId);
 	}
 
+	public interface IAudioService
+	{
+		void PlaySound(string soundId);
+		void StopSound(string soundId);
+	}
+
 	public class PlayerService : IPlayerService
 	{
 		public void SavePlayer()

@@ -218,6 +218,118 @@ namespace Tests.EditMode
 			Assert.IsNull(mixedInstance.InventoryService, "Optional InventoryService should be null when not registered");
 			Assert.AreEqual(playerService, mixedInstance.PlayerService);
 		}
+		
+		[Test]
+		public async Task InjectServicesAsync_ThreeStateDependencyResolution_ServiceReady()
+		{
+			// Arrange - Service is ready immediately
+			var inventoryService = new InventoryService();
+			_realServiceKitLocator.RegisterAndReadyService<IInventoryService>(inventoryService);
+			
+			var testInstance = new TestThreeStateClass();
+			
+			// Act
+#if SERVICEKIT_UNITASK
+			await _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+#else
+			await _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync().ConfigureAwait(false);
+#endif
+			
+			// Assert - Should inject immediately since service is ready
+			Assert.IsNotNull(testInstance.OptionalInventoryService, "Optional service should be injected when ready");
+			Assert.AreEqual(inventoryService, testInstance.OptionalInventoryService);
+		}
+		
+		[Test]
+		public async Task InjectServicesAsync_ThreeStateDependencyResolution_ServiceRegisteredButNotReady()
+		{
+			// Arrange - Service is registered but not ready
+			var inventoryService = new InventoryService();
+			_realServiceKitLocator.RegisterService<IInventoryService>(inventoryService);
+			// Note: Not calling ReadyService, so it's registered but not ready
+			
+			var testInstance = new TestThreeStateClass();
+			
+			// Start injection in background
+			var injectionTask = _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync();
+			
+			// Let injection start waiting
+			await Task.Delay(50);
+			
+			// Now make the service ready
+			_realServiceKitLocator.ReadyService<IInventoryService>();
+			
+			// Act - Wait for injection to complete
+#if SERVICEKIT_UNITASK
+			await injectionTask.AsTask().ConfigureAwait(false);
+#else
+			await injectionTask.ConfigureAwait(false);
+#endif
+			
+			// Assert - Should wait and inject once service becomes ready
+			Assert.IsNotNull(testInstance.OptionalInventoryService, "Optional service should be injected after becoming ready");
+			Assert.AreEqual(inventoryService, testInstance.OptionalInventoryService);
+		}
+		
+		[Test]
+		public async Task InjectServicesAsync_ThreeStateDependencyResolution_ServiceNotRegistered()
+		{
+			// Arrange - Service is not registered at all
+			// Note: Not registering IInventoryService anywhere
+			
+			var testInstance = new TestThreeStateClass();
+			
+			// Act
+#if SERVICEKIT_UNITASK
+			await _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+#else
+			await _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync().ConfigureAwait(false);
+#endif
+			
+			// Assert - Should skip injection and leave field null
+			Assert.IsNull(testInstance.OptionalInventoryService, "Optional service should remain null when not registered");
+		}
+		
+		[Test]
+		public async Task InjectServicesAsync_ThreeStateDependencyResolution_MixedScenario()
+		{
+			// Arrange - Mix of all three states
+			var playerService = new PlayerService();
+			var inventoryService = new InventoryService();
+			
+			// State 1: Ready service
+			_realServiceKitLocator.RegisterAndReadyService<IPlayerService>(playerService);
+			
+			// State 2: Registered but not ready service
+			_realServiceKitLocator.RegisterService<IInventoryService>(inventoryService);
+			
+			// State 3: Not registered service (IAudioService)
+			
+			var testInstance = new TestMixedThreeStateClass();
+			
+			// Start injection
+			var injectionTask = _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync();
+			
+			// Let injection process the ready service and start waiting for registered service
+			await Task.Delay(50);
+			
+			// Make the registered service ready
+			_realServiceKitLocator.ReadyService<IInventoryService>();
+			
+			// Act - Complete injection
+#if SERVICEKIT_UNITASK
+			await injectionTask.AsTask().ConfigureAwait(false);
+#else
+			await injectionTask.ConfigureAwait(false);
+#endif
+			
+			// Assert
+			Assert.IsNotNull(testInstance.ReadyService, "Ready service should be injected immediately");
+			Assert.IsNotNull(testInstance.RegisteredService, "Registered service should be injected after becoming ready");
+			Assert.IsNull(testInstance.NotRegisteredService, "Not registered service should remain null");
+			Assert.AreEqual(playerService, testInstance.ReadyService);
+			Assert.AreEqual(inventoryService, testInstance.RegisteredService);
+		}
 
 		[Test]
 		public async Task ServiceKitTimeoutManager_ThreadSafetyTest_NoExceptionThrown()
@@ -369,6 +481,24 @@ namespace Tests.EditMode
 			
 			public IPlayerService PlayerService => _playerService;
 			public IInventoryService InventoryService => _inventoryService;
+		}
+		
+		private class TestThreeStateClass
+		{
+			[InjectService(Required = false)] private IInventoryService _optionalInventoryService;
+			
+			public IInventoryService OptionalInventoryService => _optionalInventoryService;
+		}
+		
+		private class TestMixedThreeStateClass
+		{
+			[InjectService(Required = false)] private IPlayerService _readyService;
+			[InjectService(Required = false)] private IInventoryService _registeredService;
+			[InjectService(Required = false)] private IAudioService _notRegisteredService;
+			
+			public IPlayerService ReadyService => _readyService;
+			public IInventoryService RegisteredService => _registeredService;
+			public IAudioService NotRegisteredService => _notRegisteredService;
 		}
 	}
 }
