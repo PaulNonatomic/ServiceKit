@@ -1,3 +1,9 @@
+## [1.4.2] - Aug 29, 2025
+### Fixed
+- **Compilation Error**: Fixed CS0246 error in ServiceKitThreading.cs when SERVICEKIT_UNITASK is not defined
+  - Added conditional using statements to properly import System.Threading.Tasks namespace
+  - Ensures Task type is available in both UniTask and standard .NET Task scenarios
+
 ## [1.4.1] - Aug 29, 2025
 ### Improved
 - **Code Quality**: Comprehensive coding standards review and refactoring
