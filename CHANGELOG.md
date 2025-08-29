@@ -1,3 +1,14 @@
+## [1.4.3] - Aug 29, 2025
+### Fixed
+- **Edit Mode Test Compatibility**: Fixed DontDestroyOnLoad error in ServiceKitTimeoutManager during Edit Mode tests
+  - Added conditional compilation to only call DontDestroyOnLoad in Play Mode
+  - Ensures ServiceKitTimeoutManager works correctly in Edit Mode tests, Play Mode, and built applications
+
+### Added
+- **Test Coverage**: Added comprehensive test for InitializeService timing with optional dependencies
+  - Verifies that InitializeService waits for all registered dependencies (even optional ones) to become ready
+  - Confirms 3-state dependency resolution behavior is working as designed
+
 ## [1.4.2] - Aug 29, 2025
 ### Fixed
 - **Compilation Error**: Fixed CS0246 error in ServiceKitThreading.cs when SERVICEKIT_UNITASK is not defined
