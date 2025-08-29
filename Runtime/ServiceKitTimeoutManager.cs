@@ -19,7 +19,17 @@ namespace Nonatomic.ServiceKit
 				}
 
 				var go = new GameObject("ServiceKitTimeoutManager");
+				
+				// Only use DontDestroyOnLoad in Play Mode
+				#if !UNITY_EDITOR
 				DontDestroyOnLoad(go);
+				#else
+				if (Application.isPlaying)
+				{
+					DontDestroyOnLoad(go);
+				}
+				#endif
+				
 				_instance = go.AddComponent<ServiceKitTimeoutManager>();
 				
 				return _instance;

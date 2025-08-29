@@ -332,6 +332,53 @@ namespace Tests.EditMode
 		}
 
 		[Test]
+		public async Task ServiceKitBehaviour_InitializeService_WaitsForOptionalRegisteredDependencies()
+		{
+			// Arrange - Test that InitializeService waits for optional but registered dependencies
+			var inventoryService = new InventoryService();
+			
+			// Register but don't ready the service initially
+			_realServiceKitLocator.RegisterService<IInventoryService>(inventoryService);
+			
+			var testBehaviour = new TestInitializeServiceBehaviour();
+			testBehaviour.SetServiceKitLocator(_realServiceKitLocator);
+			
+			// Track when InitializeService is called
+			bool initializeServiceCalled = false;
+			bool dependencyInjected = false;
+			
+			testBehaviour.OnInitializeServiceCalled = () => {
+				initializeServiceCalled = true;
+				// Check if dependency was injected before InitializeService was called
+				dependencyInjected = testBehaviour.OptionalInventoryService != null;
+			};
+			
+			// Act - Start the initialization process with a cancellation token
+			using (var cts = new CancellationTokenSource())
+			{
+				var awakeTask = testBehaviour.TestAwake(cts.Token);
+				
+				// Give some time for registration and dependency waiting to start
+				await Task.Delay(50);
+				
+				// At this point, InitializeService should NOT have been called yet
+				Assert.IsFalse(initializeServiceCalled, "InitializeService should not be called before optional registered dependency is ready");
+				
+				// Now make the service ready
+				_realServiceKitLocator.ReadyService<IInventoryService>();
+				
+				// Wait for the awake process to complete
+				await awakeTask;
+			}
+			
+			// Assert - InitializeService should now have been called with the dependency injected
+			Assert.IsTrue(initializeServiceCalled, "InitializeService should be called after dependency becomes ready");
+			Assert.IsTrue(dependencyInjected, "Optional registered dependency should be injected before InitializeService");
+			Assert.IsNotNull(testBehaviour.OptionalInventoryService, "Dependency should be available in InitializeService");
+			Assert.AreEqual(inventoryService, testBehaviour.OptionalInventoryService);
+		}
+
+		[Test]
 		public async Task ServiceKitTimeoutManager_ThreadSafetyTest_NoExceptionThrown()
 		{
 			// Arrange - Test the thread safety of ServiceKitTimeoutManager operations
