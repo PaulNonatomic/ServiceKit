@@ -61,27 +61,7 @@ namespace Nonatomic.ServiceKit
 
 		private void RegisterService<T>(T service, bool exemptFromCircularDependencyCheck, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
 		{
-			if (service == null)
-			{
-				var typeT = typeof(T);
-				var callerType = registeredBy != null ? GetCallerTypeFromStackTrace() : null;
-				
-				// Check if this is likely a failed interface cast from ServiceKitBehaviour
-				if (typeT.IsInterface && callerType != null)
-				{
-					var interfaceList = string.Join(", ", callerType.GetInterfaces().Select(i => i.Name));
-					var errorMessage = $"Service registration failed for type '{typeT.Name}'. " +
-									  $"The service object is null, which often occurs when a ServiceKitBehaviour<{typeT.Name}> " +
-									  $"does not implement the interface '{typeT.Name}'. " +
-									  $"Caller type: '{callerType.Name}' " +
-									  $"Implements interfaces: [{interfaceList}]. " +
-									  $"Please ensure that '{callerType.Name}' implements '{typeT.Name}'.";
-					throw new InvalidOperationException(errorMessage);
-				}
-				
-				throw new ArgumentNullException(nameof(service), 
-					$"Service registration failed for type '{typeT.Name}'. The service object cannot be null.");
-			}
+			ValidateServiceNotNull<T>(service, registeredBy);
 
 			lock (_lock)
 			{
@@ -672,6 +652,34 @@ namespace Nonatomic.ServiceKit
 			return info;
 		}
 
+		private static void ValidateServiceNotNull<T>(T service, string registeredBy) where T : class
+		{
+			if (service != null) return;
+
+			var serviceType = typeof(T);
+			var callerType = registeredBy != null ? GetCallerTypeFromStackTrace() : null;
+
+			if (serviceType.IsInterface && callerType != null)
+			{
+				ThrowDetailedInterfaceImplementationError(serviceType, callerType);
+			}
+
+			throw new ArgumentNullException(nameof(service), 
+				$"Service registration failed for type '{serviceType.Name}'. The service object cannot be null.");
+		}
+
+		private static void ThrowDetailedInterfaceImplementationError(Type serviceType, Type callerType)
+		{
+			var interfaceList = string.Join(", ", callerType.GetInterfaces().Select(i => i.Name));
+			var errorMessage = $"Service registration failed for type '{serviceType.Name}'. " +
+							  $"The service object is null, which often occurs when a ServiceKitBehaviour<{serviceType.Name}> " +
+							  $"does not implement the interface '{serviceType.Name}'. " +
+							  $"Caller type: '{callerType.Name}' " +
+							  $"Implements interfaces: [{interfaceList}]. " +
+							  $"Please ensure that '{callerType.Name}' implements '{serviceType.Name}'.";
+			throw new InvalidOperationException(errorMessage);
+		}
+
 		private void TrackServiceScene(MonoBehaviour monoBehaviour)
 		{
 			var scene = monoBehaviour.gameObject.scene;
@@ -757,7 +765,7 @@ namespace Nonatomic.ServiceKit
 			return null;
 		}
 
-		private Type GetCallerTypeFromStackTrace()
+		private static Type GetCallerTypeFromStackTrace()
 		{
 			try
 			{

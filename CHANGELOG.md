@@ -1,3 +1,13 @@
+## [1.4.1] - Aug 29, 2025
+### Improved
+- **Code Quality**: Comprehensive coding standards review and refactoring
+  - Applied "never nesting" principle - eliminated all nested if statements with early returns and guard clauses
+  - Enhanced self-documenting code with clear, action-oriented method names
+  - Applied SOLID principles with improved Single Responsibility adherence
+  - Better separation of concerns in ServiceInjectionBuilder, ServiceKitLocator, and ServiceKitBehaviour
+  - Improved method names and variable naming for better code readability
+  - No functional changes - purely internal code quality improvements
+
 ## [1.4.0] - Aug 29, 2025
 ### Added
 - **Intelligent 3-State Dependency Resolution**: Enhanced `InjectService` attribute with smart behavior when `Required = false`

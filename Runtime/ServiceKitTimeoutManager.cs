@@ -57,21 +57,40 @@ namespace Nonatomic.ServiceKit
 		{
 			lock (_timeoutsLock)
 			{
+				// Use a more robust iteration pattern that handles concurrent modifications
 				for (var i = _timeouts.Count - 1; i >= 0; i--)
 				{
+					// Double-check bounds to handle race conditions
 					if (i >= _timeouts.Count) continue;
 					
-					var (cts, endTime) = _timeouts[i];
-					if (cts.IsCancellationRequested)
+					try
 					{
-						_timeouts.RemoveAt(i);
-						continue;
-					}
+						var (cts, endTime) = _timeouts[i];
+						if (cts.IsCancellationRequested)
+						{
+							// Verify index is still valid before removal
+							if (i < _timeouts.Count)
+							{
+								_timeouts.RemoveAt(i);
+							}
+							continue;
+						}
 
-					if (Time.time < endTime) continue;
-					
-					cts.Cancel();
-					_timeouts.RemoveAt(i);
+						if (Time.time < endTime) continue;
+						
+						cts.Cancel();
+						// Verify index is still valid before removal
+						if (i < _timeouts.Count)
+						{
+							_timeouts.RemoveAt(i);
+						}
+					}
+					catch (ArgumentOutOfRangeException)
+					{
+						// Silently handle race condition where index became invalid
+						// This can happen when timeouts are disposed concurrently with Update()
+						break;
+					}
 				}
 			}
 		}
