@@ -101,4 +101,56 @@ namespace Tests.EditMode
 		// This class intentionally doesn't implement IPlayerController
 		// This should trigger our improved error messages
 	}
+
+	// Test interface for testing InitializeService timing
+	public interface ITestInitializeService
+	{
+		bool IsInitialized { get; }
+	}
+
+	// Test ServiceKitBehaviour for testing InitializeService timing with optional dependencies
+	public class TestInitializeServiceBehaviour : ServiceKitBehaviour<ITestInitializeService>, ITestInitializeService
+	{
+		[InjectService(Required = false)] 
+		private IInventoryService _optionalInventoryService;
+		
+		public IInventoryService OptionalInventoryService => _optionalInventoryService;
+		public bool IsInitialized { get; private set; }
+		public System.Action OnInitializeServiceCalled { get; set; }
+
+		// Method to set the ServiceKitLocator for testing
+		public void SetServiceKitLocator(ServiceKitLocator locator)
+		{
+			ServiceKitLocator = locator;
+		}
+
+		protected override void InitializeService()
+		{
+			base.InitializeService();
+			IsInitialized = true;
+			OnInitializeServiceCalled?.Invoke();
+		}
+
+		// Public method to call Awake for testing purposes
+#if SERVICEKIT_UNITASK
+		public async Cysharp.Threading.Tasks.UniTask TestAwake(System.Threading.CancellationToken cancellationToken)
+#else
+		public async System.Threading.Tasks.Task TestAwake(System.Threading.CancellationToken cancellationToken)
+#endif
+		{
+			RegisterService();
+			
+			// Manually inject services without using destroyCancellationToken
+			await ServiceKitLocator.InjectServicesAsync(this)
+				.WithCancellation(cancellationToken) 
+				.WithTimeout()
+				.WithErrorHandling(OnServiceInjectionFailed)
+				.ExecuteAsync();
+			
+			await InitializeServiceAsync();
+			InitializeService();
+			
+			MarkServiceReady();
+		}
+	}
 }
