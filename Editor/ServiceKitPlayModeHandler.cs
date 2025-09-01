@@ -20,6 +20,8 @@ namespace Nonatomic.ServiceKit.Editor
 		{
 			if (state == PlayModeStateChange.ExitingPlayMode)
 			{
+				// Clean up timeout manager first to prevent any timeout exceptions
+				ServiceKitTimeoutManager.Cleanup();
 				ClearAllServiceKitLocators();
 			}
 		}

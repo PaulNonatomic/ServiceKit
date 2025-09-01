@@ -123,7 +123,11 @@ namespace Nonatomic.ServiceKit
 				if (_timeout > 0f)
 				{
 					timeoutCts = new CancellationTokenSource();
-					timeoutReg = ServiceKitTimeoutManager.Instance.RegisterTimeout(timeoutCts, _timeout);
+					var timeoutManager = ServiceKitTimeoutManager.Instance;
+					if (timeoutManager != null)
+					{
+						timeoutReg = timeoutManager.RegisterTimeout(timeoutCts, _timeout);
+					}
 				}
 
 				using (timeoutReg)
@@ -161,27 +165,42 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 			}
-			catch (OperationCanceledException) when (_timeout > 0f)
+			catch (OperationCanceledException ex)
 			{
-				var requiredFields = fieldsToInject.Where(f => f.GetCustomAttribute<InjectServiceAttribute>().Required);
-				var missing = requiredFields
-					.Where(f => _serviceKitLocator.GetService(f.FieldType) == null)
-					.Select(f => f.FieldType.Name)
-					.ToList();
-
-				var message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
-				if (missing.Count > 0)
+				// Check if cancellation was due to GameObject destruction
+				if (_cancellationToken.IsCancellationRequested)
 				{
-					message += $" Missing required services: {string.Join(", ", missing)}.";
+					// The cancellation came from the destroy token or user cancellation
+					// This is expected behavior when GameObject is destroyed - just return silently
+					return;
 				}
-
-				var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
-				if (circular != null)
+				
+				// If we have a timeout and it wasn't from destruction, it's a timeout error
+				if (_timeout > 0f)
 				{
-					message += $"\n\nCircular dependency detected: {circular.Path}";
-				}
+					var requiredFields = fieldsToInject.Where(f => f.GetCustomAttribute<InjectServiceAttribute>().Required);
+					var missing = requiredFields
+						.Where(f => _serviceKitLocator.GetService(f.FieldType) == null)
+						.Select(f => f.FieldType.Name)
+						.ToList();
 
-				throw new TimeoutException(message);
+					var message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
+					if (missing.Count > 0)
+					{
+						message += $" Missing required services: {string.Join(", ", missing)}.";
+					}
+
+					var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+					if (circular != null)
+					{
+						message += $"\n\nCircular dependency detected: {circular.Path}";
+					}
+
+					throw new TimeoutException(message);
+				}
+				
+				// Re-throw if it's not a timeout or destruction scenario
+				throw;
 			}
 			finally
 			{

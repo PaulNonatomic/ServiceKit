@@ -65,26 +65,26 @@ namespace Nonatomic.ServiceKit
 
 			lock (_lock)
 			{
-				var type = typeof(T);
-				var serviceInfo = CreateServiceInfo(service, type, registeredBy, tags);
+				var serviceType = typeof(T);
+				var serviceInfo = CreateServiceInfo(service, serviceType, registeredBy, tags);
 
-				if (_readyServices.ContainsKey(type))
+				if (_readyServices.ContainsKey(serviceType))
 				{
 #if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
-						Debug.LogWarning($"[ServiceKit] Service {type.Name} is already ready. Use UnregisterService first.");
+						Debug.LogWarning($"[ServiceKit] Service {serviceType.Name} is already ready. Use UnregisterService first.");
 					}
 #endif
 					return;
 				}
 
-				if (_registeredServices.ContainsKey(type))
+				if (_registeredServices.ContainsKey(serviceType))
 				{
 #if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
-						Debug.LogWarning($"[ServiceKit] Service {type.Name} is already registered. Updating registration.");
+						Debug.LogWarning($"[ServiceKit] Service {serviceType.Name} is already registered. Updating registration.");
 					}
 #endif
 				}
@@ -92,11 +92,11 @@ namespace Nonatomic.ServiceKit
 				// Track circular dependency exemption
 				if (exemptFromCircularDependencyCheck)
 				{
-					ServiceDependencyGraph.AddCircularDependencyExemption(type);
+					ServiceDependencyGraph.AddCircularDependencyExemption(serviceType);
 #if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
-						Debug.Log($"[ServiceKit] Service {type.Name} is exempt from circular dependency checks");
+						Debug.Log($"[ServiceKit] Service {serviceType.Name} is exempt from circular dependency checks");
 					}
 #endif
 				}
@@ -105,24 +105,14 @@ namespace Nonatomic.ServiceKit
 				if (!exemptFromCircularDependencyCheck)
 				{
 					var fieldsToInject = GetInjectableFields(service.GetType());
-					ServiceDependencyGraph.UpdateForRegistration(type, fieldsToInject);
+					ServiceDependencyGraph.UpdateForRegistration(serviceType, fieldsToInject);
 
-					var circularDependency = ServiceDependencyGraph.DetectCircularDependencyAtRegistration(type);
+					var circularDependency = ServiceDependencyGraph.DetectCircularDependencyAtRegistration(serviceType);
 					if (circularDependency != null)
 					{
-						ServiceDependencyGraph.AddCircularDependencyError(type);
+						ServiceDependencyGraph.AddCircularDependencyError(serviceType);
 
-						// Mark all services in the circular dependency chain as having errors
-						var typesInPath = circularDependency.Split(new[] { " → " }, StringSplitOptions.None);
-						foreach (var typeName in typesInPath)
-						{
-							var trimmedTypeName = typeName.Trim();
-							var foundType = FindTypeByName(trimmedTypeName);
-							if (foundType != null)
-							{
-								ServiceDependencyGraph.AddCircularDependencyError(foundType);
-							}
-						}
+						MarkCircularDependencyChainAsError(circularDependency);
 
 #if UNITY_EDITOR
 						if (ServiceKitSettings.Instance.DebugLogging)
@@ -145,12 +135,12 @@ namespace Nonatomic.ServiceKit
 #if UNITY_EDITOR
 				registeredInfo.RegisteredAt = DateTime.Now;
 #endif
-				_registeredServices[type] = registeredInfo;
+				_registeredServices[serviceType] = registeredInfo;
 
 #if UNITY_EDITOR
 				if (ServiceKitSettings.Instance.DebugLogging)
 				{
-					Debug.Log($"[ServiceKit] Registered {type.Name} (not ready yet) from scene '{serviceInfo.DebugData.SceneName}' by {registeredBy}");
+					Debug.Log($"[ServiceKit] Registered {serviceType.Name} (not ready yet) from scene '{serviceInfo.DebugData.SceneName}' by {registeredBy}");
 				}
 #endif
 			}
@@ -594,15 +584,23 @@ namespace Nonatomic.ServiceKit
 		{
 			lock (_lock)
 			{
+				// Cancel all pending service awaiters first
+				foreach (var kvp in _serviceAwaiters)
+				{
+					try
+					{
+						kvp.Value.TrySetCanceled();
+					}
+					catch
+					{
+						// Ignore any exceptions during cleanup
+					}
+				}
+				_serviceAwaiters.Clear();
+				
 				_readyServices.Clear();
 				_registeredServices.Clear();
 				_trackedScenes.Clear();
-
-				foreach (var kvp in _serviceAwaiters)
-				{
-					kvp.Value.TrySetCanceled();
-				}
-				_serviceAwaiters.Clear();
 
 				// Clear dependency graph and exemptions
 				ServiceDependencyGraph.ClearAll();
@@ -731,6 +729,13 @@ namespace Nonatomic.ServiceKit
 
 		private void OnDestroy()
 		{
+			// Clean up timeout manager when the locator is destroyed
+			#if UNITY_EDITOR
+			if (!Application.isPlaying)
+			{
+				ServiceKitTimeoutManager.Cleanup();
+			}
+			#endif
 			ClearServices();
 		}
 
@@ -763,6 +768,20 @@ namespace Nonatomic.ServiceKit
 				if (readyType.Name == typeName) return readyType;
 			}
 			return null;
+		}
+
+		private void MarkCircularDependencyChainAsError(string circularDependency)
+		{
+			var typesInPath = circularDependency.Split(new[] { " → " }, StringSplitOptions.None);
+			foreach (var typeName in typesInPath)
+			{
+				var trimmedTypeName = typeName.Trim();
+				var foundType = FindTypeByName(trimmedTypeName);
+				if (foundType != null)
+				{
+					ServiceDependencyGraph.AddCircularDependencyError(foundType);
+				}
+			}
 		}
 
 		private static Type GetCallerTypeFromStackTrace()

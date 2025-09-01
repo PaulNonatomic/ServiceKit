@@ -138,19 +138,19 @@ namespace Tests.EditMode
 		public async System.Threading.Tasks.Task TestAwake(System.Threading.CancellationToken cancellationToken)
 #endif
 		{
-			RegisterService();
+			RegisterServiceWithLocator();
 			
 			// Manually inject services without using destroyCancellationToken
 			await ServiceKitLocator.InjectServicesAsync(this)
 				.WithCancellation(cancellationToken) 
 				.WithTimeout()
-				.WithErrorHandling(OnServiceInjectionFailed)
+				.WithErrorHandling(HandleDependencyInjectionFailure)
 				.ExecuteAsync();
 			
 			await InitializeServiceAsync();
 			InitializeService();
 			
-			MarkServiceReady();
+			MarkServiceAsReady();
 		}
 	}
 }

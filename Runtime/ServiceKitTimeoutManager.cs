@@ -8,11 +8,17 @@ namespace Nonatomic.ServiceKit
 	public class ServiceKitTimeoutManager : MonoBehaviour
 	{
 		private static ServiceKitTimeoutManager _instance;
+		private static bool _isCleaningUp = false;
 
 		public static ServiceKitTimeoutManager Instance
 		{
 			get
 			{
+				if (_isCleaningUp)
+				{
+					return null;
+				}
+				
 				if (_instance != null)
 				{
 					return _instance;
@@ -36,7 +42,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		private List<(CancellationTokenSource cts, float endTime)> _timeouts = new List<(CancellationTokenSource, float)>();
+		private readonly List<(CancellationTokenSource cts, float endTime)> _timeouts = new List<(CancellationTokenSource, float)>();
 		private readonly object _timeoutsLock = new object();
 
 		public IDisposable RegisterTimeout(CancellationTokenSource cts, float duration)
@@ -53,55 +59,80 @@ namespace Nonatomic.ServiceKit
 		{
 			lock (_timeoutsLock)
 			{
-				for (var i = _timeouts.Count - 1; i >= 0; i--)
+				var indexToRemove = FindTimeoutIndex(cts);
+				if (indexToRemove >= 0)
 				{
-					if (_timeouts[i].cts != cts) continue;
-					
-					_timeouts.RemoveAt(i);
-					break;
+					_timeouts.RemoveAt(indexToRemove);
 				}
 			}
 		}
 
+		private int FindTimeoutIndex(CancellationTokenSource cts)
+		{
+			for (var i = _timeouts.Count - 1; i >= 0; i--)
+			{
+				if (_timeouts[i].cts == cts) return i;
+			}
+			return -1;
+		}
+
 		private void Update()
 		{
+			if (_isCleaningUp) return;
+			
 			lock (_timeoutsLock)
 			{
-				// Use a more robust iteration pattern that handles concurrent modifications
-				for (var i = _timeouts.Count - 1; i >= 0; i--)
-				{
-					// Double-check bounds to handle race conditions
-					if (i >= _timeouts.Count) continue;
-					
-					try
-					{
-						var (cts, endTime) = _timeouts[i];
-						if (cts.IsCancellationRequested)
-						{
-							// Verify index is still valid before removal
-							if (i < _timeouts.Count)
-							{
-								_timeouts.RemoveAt(i);
-							}
-							continue;
-						}
+				ProcessTimeouts();
+			}
+		}
 
-						if (Time.time < endTime) continue;
-						
-						cts.Cancel();
-						// Verify index is still valid before removal
-						if (i < _timeouts.Count)
-						{
-							_timeouts.RemoveAt(i);
-						}
-					}
-					catch (ArgumentOutOfRangeException)
-					{
-						// Silently handle race condition where index became invalid
-						// This can happen when timeouts are disposed concurrently with Update()
-						break;
-					}
+		private void ProcessTimeouts()
+		{
+			for (var i = _timeouts.Count - 1; i >= 0; i--)
+			{
+				if (!IsValidTimeoutIndex(i)) continue;
+				
+				try
+				{
+					ProcessSingleTimeout(i);
 				}
+				catch (ArgumentOutOfRangeException)
+				{
+					break;
+				}
+				catch (ObjectDisposedException)
+				{
+					RemoveTimeoutIfValid(i);
+				}
+			}
+		}
+
+		private void ProcessSingleTimeout(int index)
+		{
+			var (cts, endTime) = _timeouts[index];
+			
+			if (cts.IsCancellationRequested)
+			{
+				RemoveTimeoutIfValid(index);
+				return;
+			}
+
+			if (Time.time < endTime) return;
+			
+			cts.Cancel();
+			RemoveTimeoutIfValid(index);
+		}
+
+		private bool IsValidTimeoutIndex(int index)
+		{
+			return index >= 0 && index < _timeouts.Count;
+		}
+
+		private void RemoveTimeoutIfValid(int index)
+		{
+			if (IsValidTimeoutIndex(index))
+			{
+				_timeouts.RemoveAt(index);
 			}
 		}
 
@@ -118,7 +149,91 @@ namespace Nonatomic.ServiceKit
 
 			public void Dispose()
 			{
-				_manager.RemoveTimeout(_cts);
+				if (_manager != null && !_isCleaningUp)
+				{
+					_manager.RemoveTimeout(_cts);
+				}
+			}
+		}
+		
+		public static void Cleanup()
+		{
+			_isCleaningUp = true;
+			
+			if (_instance != null)
+			{
+				CancelAllTimeouts();
+				DestroyInstance();
+			}
+			
+			_isCleaningUp = false;
+		}
+
+		private static void CancelAllTimeouts()
+		{
+			lock (_instance._timeoutsLock)
+			{
+				foreach (var (cts, _) in _instance._timeouts)
+				{
+					SafelyCancelAndDispose(cts);
+				}
+				_instance._timeouts.Clear();
+			}
+		}
+
+		private static void SafelyCancelAndDispose(CancellationTokenSource cts)
+		{
+			try
+			{
+				if (!cts.IsCancellationRequested)
+				{
+					cts.Cancel();
+				}
+				cts.Dispose();
+			}
+			catch
+			{
+				// Ignore any exceptions during cleanup
+			}
+		}
+
+		private static void DestroyInstance()
+		{
+			if (Application.isPlaying)
+			{
+				Destroy(_instance.gameObject);
+			}
+			else
+			{
+				DestroyImmediate(_instance.gameObject);
+			}
+			
+			_instance = null;
+		}
+		
+		private void OnDestroy()
+		{
+			if (_instance == this)
+			{
+				_instance = null;
+			}
+		}
+		
+		private void OnApplicationQuit()
+		{
+			_isCleaningUp = true;
+			ClearAllTimeoutsOnQuit();
+		}
+
+		private void ClearAllTimeoutsOnQuit()
+		{
+			lock (_timeoutsLock)
+			{
+				foreach (var (cts, _) in _timeouts)
+				{
+					SafelyCancelAndDispose(cts);
+				}
+				_timeouts.Clear();
 			}
 		}
 	}
