@@ -681,6 +681,76 @@ ServiceKit's performance characteristics make it suitable for:
 
 The framework's sub-millisecond core operations ensure that dependency injection never becomes a performance bottleneck in your Unity applications.
 
+## Migration Guide
+
+### Migrating from v1.x to v2.0
+
+Version 2.0 includes breaking changes to improve code readability and self-documentation. If you have custom services that extend `ServiceKitBehaviour<T>`, you'll need to update your code:
+
+#### Field Renames
+```csharp
+// Old (v1.x)
+if (Registered) { /* ... */ }
+if (Ready) { /* ... */ }
+
+// New (v2.0)
+if (IsServiceRegistered) { /* ... */ }
+if (IsServiceReady) { /* ... */ }
+```
+
+#### Method Renames
+```csharp
+// Old (v1.x)
+public class MyService : ServiceKitBehaviour<IMyService>
+{
+    protected override void RegisterService()
+    {
+        base.RegisterService();
+        // Custom logic
+    }
+    
+    protected override void OnServiceInjectionFailed(Exception ex)
+    {
+        base.OnServiceInjectionFailed(ex);
+        // Custom error handling
+    }
+}
+
+// New (v2.0)
+public class MyService : ServiceKitBehaviour<IMyService>
+{
+    protected override void RegisterServiceWithLocator()
+    {
+        base.RegisterServiceWithLocator();
+        // Custom logic
+    }
+    
+    protected override void HandleDependencyInjectionFailure(Exception ex)
+    {
+        base.HandleDependencyInjectionFailure(ex);
+        // Custom error handling
+    }
+}
+```
+
+#### Complete Method Mapping
+| v1.x Method | v2.0 Method |
+|------------|-------------|
+| `RegisterService()` | `RegisterServiceWithLocator()` |
+| `UnregisterService()` | `UnregisterServiceFromLocator()` |
+| `InjectServicesAsync()` | `InjectDependenciesAsync()` |
+| `MarkServiceReady()` | `MarkServiceAsReady()` |
+| `OnServiceInjectionFailed()` | `HandleDependencyInjectionFailure()` |
+
+#### Quick Migration Steps
+1. Update your `package.json` to version `2.0.0`
+2. Search your codebase for any overrides of the old method names
+3. Replace with the new method names as shown above
+4. Update any direct field access from `Registered`/`Ready` to `IsServiceRegistered`/`IsServiceReady`
+5. Recompile and test your services
+
+The core functionality remains unchanged - only the naming has been improved for better clarity and maintainability.
+
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.

@@ -1,3 +1,27 @@
+## [2.0.0] - 2025-09-01
+### Breaking Changes
+- **ServiceKitBehaviour API Changes**: Renamed methods and fields for improved self-documenting code
+  - Protected Fields:
+    - `Registered` → `IsServiceRegistered`
+    - `Ready` → `IsServiceReady`
+  - Protected Methods:
+    - `RegisterService()` → `RegisterServiceWithLocator()`
+    - `UnregisterService()` → `UnregisterServiceFromLocator()`
+    - `InjectServicesAsync()` → `InjectDependenciesAsync()`
+    - `MarkServiceReady()` → `MarkServiceAsReady()`
+    - `OnServiceInjectionFailed()` → `HandleDependencyInjectionFailure()`
+
+### Improved
+- **Code Quality**: Major refactoring for self-documenting code
+  - All method names now clearly express their intent
+  - Improved variable naming throughout the codebase
+  - Extracted helper methods for better separation of concerns
+  - Enhanced readability following Microsoft C# coding guidelines
+  - Simplified cancellation token handling using Unity's built-in `destroyCancellationToken`
+
+### Migration Guide
+See the README.md for detailed migration instructions from v1.x to v2.0
+
 ## [1.4.3] - Aug 29, 2025
 ### Fixed
 - **Edit Mode Test Compatibility**: Fixed DontDestroyOnLoad error in ServiceKitTimeoutManager during Edit Mode tests
