@@ -1,3 +1,4 @@
+## [2.1.2] - 2025-09-02
 ## [2.1.1] - 2025-09-02
 - Removed performance tests as they had corrupted meta files
 
