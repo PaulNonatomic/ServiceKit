@@ -18,11 +18,18 @@ namespace Nonatomic.ServiceKit.Editor
 
 		private static void OnPlayModeStateChanged(PlayModeStateChange state)
 		{
-			if (state == PlayModeStateChange.ExitingPlayMode)
+			switch (state)
 			{
-				// Clean up timeout manager first to prevent any timeout exceptions
-				ServiceKitTimeoutManager.Cleanup();
-				ClearAllServiceKitLocators();
+				case PlayModeStateChange.ExitingPlayMode:
+					// Clean up timeout manager first to prevent any timeout exceptions
+					ServiceKitTimeoutManager.Cleanup();
+					ClearAllServiceKitLocators();
+					break;
+					
+				case PlayModeStateChange.EnteredEditMode:
+					// Additional cleanup in case something was missed
+					EnsureTimeoutManagerDestroyed();
+					break;
 			}
 		}
 
@@ -48,6 +55,13 @@ namespace Nonatomic.ServiceKit.Editor
 			{
 				Debug.Log($"[ServiceKit] Cleared {clearedCount} ServiceKitLocator(s) on exiting play mode.");
 			}
+		}
+		
+		private static void EnsureTimeoutManagerDestroyed()
+		{
+			// Additional cleanup call to ensure the timeout manager is fully cleaned up
+			// This is redundant but acts as a safety measure
+			ServiceKitTimeoutManager.Cleanup();
 		}
 	}
 }

@@ -46,25 +46,25 @@ namespace Nonatomic.ServiceKit
 				_instance = Resources.Load<ServiceKitSettings>("ServiceKitSettings");
 				if (_instance != null) return _instance;
 
-				#if UNITY_EDITOR
+#if UNITY_EDITOR
 				// In editor, also check for any ServiceKitSettings asset in the project
 				_instance = FindServiceKitSettingsAsset();
 				if (_instance != null) return _instance;
-				#endif
+#endif
 
 				// Fallback to runtime instance
 				_instance = CreateInstance<ServiceKitSettings>();
 				_instance.name = "ServiceKitSettings (Runtime)";
 
-				#if UNITY_EDITOR
+#if UNITY_EDITOR
 				Debug.LogWarning("[ServiceKit] No ServiceKitSettings asset found. Using runtime instance. " +
 								 "Create a ServiceKitSettings asset via Assets → Create → ServiceKit → Settings for persistent settings.");
-				#endif
+#endif
 				return _instance;
 			}
 		}
 
-		#if UNITY_EDITOR
+#if UNITY_EDITOR
 		/// <summary>
 		/// Find ServiceKitSettings asset anywhere in the project (Editor only)  
 		/// </summary>
@@ -92,13 +92,13 @@ namespace Nonatomic.ServiceKit
 		{
 			_instance = null;
 		}
-		#endif
+#endif
 		
-		#if UNITY_EDITOR
+#if UNITY_EDITOR
 		private void OnValidate()
 		{
 			_defaultTimeout = Mathf.Max(0.1f, _defaultTimeout);
 		}
-		#endif
+#endif
 	}
 }

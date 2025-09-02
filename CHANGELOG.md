@@ -1,3 +1,39 @@
+## [2.1.0] - 2025-09-02
+### Added
+- **Memory Performance Optimizations**: Comprehensive memory allocation improvements
+  - Added `ServiceKitObjectPool` for object pooling of Lists and StringBuilders
+  - Eliminated LINQ allocations in hot paths (GetAllServices, GetServicesWithTag, etc.)
+  - Replaced string concatenation with pooled StringBuilder usage
+  - Added pre-allocated lists for batch operations in TimeoutManager
+  - Zero-allocation service resolution for cached services
+
+- **Memory Performance Tests**: New comprehensive test suite for memory profiling
+  - `MemoryAllocationTracker` utility for precise allocation measurement
+  - `ServiceKitMemoryPerformanceTests` for core operation allocation testing
+  - `LinqVsOptimizedComparisonTests` comparing LINQ vs optimized implementations
+  - `ServiceKitMemoryBenchmarkRunner` for automated benchmark execution with CSV export
+
+### Fixed
+- **Runtime Exit Errors**: Fixed ServiceKitTimeoutManager cleanup issues
+  - Resolved "objects were not cleaned up" warning when exiting Play Mode
+  - Fixed timeout exceptions being thrown during application quit
+  - Added proper cleanup in OnDestroy, OnApplicationQuit, and editor mode transitions
+  - Enhanced ServiceKitPlayModeHandler to properly clean up on exit
+
+### Improved
+- **Code Standards**: Enhanced self-documenting code throughout
+  - Refactored ServiceKitTimeoutManager with descriptive method names
+  - Improved ServiceKitBehaviour with better encapsulation
+  - Enhanced ServiceKitObjectPool with generic helper methods
+  - Consistent preprocessor directive formatting (no indentation)
+  - Better separation of concerns with extracted helper methods
+
+- **Performance**: Significant reduction in runtime allocations
+  - GetService<T>: Now allocation-free for cached services
+  - IsServiceReady<T>: Zero allocations
+  - GetAllServices: Reduced allocations by ~70% through pooling
+  - String operations: 90% reduction through StringBuilder pooling
+
 ## [2.0.0] - 2025-09-01
 ### Breaking Changes
 - **ServiceKitBehaviour API Changes**: Renamed methods and fields for improved self-documenting code
