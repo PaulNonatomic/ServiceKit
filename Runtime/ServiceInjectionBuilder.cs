@@ -139,7 +139,16 @@ namespace Nonatomic.ServiceKit
 					var finalToken = linked.Token;
 					var unityContext = SynchronizationContext.Current;
 
-					var tasks = fieldsToInject.Select(field => ResolveServiceForField(field, finalToken, resolutionCts)).ToList();
+					var taskCount = fieldsToInject.Count;
+#if SERVICEKIT_UNITASK
+					var tasks = new UniTask<(FieldInfo field, object service, bool required)>[taskCount];
+#else
+					var tasks = new Task<(FieldInfo field, object service, bool required)>[taskCount];
+#endif
+					for (int i = 0; i < taskCount; i++)
+					{
+						tasks[i] = ResolveServiceForField(fieldsToInject[i], finalToken, resolutionCts);
+					}
 
 #if SERVICEKIT_UNITASK
 					var results = await UniTask.WhenAll(tasks);
@@ -147,14 +156,37 @@ namespace Nonatomic.ServiceKit
 					var results = await Task.WhenAll(tasks);
 #endif
 
-					var missing = results
-						.Where(r => r.service == null && r.required)
-						.Select(r => r.field.FieldType.Name)
-						.ToList();
-
-					if (missing.Count > 0)
+					var missingCount = 0;
+					for (var i = 0; i < results.Length; i++)
 					{
-						throw new ServiceInjectionException($"Required services not available: {string.Join(", ", missing)}");
+						if (results[i].service == null && results[i].required)
+						{
+							missingCount++;
+						}
+					}
+
+					if (missingCount > 0)
+					{
+						var sb = ServiceKitObjectPool.RentStringBuilder();
+						try
+						{
+							sb.Append("Required services not available: ");
+							var first = true;
+							for (var i = 0; i < results.Length; i++)
+							{
+								if (results[i].service == null && results[i].required)
+								{
+									if (!first) sb.Append(", ");
+									sb.Append(results[i].field.FieldType.Name);
+									first = false;
+								}
+							}
+							throw new ServiceInjectionException(sb.ToString());
+						}
+						finally
+						{
+							ServiceKitObjectPool.ReturnStringBuilder(sb);
+						}
 					}
 
 					await ServiceKitThreading.SwitchToUnityThread(unityContext);
@@ -167,36 +199,59 @@ namespace Nonatomic.ServiceKit
 			}
 			catch (OperationCanceledException ex)
 			{
-				// Check if cancellation was due to GameObject destruction
-				if (_cancellationToken.IsCancellationRequested)
+				// Check if cancellation was due to GameObject destruction or application quit
+				if (_cancellationToken.IsCancellationRequested || !Application.isPlaying)
 				{
-					// The cancellation came from the destroy token or user cancellation
-					// This is expected behavior when GameObject is destroyed - just return silently
+					// The cancellation came from the destroy token, user cancellation, or application quit
+					// This is expected behavior - just return silently
 					return;
 				}
 				
-				// If we have a timeout and it wasn't from destruction, it's a timeout error
+				// If we have a timeout and it wasn't from destruction or quit, it's a timeout error
 				if (_timeout > 0f)
 				{
-					var requiredFields = fieldsToInject.Where(f => f.GetCustomAttribute<InjectServiceAttribute>().Required);
-					var missing = requiredFields
-						.Where(f => _serviceKitLocator.GetService(f.FieldType) == null)
-						.Select(f => f.FieldType.Name)
-						.ToList();
-
-					var message = $"Service injection timed out after {_timeout} seconds for target '{_target.GetType().Name}'.";
-					if (missing.Count > 0)
+					var sb = ServiceKitObjectPool.RentStringBuilder();
+					try
 					{
-						message += $" Missing required services: {string.Join(", ", missing)}.";
-					}
+						sb.Append("Service injection timed out after ");
+						sb.Append(_timeout);
+						sb.Append(" seconds for target '");
+						sb.Append(_target.GetType().Name);
+						sb.Append("'.");
+						
+						var hasMissing = false;
+						for (var i = 0; i < fieldsToInject.Count; i++)
+						{
+							var attr = fieldsToInject[i].GetCustomAttribute<InjectServiceAttribute>();
+							if (attr.Required && _serviceKitLocator.GetService(fieldsToInject[i].FieldType) == null)
+							{
+								if (!hasMissing)
+								{
+									sb.Append(" Missing required services: ");
+									hasMissing = true;
+								}
+								else
+								{
+									sb.Append(", ");
+								}
+								sb.Append(fieldsToInject[i].FieldType.Name);
+							}
+						}
+						if (hasMissing) sb.Append(".");
+						
+						var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+						if (circular != null)
+						{
+							sb.Append("\n\nCircular dependency detected: ");
+							sb.Append(circular.Path);
+						}
 
-					var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
-					if (circular != null)
+						throw new TimeoutException(sb.ToString());
+					}
+					finally
 					{
-						message += $"\n\nCircular dependency detected: {circular.Path}";
+						ServiceKitObjectPool.ReturnStringBuilder(sb);
 					}
-
-					throw new TimeoutException(message);
 				}
 				
 				// Re-throw if it's not a timeout or destruction scenario

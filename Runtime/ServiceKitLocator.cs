@@ -416,25 +416,32 @@ namespace Nonatomic.ServiceKit
 		{
 			lock (_lock)
 			{
-				var allServices = new List<ServiceInfo>();
-
-				foreach (var kvp in _readyServices)
+				var allServices = ServiceKitObjectPool.RentServiceInfoList();
+				try
 				{
+					foreach (var kvp in _readyServices)
+					{
 #if UNITY_EDITOR
-					kvp.Value.DebugData.State = "Ready";
+						kvp.Value.DebugData.State = "Ready";
 #endif
-					allServices.Add(kvp.Value);
-				}
+						allServices.Add(kvp.Value);
+					}
 
-				foreach (var kvp in _registeredServices)
+					foreach (var kvp in _registeredServices)
+					{
+#if UNITY_EDITOR
+						kvp.Value.ServiceInfo.DebugData.State = "Registered";
+#endif
+						allServices.Add(kvp.Value.ServiceInfo);
+					}
+
+					var result = new List<ServiceInfo>(allServices);
+					return result;
+				}
+				finally
 				{
-#if UNITY_EDITOR
-					kvp.Value.ServiceInfo.DebugData.State = "Registered";
-#endif
-					allServices.Add(kvp.Value.ServiceInfo);
+					ServiceKitObjectPool.ReturnServiceInfoList(allServices);
 				}
-
-				return allServices;
 			}
 		}
 
@@ -442,14 +449,33 @@ namespace Nonatomic.ServiceKit
 		{
 			lock (_lock)
 			{
-				var services = new List<ServiceInfo>();
+				var services = ServiceKitObjectPool.RentServiceInfoList();
+				try
+				{
 #if UNITY_EDITOR
-				services.AddRange(_readyServices.Values.Where(s => s.DebugData.SceneName == sceneName));
-				services.AddRange(_registeredServices.Values
-					.Where(r => r.ServiceInfo.DebugData.SceneName == sceneName)
-					.Select(r => r.ServiceInfo));
+					foreach (var kvp in _readyServices)
+					{
+						if (kvp.Value.DebugData.SceneName == sceneName)
+						{
+							services.Add(kvp.Value);
+						}
+					}
+					
+					foreach (var kvp in _registeredServices)
+					{
+						if (kvp.Value.ServiceInfo.DebugData.SceneName == sceneName)
+						{
+							services.Add(kvp.Value.ServiceInfo);
+						}
+					}
 #endif
-				return services;
+					var result = new List<ServiceInfo>(services);
+					return result;
+				}
+				finally
+				{
+					ServiceKitObjectPool.ReturnServiceInfoList(services);
+				}
 			}
 		}
 
@@ -457,14 +483,33 @@ namespace Nonatomic.ServiceKit
 		{
 			lock (_lock)
 			{
-				var services = new List<ServiceInfo>();
+				var services = ServiceKitObjectPool.RentServiceInfoList();
+				try
+				{
 #if UNITY_EDITOR
-				services.AddRange(_readyServices.Values.Where(s => s.DebugData.IsDontDestroyOnLoad));
-				services.AddRange(_registeredServices.Values
-					.Where(r => r.ServiceInfo.DebugData.IsDontDestroyOnLoad)
-					.Select(r => r.ServiceInfo));
+					foreach (var kvp in _readyServices)
+					{
+						if (kvp.Value.DebugData.IsDontDestroyOnLoad)
+						{
+							services.Add(kvp.Value);
+						}
+					}
+					
+					foreach (var kvp in _registeredServices)
+					{
+						if (kvp.Value.ServiceInfo.DebugData.IsDontDestroyOnLoad)
+						{
+							services.Add(kvp.Value.ServiceInfo);
+						}
+					}
 #endif
-				return services;
+					var result = new List<ServiceInfo>(services);
+					return result;
+				}
+				finally
+				{
+					ServiceKitObjectPool.ReturnServiceInfoList(services);
+				}
 			}
 		}
 
@@ -668,14 +713,38 @@ namespace Nonatomic.ServiceKit
 
 		private static void ThrowDetailedInterfaceImplementationError(Type serviceType, Type callerType)
 		{
-			var interfaceList = string.Join(", ", callerType.GetInterfaces().Select(i => i.Name));
-			var errorMessage = $"Service registration failed for type '{serviceType.Name}'. " +
-							  $"The service object is null, which often occurs when a ServiceKitBehaviour<{serviceType.Name}> " +
-							  $"does not implement the interface '{serviceType.Name}'. " +
-							  $"Caller type: '{callerType.Name}' " +
-							  $"Implements interfaces: [{interfaceList}]. " +
-							  $"Please ensure that '{callerType.Name}' implements '{serviceType.Name}'.";
-			throw new InvalidOperationException(errorMessage);
+			var sb = ServiceKitObjectPool.RentStringBuilder();
+			try
+			{
+				sb.Append("Service registration failed for type '");
+				sb.Append(serviceType.Name);
+				sb.Append("'. The service object is null, which often occurs when a ServiceKitBehaviour<");
+				sb.Append(serviceType.Name);
+				sb.Append("> does not implement the interface '");
+				sb.Append(serviceType.Name);
+				sb.Append("'. Caller type: '");
+				sb.Append(callerType.Name);
+				sb.Append("' Implements interfaces: [");
+				
+				var interfaces = callerType.GetInterfaces();
+				for (int i = 0; i < interfaces.Length; i++)
+				{
+					if (i > 0) sb.Append(", ");
+					sb.Append(interfaces[i].Name);
+				}
+				
+				sb.Append("]. Please ensure that '");
+				sb.Append(callerType.Name);
+				sb.Append("' implements '");
+				sb.Append(serviceType.Name);
+				sb.Append("'.");
+				
+				throw new InvalidOperationException(sb.ToString());
+			}
+			finally
+			{
+				ServiceKitObjectPool.ReturnStringBuilder(sb);
+			}
 		}
 
 		private void TrackServiceScene(MonoBehaviour monoBehaviour)
@@ -730,12 +799,12 @@ namespace Nonatomic.ServiceKit
 		private void OnDestroy()
 		{
 			// Clean up timeout manager when the locator is destroyed
-			#if UNITY_EDITOR
+#if UNITY_EDITOR
 			if (!Application.isPlaying)
 			{
 				ServiceKitTimeoutManager.Cleanup();
 			}
-			#endif
+#endif
 			ClearServices();
 		}
 
@@ -763,6 +832,7 @@ namespace Nonatomic.ServiceKit
 			{
 				if (registeredType.Name == typeName) return registeredType;
 			}
+			
 			foreach (var readyType in _readyServices.Keys)
 			{
 				if (readyType.Name == typeName) return readyType;
@@ -789,8 +859,9 @@ namespace Nonatomic.ServiceKit
 			try
 			{
 				var stackTrace = new System.Diagnostics.StackTrace();
+				
 				// Skip frames: GetCallerTypeFromStackTrace, RegisterService, and public RegisterService wrapper
-				for (int i = 3; i < stackTrace.FrameCount; i++)
+				for (var i = 3; i < stackTrace.FrameCount; i++)
 				{
 					var method = stackTrace.GetFrame(i)?.GetMethod();
 					if (method != null && method.DeclaringType != null)
@@ -800,6 +871,7 @@ namespace Nonatomic.ServiceKit
 						{
 							return method.DeclaringType;
 						}
+						
 						// Check if it's a ServiceKitBehaviour derived type
 						if (method.DeclaringType.IsSubclassOf(typeof(MonoBehaviour)) && 
 							method.DeclaringType.Name.Contains("ServiceKitBehaviour"))
@@ -907,7 +979,17 @@ namespace Nonatomic.ServiceKit
 					serviceInfo = registeredInfo.ServiceInfo;
 				}
 
-				return serviceInfo?.Tags?.Select(t => t.name).ToList().AsReadOnly() ?? new List<string>().AsReadOnly();
+				if (serviceInfo?.Tags == null || serviceInfo.Tags.Count == 0)
+				{
+					return new List<string>().AsReadOnly();
+				}
+
+				var tagNames = new List<string>(serviceInfo.Tags.Count);
+				foreach (var tag in serviceInfo.Tags)
+				{
+					tagNames.Add(tag.name);
+				}
+				return tagNames.AsReadOnly();
 			}
 		}
 
@@ -945,28 +1027,62 @@ namespace Nonatomic.ServiceKit
 
 			lock (_lock)
 			{
-				var result = new List<ServiceInfo>();
-				var validTags = tags.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
-				if (validTags.Count == 0) return result.AsReadOnly();
-
-				foreach (var kvp in _readyServices)
+				var result = ServiceKitObjectPool.RentServiceInfoList();
+				try
 				{
-					if (kvp.Value.Tags.Any(t => validTags.Contains(t.name)))
+					var hasValidTags = false;
+					for (int i = 0; i < tags.Length; i++)
 					{
-						result.Add(kvp.Value);
+						if (!string.IsNullOrWhiteSpace(tags[i]))
+						{
+							hasValidTags = true;
+							break;
+						}
 					}
-				}
+					
+					if (!hasValidTags) return new List<ServiceInfo>().AsReadOnly();
 
-				foreach (var kvp in _registeredServices)
+					foreach (var kvp in _readyServices)
+					{
+						if (HasAnyTag(kvp.Value.Tags, tags))
+						{
+							result.Add(kvp.Value);
+						}
+					}
+
+					foreach (var kvp in _registeredServices)
+					{
+						if (HasAnyTag(kvp.Value.ServiceInfo.Tags, tags) && !result.Contains(kvp.Value.ServiceInfo))
+						{
+							result.Add(kvp.Value.ServiceInfo);
+						}
+					}
+
+					var finalResult = new List<ServiceInfo>(result);
+					return finalResult.AsReadOnly();
+				}
+				finally
 				{
-					if (kvp.Value.ServiceInfo.Tags.Any(t => validTags.Contains(t.name)) && !result.Contains(kvp.Value.ServiceInfo))
-					{
-						result.Add(kvp.Value.ServiceInfo);
-					}
+					ServiceKitObjectPool.ReturnServiceInfoList(result);
 				}
-
-				return result.AsReadOnly();
 			}
+		}
+
+		private static bool HasAnyTag(List<ServiceTag> serviceTags, string[] searchTags)
+		{
+			if (serviceTags == null || serviceTags.Count == 0) return false;
+			
+			for (int i = 0; i < serviceTags.Count; i++)
+			{
+				for (int j = 0; j < searchTags.Length; j++)
+				{
+					if (!string.IsNullOrWhiteSpace(searchTags[j]) && serviceTags[i].name == searchTags[j])
+					{
+						return true;
+					}
+				}
+			}
+			return false;
 		}
 
 		public IReadOnlyList<ServiceInfo> GetServicesWithAllTags(params string[] tags)

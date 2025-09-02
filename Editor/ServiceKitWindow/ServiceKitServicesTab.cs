@@ -96,12 +96,12 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			_searchField.AddToClassList("search-field");
 			
 			// Set placeholder text based on Unity version
-			#if UNITY_2022_3_OR_OLDER
+#if UNITY_2022_3_OR_OLDER
 			_searchField.placeholder = "Search services and tags...";
-			#elif UNITY_2023_1_OR_NEWER || UNITY_6_0_OR_NEWER
+#elif UNITY_2023_1_OR_NEWER || UNITY_6_0_OR_NEWER
 			_searchField.textEdition.placeholder = "Search services and tags...";
 			_searchField.textEdition.hidePlaceholderOnFocus = true;
-			#endif
+#endif
 			
 			_searchField.RegisterValueChangedCallback(OnSearchChanged);
 			searchContainer.Add(_searchField);

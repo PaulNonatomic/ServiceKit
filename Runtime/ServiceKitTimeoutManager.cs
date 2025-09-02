@@ -8,157 +8,260 @@ namespace Nonatomic.ServiceKit
 	public class ServiceKitTimeoutManager : MonoBehaviour
 	{
 		private static ServiceKitTimeoutManager _instance;
-		private static bool _isCleaningUp = false;
+		private static bool _isCleaningUp;
+		private static bool _applicationQuitting;
+		private static readonly Stack<TimeoutRegistration> _registrationPool = new Stack<TimeoutRegistration>();
 
 		public static ServiceKitTimeoutManager Instance
 		{
 			get
 			{
-				if (_isCleaningUp)
-				{
-					return null;
-				}
+				if (IsShuttingDown()) return null;
+				if (HasExistingInstance()) return _instance;
 				
-				if (_instance != null)
-				{
-					return _instance;
-				}
-
-				var go = new GameObject("ServiceKitTimeoutManager");
-				
-				// Only use DontDestroyOnLoad in Play Mode
-				#if !UNITY_EDITOR
-				DontDestroyOnLoad(go);
-				#else
-				if (Application.isPlaying)
-				{
-					DontDestroyOnLoad(go);
-				}
-				#endif
-				
-				_instance = go.AddComponent<ServiceKitTimeoutManager>();
-				
-				return _instance;
+				return CreateNewInstance();
 			}
 		}
-
-		private readonly List<(CancellationTokenSource cts, float endTime)> _timeouts = new List<(CancellationTokenSource, float)>();
-		private readonly object _timeoutsLock = new object();
-
-		public IDisposable RegisterTimeout(CancellationTokenSource cts, float duration)
+		
+		private static bool IsShuttingDown()
 		{
-			var endTime = Time.time + duration;
-			lock (_timeoutsLock)
+			return _isCleaningUp || _applicationQuitting;
+		}
+		
+		private static bool HasExistingInstance()
+		{
+			return _instance != null;
+		}
+		
+		private static ServiceKitTimeoutManager CreateNewInstance()
+		{
+			var managerGameObject = CreateManagerGameObject();
+			ConfigureForPersistence(managerGameObject);
+			_instance = managerGameObject.AddComponent<ServiceKitTimeoutManager>();
+			return _instance;
+		}
+		
+		private static GameObject CreateManagerGameObject()
+		{
+			return new GameObject("ServiceKitTimeoutManager");
+		}
+		
+		private static void ConfigureForPersistence(GameObject managerGameObject)
+		{
+#if !UNITY_EDITOR
+			DontDestroyOnLoad(managerGameObject);
+#else
+			if (Application.isPlaying)
 			{
-				_timeouts.Add((cts, endTime));
+				DontDestroyOnLoad(managerGameObject);
 			}
-			return new TimeoutRegistration(this, cts);
+#endif
 		}
 
-		private void RemoveTimeout(CancellationTokenSource cts)
+		private readonly List<(CancellationTokenSource cts, float endTime)> _activeTimeouts = new List<(CancellationTokenSource, float)>();
+		private readonly object _timeoutsSyncLock = new object();
+		private readonly List<int> _pendingRemovalIndices = new List<int>();
+
+		public IDisposable RegisterTimeout(CancellationTokenSource cancellationSource, float durationInSeconds)
 		{
-			lock (_timeoutsLock)
+			AddTimeoutToActiveList(cancellationSource, durationInSeconds);
+			return CreateTimeoutRegistration(cancellationSource);
+		}
+		
+		private void AddTimeoutToActiveList(CancellationTokenSource cancellationSource, float durationInSeconds)
+		{
+			var timeoutEndTime = Time.time + durationInSeconds;
+			lock (_timeoutsSyncLock)
 			{
-				var indexToRemove = FindTimeoutIndex(cts);
-				if (indexToRemove >= 0)
+				_activeTimeouts.Add((cancellationSource, timeoutEndTime));
+			}
+		}
+		
+		private TimeoutRegistration CreateTimeoutRegistration(CancellationTokenSource cancellationSource)
+		{
+			lock (_registrationPool)
+			{
+				return TryReusePooledRegistration(cancellationSource) ?? new TimeoutRegistration(this, cancellationSource);
+			}
+		}
+		
+		private TimeoutRegistration TryReusePooledRegistration(CancellationTokenSource cancellationSource)
+		{
+			if (_registrationPool.Count == 0) return null;
+			
+			var pooledRegistration = _registrationPool.Pop();
+			pooledRegistration.Initialize(this, cancellationSource);
+			return pooledRegistration;
+		}
+
+		private void RemoveTimeout(CancellationTokenSource cancellationSource)
+		{
+			lock (_timeoutsSyncLock)
+			{
+				var timeoutIndex = FindTimeoutIndexByCancellationSource(cancellationSource);
+				if (IsValidTimeoutIndex(timeoutIndex))
 				{
-					_timeouts.RemoveAt(indexToRemove);
+					_activeTimeouts.RemoveAt(timeoutIndex);
 				}
 			}
 		}
-
-		private int FindTimeoutIndex(CancellationTokenSource cts)
+		
+		private bool IsValidTimeoutIndex(int index)
 		{
-			for (var i = _timeouts.Count - 1; i >= 0; i--)
+			return index >= 0;
+		}
+
+		private int FindTimeoutIndexByCancellationSource(CancellationTokenSource targetSource)
+		{
+			for (var i = _activeTimeouts.Count - 1; i >= 0; i--)
 			{
-				if (_timeouts[i].cts == cts) return i;
+				if (_activeTimeouts[i].cts == targetSource) return i;
 			}
 			return -1;
 		}
 
 		private void Update()
 		{
-			if (_isCleaningUp) return;
+			if (ShouldSkipTimeoutProcessing()) return;
 			
-			lock (_timeoutsLock)
+			ProcessAllActiveTimeouts();
+		}
+		
+		private bool ShouldSkipTimeoutProcessing()
+		{
+			return _isCleaningUp || _applicationQuitting;
+		}
+		
+		private void ProcessAllActiveTimeouts()
+		{
+			lock (_timeoutsSyncLock)
 			{
-				ProcessTimeouts();
+				IdentifyExpiredTimeouts();
+				RemoveProcessedTimeouts();
 			}
 		}
 
-		private void ProcessTimeouts()
+		private void IdentifyExpiredTimeouts()
 		{
-			for (var i = _timeouts.Count - 1; i >= 0; i--)
+			_pendingRemovalIndices.Clear();
+			var currentTime = Time.time;
+			
+			for (var i = _activeTimeouts.Count - 1; i >= 0; i--)
 			{
-				if (!IsValidTimeoutIndex(i)) continue;
+				if (ShouldRemoveTimeout(i, currentTime))
+				{
+					_pendingRemovalIndices.Add(i);
+				}
+			}
+		}
+		
+		private bool ShouldRemoveTimeout(int timeoutIndex, float currentTime)
+		{
+			try
+			{
+				var (cancellationSource, endTime) = _activeTimeouts[timeoutIndex];
 				
-				try
+				if (cancellationSource.IsCancellationRequested) return true;
+				
+				if (HasTimeoutExpired(currentTime, endTime))
 				{
-					ProcessSingleTimeout(i);
+					cancellationSource.Cancel();
+					return true;
 				}
-				catch (ArgumentOutOfRangeException)
-				{
-					break;
-				}
-				catch (ObjectDisposedException)
-				{
-					RemoveTimeoutIfValid(i);
-				}
+				
+				return false;
 			}
-		}
-
-		private void ProcessSingleTimeout(int index)
-		{
-			var (cts, endTime) = _timeouts[index];
-			
-			if (cts.IsCancellationRequested)
+			catch (ObjectDisposedException)
 			{
-				RemoveTimeoutIfValid(index);
-				return;
+				return true;
 			}
-
-			if (Time.time < endTime) return;
-			
-			cts.Cancel();
-			RemoveTimeoutIfValid(index);
 		}
-
-		private bool IsValidTimeoutIndex(int index)
+		
+		private bool HasTimeoutExpired(float currentTime, float endTime)
 		{
-			return index >= 0 && index < _timeouts.Count;
+			return currentTime >= endTime;
 		}
-
-		private void RemoveTimeoutIfValid(int index)
+		
+		private void RemoveProcessedTimeouts()
 		{
-			if (IsValidTimeoutIndex(index))
+			for (var i = 0; i < _pendingRemovalIndices.Count; i++)
 			{
-				_timeouts.RemoveAt(index);
+				var removalIndex = _pendingRemovalIndices[i];
+				if (IsIndexWithinBounds(removalIndex))
+				{
+					_activeTimeouts.RemoveAt(removalIndex);
+				}
 			}
 		}
+		
+		private bool IsIndexWithinBounds(int index)
+		{
+			return index < _activeTimeouts.Count;
+		}
+
 
 		private class TimeoutRegistration : IDisposable
 		{
-			private ServiceKitTimeoutManager _manager;
-			private CancellationTokenSource _cts;
+			private const int MaxPoolSize = 20;
+			private ServiceKitTimeoutManager _owningManager;
+			private CancellationTokenSource _associatedCancellationSource;
 
-			public TimeoutRegistration(ServiceKitTimeoutManager manager, CancellationTokenSource cts)
+			public TimeoutRegistration(ServiceKitTimeoutManager manager, CancellationTokenSource cancellationSource)
 			{
-				_manager = manager;
-				_cts = cts;
+				Initialize(manager, cancellationSource);
+			}
+			
+			public void Initialize(ServiceKitTimeoutManager manager, CancellationTokenSource cancellationSource)
+			{
+				_owningManager = manager;
+				_associatedCancellationSource = cancellationSource;
 			}
 
 			public void Dispose()
 			{
-				if (_manager != null && !_isCleaningUp)
+				if (ShouldSkipDisposal()) return;
+				
+				RemoveTimeoutFromManager();
+				ReturnToPoolIfPossible();
+			}
+			
+			private bool ShouldSkipDisposal()
+			{
+				return _owningManager == null || _isCleaningUp;
+			}
+			
+			private void RemoveTimeoutFromManager()
+			{
+				_owningManager.RemoveTimeout(_associatedCancellationSource);
+			}
+			
+			private void ReturnToPoolIfPossible()
+			{
+				lock (_registrationPool)
 				{
-					_manager.RemoveTimeout(_cts);
+					if (!CanReturnToPool()) return;
+					
+					ResetForReuse();
+					_registrationPool.Push(this);
 				}
+			}
+			
+			private bool CanReturnToPool()
+			{
+				return _registrationPool.Count < MaxPoolSize;
+			}
+			
+			private void ResetForReuse()
+			{
+				_owningManager = null;
+				_associatedCancellationSource = null;
 			}
 		}
 		
 		public static void Cleanup()
 		{
 			_isCleaningUp = true;
+			_applicationQuitting = true;
 			
 			if (_instance != null)
 			{
@@ -167,73 +270,127 @@ namespace Nonatomic.ServiceKit
 			}
 			
 			_isCleaningUp = false;
+			_applicationQuitting = false;
 		}
 
 		private static void CancelAllTimeouts()
 		{
-			lock (_instance._timeoutsLock)
+			if (_instance == null) return;
+			
+			lock (_instance._timeoutsSyncLock)
 			{
-				foreach (var (cts, _) in _instance._timeouts)
+				foreach (var (cancellationSource, _) in _instance._activeTimeouts)
 				{
-					SafelyCancelAndDispose(cts);
+					SafelyCancelAndDispose(cancellationSource);
 				}
-				_instance._timeouts.Clear();
+				_instance._activeTimeouts.Clear();
 			}
 		}
 
-		private static void SafelyCancelAndDispose(CancellationTokenSource cts)
+		private static void SafelyCancelAndDispose(CancellationTokenSource cancellationSource)
 		{
 			try
 			{
-				if (!cts.IsCancellationRequested)
+				if (!cancellationSource.IsCancellationRequested)
 				{
-					cts.Cancel();
+					cancellationSource.Cancel();
 				}
-				cts.Dispose();
+				cancellationSource.Dispose();
 			}
 			catch
 			{
-				// Ignore any exceptions during cleanup
+				// Silently ignore exceptions during cleanup
 			}
 		}
 
 		private static void DestroyInstance()
 		{
-			if (Application.isPlaying)
-			{
-				Destroy(_instance.gameObject);
-			}
-			else
-			{
-				DestroyImmediate(_instance.gameObject);
-			}
+			if (_instance == null) return;
 			
+			var gameObjectToDestroy = _instance.gameObject;
 			_instance = null;
+			
+			if (gameObjectToDestroy != null)
+			{
+				if (Application.isPlaying)
+				{
+					Destroy(gameObjectToDestroy);
+				}
+				else
+				{
+					DestroyImmediate(gameObjectToDestroy);
+				}
+			}
 		}
 		
 		private void OnDestroy()
 		{
-			if (_instance == this)
-			{
-				_instance = null;
-			}
+			if (!IsThisInstanceActive()) return;
+			
+			MarkAsShuttingDown();
+			CancelAllPendingTimeouts();
+			ClearInstanceReference();
+		}
+		
+		private bool IsThisInstanceActive()
+		{
+			return _instance == this;
+		}
+		
+		private static void MarkAsShuttingDown()
+		{
+			_isCleaningUp = true;
+			_applicationQuitting = true;
+		}
+		
+		private static void ClearInstanceReference()
+		{
+			_instance = null;
 		}
 		
 		private void OnApplicationQuit()
 		{
-			_isCleaningUp = true;
-			ClearAllTimeoutsOnQuit();
+			MarkAsShuttingDown();
+			CancelAllPendingTimeouts();
+		}
+		
+		private void OnApplicationPause(bool pauseStatus)
+		{
+			if (ShouldHandleEditorShutdown(pauseStatus))
+			{
+				MarkAsShuttingDown();
+				CancelAllPendingTimeouts();
+			}
+		}
+		
+		private void OnApplicationFocus(bool hasFocus)
+		{
+			if (ShouldHandleEditorLostFocus(hasFocus))
+			{
+				MarkAsShuttingDown();
+				CancelAllPendingTimeouts();
+			}
+		}
+		
+		private bool ShouldHandleEditorShutdown(bool pauseStatus)
+		{
+			return pauseStatus && Application.isEditor && !Application.isPlaying;
+		}
+		
+		private bool ShouldHandleEditorLostFocus(bool hasFocus)
+		{
+			return !hasFocus && Application.isEditor && !Application.isPlaying;
 		}
 
-		private void ClearAllTimeoutsOnQuit()
+		private void CancelAllPendingTimeouts()
 		{
-			lock (_timeoutsLock)
+			lock (_timeoutsSyncLock)
 			{
-				foreach (var (cts, _) in _timeouts)
+				foreach (var (cancellationSource, _) in _activeTimeouts)
 				{
-					SafelyCancelAndDispose(cts);
+					SafelyCancelAndDispose(cancellationSource);
 				}
-				_timeouts.Clear();
+				_activeTimeouts.Clear();
 			}
 		}
 	}

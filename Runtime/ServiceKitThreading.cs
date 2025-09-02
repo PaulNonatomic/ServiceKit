@@ -10,25 +10,25 @@ namespace Nonatomic.ServiceKit
 {
 	internal static class ServiceKitThreading
 	{
-		#if SERVICEKIT_UNITASK
+#if SERVICEKIT_UNITASK
 		public static async UniTask SwitchToUnityThread(SynchronizationContext unityContext)
-			#else
+#else
 		public static async Task SwitchToUnityThread(SynchronizationContext unityContext)
-			#endif
+#endif
 		{
 			if (SynchronizationContext.Current == unityContext)
 			{
 				return;
 			}
-			#if SERVICEKIT_UNITASK
+#if SERVICEKIT_UNITASK
 			var tcs = new UniTaskCompletionSource<bool>();
 			unityContext.Post(_ => tcs.TrySetResult(true), null);
 			await tcs.Task;
-			#else
+#else
 			var tcs = new TaskCompletionSource<bool>();
 			unityContext.Post(_ => tcs.SetResult(true), null);
 			await tcs.Task;
-			#endif
+#endif
 		}
 	}
 }

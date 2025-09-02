@@ -15,12 +15,12 @@ namespace Nonatomic.ServiceKit
 		IServiceInjectionBuilder WithErrorHandling(Action<Exception> errorHandler);
 		IServiceInjectionBuilder WithErrorHandling();
 
-		#if SERVICEKIT_UNITASK
+#if SERVICEKIT_UNITASK
 		UniTask ExecuteAsync();
 		UniTask ExecuteWithCancellationAsync(CancellationToken cancellationToken);
-		#else
+#else
 		System.Threading.Tasks.Task ExecuteAsync();
 		System.Threading.Tasks.Task ExecuteWithCancellationAsync(CancellationToken cancellationToken);
-		#endif
+#endif
 	}
 }

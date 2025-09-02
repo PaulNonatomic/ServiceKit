@@ -15,8 +15,8 @@ namespace Nonatomic.ServiceKit
 	{
 		[SerializeField] protected ServiceKitLocator ServiceKitLocator;
 
-		protected bool IsServiceRegistered;
-		protected bool IsServiceReady;
+		protected bool IsServiceRegistered { get; private set; }
+		protected bool IsServiceReady { get; private set; }
 		
 		/// <summary>
 		/// Cached destroy cancellation token to avoid MissingReferenceException.
@@ -26,11 +26,30 @@ namespace Nonatomic.ServiceKit
 
 		protected virtual async void Awake()
 		{
-			if (!this || !gameObject) return;
+			if (IsObjectDestroyed()) return;
 			
-			CachedDestroyToken = destroyCancellationToken;
+			CacheDestroyToken();
 			RegisterServiceWithLocator();
 			
+			await PerformServiceInitializationSequence();
+		}
+		
+		private bool IsObjectDestroyed()
+		{
+			return !this || !gameObject;
+		}
+		
+		private void CacheDestroyToken()
+		{
+			CachedDestroyToken = destroyCancellationToken;
+		}
+		
+#if SERVICEKIT_UNITASK
+		private async UniTask PerformServiceInitializationSequence()
+#else
+		private async Task PerformServiceInitializationSequence()
+#endif
+		{
 			await InjectDependenciesAsync();
 			await InitializeServiceAsync();
 			
@@ -54,19 +73,28 @@ namespace Nonatomic.ServiceKit
 
 		private T CastThisToServiceInterface()
 		{
-			if (this is T serviceInstance) return serviceInstance;
-
-			ThrowInterfaceNotImplementedException();
-			return null;
+			return this is T serviceInstance 
+				? serviceInstance 
+				: ThrowInterfaceNotImplementedException();
 		}
 
-		private void ThrowInterfaceNotImplementedException()
+		private T ThrowInterfaceNotImplementedException()
+		{
+			var errorMessage = GenerateInterfaceNotImplementedErrorMessage();
+			LogAndThrowError(errorMessage);
+			return null;
+		}
+		
+		private string GenerateInterfaceNotImplementedErrorMessage()
 		{
 			var serviceType = typeof(T);
 			var implementationType = GetType();
 			var implementedInterfaces = GetImplementedInterfaceNames(implementationType);
-			var errorMessage = BuildInterfaceNotImplementedMessage(implementationType, serviceType, implementedInterfaces);
-			
+			return BuildInterfaceNotImplementedMessage(implementationType, serviceType, implementedInterfaces);
+		}
+		
+		private void LogAndThrowError(string errorMessage)
+		{
 			Debug.LogError($"[ServiceKit] {errorMessage}", this);
 			throw new InvalidOperationException(errorMessage);
 		}
@@ -74,21 +102,82 @@ namespace Nonatomic.ServiceKit
 		private static string GetImplementedInterfaceNames(Type type)
 		{
 			var interfaces = type.GetInterfaces();
-			var interfaceNames = interfaces.Select(i => i.Name);
-			return string.Join(", ", interfaceNames);
+			if (HasNoInterfaces(interfaces)) return string.Empty;
+			
+			return FormatInterfaceList(interfaces);
+		}
+		
+		private static bool HasNoInterfaces(Type[] interfaces)
+		{
+			return interfaces.Length == 0;
+		}
+		
+		private static string FormatInterfaceList(Type[] interfaces)
+		{
+			var stringBuilder = ServiceKitObjectPool.RentStringBuilder();
+			try
+			{
+				AppendInterfaceNames(stringBuilder, interfaces);
+				return stringBuilder.ToString();
+			}
+			finally
+			{
+				ServiceKitObjectPool.ReturnStringBuilder(stringBuilder);
+			}
+		}
+		
+		private static void AppendInterfaceNames(System.Text.StringBuilder stringBuilder, Type[] interfaces)
+		{
+			for (int i = 0; i < interfaces.Length; i++)
+			{
+				if (IsNotFirstInterface(i)) stringBuilder.Append(", ");
+				stringBuilder.Append(interfaces[i].Name);
+			}
+		}
+		
+		private static bool IsNotFirstInterface(int index)
+		{
+			return index > 0;
 		}
 
 		private static string BuildInterfaceNotImplementedMessage(Type implementationType, Type serviceType, string implementedInterfaces)
 		{
-			return $"Failed to register service for '{implementationType.Name}' as '{serviceType.Name}'. " +
-				   $"This typically means '{implementationType.Name}' does not implement interface '{serviceType.Name}'. " +
-				   $"Current class '{implementationType.Name}' implements: [{implementedInterfaces}]. " +
-				   $"Please ensure '{implementationType.Name}' properly implements '{serviceType.Name}'.";
+			var sb = ServiceKitObjectPool.RentStringBuilder();
+			try
+			{
+				sb.Append("Failed to register service for '");
+				sb.Append(implementationType.Name);
+				sb.Append("' as '");
+				sb.Append(serviceType.Name);
+				sb.Append("'. This typically means '");
+				sb.Append(implementationType.Name);
+				sb.Append("' does not implement interface '");
+				sb.Append(serviceType.Name);
+				sb.Append("'. Current class '");
+				sb.Append(implementationType.Name);
+				sb.Append("' implements: [");
+				sb.Append(implementedInterfaces);
+				sb.Append("]. Please ensure '");
+				sb.Append(implementationType.Name);
+				sb.Append("' properly implements '");
+				sb.Append(serviceType.Name);
+				sb.Append("'.");
+				return sb.ToString();
+			}
+			finally
+			{
+				ServiceKitObjectPool.ReturnStringBuilder(sb);
+			}
 		}
 
 		private void RegisterInstanceWithLocator(T serviceInstance)
 		{
 			ServiceKitLocator.RegisterService<T>(serviceInstance);
+			MarkAsRegistered();
+		}
+		
+		private void MarkAsRegistered()
+		{
 			IsServiceRegistered = true;
 		}
 
@@ -111,6 +200,11 @@ namespace Nonatomic.ServiceKit
 		private void NotifyLocatorServiceIsReady()
 		{
 			ServiceKitLocator.ReadyService<T>();
+			MarkAsReady();
+		}
+		
+		private void MarkAsReady()
+		{
 			IsServiceReady = true;
 		}
 
@@ -131,7 +225,17 @@ namespace Nonatomic.ServiceKit
 
 		private void ResetServiceRegistrationState()
 		{
+			MarkAsUnregistered();
+			MarkAsNotReady();
+		}
+		
+		private void MarkAsUnregistered()
+		{
 			IsServiceRegistered = false;
+		}
+		
+		private void MarkAsNotReady()
+		{
 			IsServiceReady = false;
 		}
 
