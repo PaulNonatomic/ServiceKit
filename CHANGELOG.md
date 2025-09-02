@@ -1,3 +1,6 @@
+## [2.1.1] - 2025-09-02
+- Removed performance tests as they had corrupted meta files
+
 ## [2.1.0] - 2025-09-02
 ### Added
 - **Memory Performance Optimizations**: Comprehensive memory allocation improvements
