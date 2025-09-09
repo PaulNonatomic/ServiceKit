@@ -108,17 +108,6 @@ namespace Nonatomic.ServiceKit
 #endif
 		{
 			var fieldsToInject = GetFieldsToInject(_target.GetType());
-#if UNITY_EDITOR
-			if (ServiceKitSettings.Instance.DebugLogging)
-			{
-				Debug.Log($"[ServiceKit] Found {fieldsToInject.Count} fields to inject for {_target.GetType().Name}");
-				foreach (var field in fieldsToInject)
-				{
-					var attr = field.GetCustomAttribute<InjectServiceAttribute>();
-					Debug.Log($"[ServiceKit]   - Field: {field.Name}, Type: {field.FieldType.Name}, Required: {attr.Required}");
-				}
-			}
-#endif
 			if (fieldsToInject.Count == 0) return;
 
 			var resolutionCts = new CancellationTokenSource();
@@ -127,15 +116,11 @@ namespace Nonatomic.ServiceKit
 			CancellationTokenSource timeoutCts = null;
 			IDisposable timeoutReg = null;
 			SynchronizationContext unityContext = null;
-#if SERVICEKIT_UNITASK
 			(FieldInfo field, object service, bool required)[] results = null;
-#else
-			(FieldInfo field, object service, bool required)[] results = null;
-#endif
 
 			try
 			{
-				PrepareForInjection(fieldsToInject);
+				RegisterDependenciesForCircularDetection(fieldsToInject);
 				ThrowIfCircularDependencyDetected();
 
 				if (_timeout > 0f)
@@ -157,62 +142,16 @@ namespace Nonatomic.ServiceKit
 					var finalToken = linked.Token;
 					unityContext = SynchronizationContext.Current;
 
-					var taskCount = fieldsToInject.Count;
-#if SERVICEKIT_UNITASK
-					var tasks = new UniTask<(FieldInfo field, object service, bool required)>[taskCount];
-#else
-					var tasks = new Task<(FieldInfo field, object service, bool required)>[taskCount];
-#endif
-					for (int i = 0; i < taskCount; i++)
-					{
-						tasks[i] = ResolveServiceForField(fieldsToInject[i], finalToken, resolutionCts);
-					}
+					results = await ResolveAllServicesInParallel(fieldsToInject, finalToken, resolutionCts);
 
-#if SERVICEKIT_UNITASK
-					results = await UniTask.WhenAll(tasks);
-#else
-					results = await Task.WhenAll(tasks);
-#endif
-
-					var missingCount = 0;
-					for (var i = 0; i < results.Length; i++)
-					{
-						if (results[i].service == null && results[i].required)
-						{
-							missingCount++;
-						}
-					}
-
-					if (missingCount > 0)
-					{
-						var sb = ServiceKitObjectPool.RentStringBuilder();
-						try
-						{
-							sb.Append("Required services not available: ");
-							var first = true;
-							for (var i = 0; i < results.Length; i++)
-							{
-								if (results[i].service == null && results[i].required)
-								{
-									if (!first) sb.Append(", ");
-									sb.Append(results[i].field.FieldType.Name);
-									first = false;
-								}
-							}
-							throw new ServiceInjectionException(sb.ToString());
-						}
-						finally
-						{
-							ServiceKitObjectPool.ReturnStringBuilder(sb);
-						}
-					}
+					ThrowIfRequiredServicesAreMissing(results);
 
 					await InjectResolvedServices(results, unityContext);
 				}
 			}
 			catch (OperationCanceledException)
 			{
-				bool isExplicitTimeout = timeoutCts?.IsCancellationRequested ?? false;
+				var isExplicitTimeout = timeoutCts?.IsCancellationRequested ?? false;
 				
 				if (ShouldIgnoreCancellation(isExplicitTimeout))
 				{
@@ -271,10 +210,67 @@ namespace Nonatomic.ServiceKit
 			return fields;
 		}
 
-		private void PrepareForInjection(List<FieldInfo> fieldsToInject)
+		private void RegisterDependenciesForCircularDetection(List<FieldInfo> fieldsToInject)
 		{
 			ServiceDependencyGraph.UpdateForTarget(_targetServiceType, fieldsToInject);
 			ServiceDependencyGraph.SetResolving(_targetServiceType, true);
+		}
+
+#if SERVICEKIT_UNITASK
+		private async UniTask<(FieldInfo field, object service, bool required)[]> ResolveAllServicesInParallel(
+			List<FieldInfo> fieldsToInject, 
+			CancellationToken cancellationToken, 
+			CancellationTokenSource resolutionCts)
+		{
+			var taskCount = fieldsToInject.Count;
+			var tasks = new UniTask<(FieldInfo field, object service, bool required)>[taskCount];
+			
+			for (int i = 0; i < taskCount; i++)
+			{
+				tasks[i] = ResolveServiceForField(fieldsToInject[i], cancellationToken, resolutionCts);
+			}
+			
+			return await UniTask.WhenAll(tasks);
+		}
+#else
+		private async Task<(FieldInfo field, object service, bool required)[]> ResolveAllServicesInParallel(
+			List<FieldInfo> fieldsToInject, 
+			CancellationToken cancellationToken, 
+			CancellationTokenSource resolutionCts)
+		{
+			var taskCount = fieldsToInject.Count;
+			var tasks = new Task<(FieldInfo field, object service, bool required)>[taskCount];
+			
+			for (int i = 0; i < taskCount; i++)
+			{
+				tasks[i] = ResolveServiceForField(fieldsToInject[i], cancellationToken, resolutionCts);
+			}
+			
+			return await Task.WhenAll(tasks);
+		}
+#endif
+
+		private void ThrowIfRequiredServicesAreMissing((FieldInfo field, object service, bool required)[] results)
+		{
+			var missingRequiredServices = results
+				.Where(r => r.service == null && r.required)
+				.Select(r => r.field.FieldType.Name)
+				.ToArray();
+			
+			if (missingRequiredServices.Length == 0) 
+				return;
+			
+			var sb = ServiceKitObjectPool.RentStringBuilder();
+			try
+			{
+				sb.Append("Required services not available: ");
+				sb.Append(string.Join(", ", missingRequiredServices));
+				throw new ServiceInjectionException(sb.ToString());
+			}
+			finally
+			{
+				ServiceKitObjectPool.ReturnStringBuilder(sb);
+			}
 		}
 
 		private void ThrowIfCircularDependencyDetected()
@@ -320,54 +316,22 @@ namespace Nonatomic.ServiceKit
 			var locator = _serviceKitLocator as ServiceKitLocator;
 			if (locator == null) return (field, null, serviceAttribute.Required);
 
-#if UNITY_EDITOR
-			if (ServiceKitSettings.Instance.DebugLogging)
-			{
-				Debug.Log($"[ServiceKit] Resolving optional service {serviceType.Name}");
-			}
-#endif
-
 			// Use atomic TryGetService to avoid TOCTOU race condition
 			// Must get the service in a single atomic operation to prevent it from being
 			// unregistered between the ready check and the get operation
 			if (locator.TryGetService(serviceType, out var readyService))
 			{
-#if UNITY_EDITOR
-				if (ServiceKitSettings.Instance.DebugLogging)
-				{
-					Debug.Log($"[ServiceKit] Optional service {serviceType.Name} is ready, injecting immediately");
-				}
-#endif
 				return (field, readyService, serviceAttribute.Required);
 			}
 
 			if (!locator.IsServiceRegistered(serviceType))
 			{
-#if UNITY_EDITOR
-				if (ServiceKitSettings.Instance.DebugLogging)
-				{
-					Debug.Log($"[ServiceKit] Optional service {serviceType.Name} is not registered, skipping");
-				}
-#endif
 				return (field, null, serviceAttribute.Required);
 			}
-
-#if UNITY_EDITOR
-			if (ServiceKitSettings.Instance.DebugLogging)
-			{
-				Debug.Log($"[ServiceKit] Optional service {serviceType.Name} is registered but not ready, waiting...");
-			}
-#endif
 
 			try
 			{
 				var pendingService = await _serviceKitLocator.GetServiceAsync(serviceType, cancellationToken);
-#if UNITY_EDITOR
-				if (ServiceKitSettings.Instance.DebugLogging)
-				{
-					Debug.Log($"[ServiceKit] Optional service {serviceType.Name} became ready and was injected");
-				}
-#endif
 				return (field, pendingService, serviceAttribute.Required);
 			}
 			catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
@@ -377,15 +341,8 @@ namespace Nonatomic.ServiceKit
 			}
 			catch (OperationCanceledException)
 			{
-				// For optional services that are registered but not ready, we should propagate the cancellation
-				// This ensures that the injection waits for registered services even if they're optional
-#if UNITY_EDITOR
-				if (ServiceKitSettings.Instance.DebugLogging)
-				{
-					Debug.Log($"[ServiceKit] Optional service {serviceType.Name} timed out or was cancelled");
-				}
-#endif
 				// Re-throw to propagate the timeout/cancellation
+				// For optional services that are registered but not ready, we wait for them
 				throw;
 			}
 		}
