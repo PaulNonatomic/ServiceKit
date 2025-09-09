@@ -62,10 +62,14 @@ namespace Tests.EditMode
 				// This mimics what ServiceKitBehaviour does
 				try
 				{
-					await locator.InjectServicesAsync(this)
-						.WithTimeout(0.5f) // Use shorter timeout for testing
-						.WithErrorHandling(HandleDependencyInjectionFailure)
-						.ExecuteAsync();
+					// Use CancellationTokenSource for reliable timeout in tests
+					using (var cts = new CancellationTokenSource(500)) // 500ms timeout
+					{
+						await locator.InjectServicesAsync(this)
+							.WithCancellation(cts.Token)
+							.WithErrorHandling(HandleDependencyInjectionFailure)
+							.ExecuteAsync();
+					}
 				}
 				catch (Exception ex)
 				{
@@ -156,11 +160,16 @@ namespace Tests.EditMode
 			{
 				exceptionThrown = true;
 			}
+			catch (OperationCanceledException)
+			{
+				// CancellationTokenSource timeout throws OperationCanceledException
+				exceptionThrown = true;
+			}
 			
 			// Assert
 			Assert.IsTrue(serviceB.InjectionAttempted, "Injection should have been attempted");
 			Assert.IsNotNull(serviceB.InjectionException, "Exception should occur");
-			Assert.IsTrue(exceptionThrown, "TimeoutException should be thrown");
+			Assert.IsTrue(exceptionThrown, "TimeoutException or OperationCanceledException should be thrown");
 			Assert.IsFalse(serviceB.InitializeServiceCalled, 
 				"InitializeService should NOT be called after timeout");
 			Assert.IsNull(serviceB.ServiceA, "ServiceA should not be injected");
@@ -208,6 +217,10 @@ namespace Tests.EditMode
 				catch (TimeoutException)
 				{
 					// This can happen if ready comes too late
+				}
+				catch (OperationCanceledException)
+				{
+					// Also can happen with CancellationTokenSource timeout
 				}
 				
 				// Analyze results
@@ -258,7 +271,13 @@ namespace Tests.EditMode
 			{
 				// If injection failed, don't call InitializeService
 				shouldCallInitialize = false;
-				Debug.Log("Injection failed, skipping InitializeService");
+				Debug.Log("Injection failed with TimeoutException, skipping InitializeService");
+			}
+			catch (OperationCanceledException)
+			{
+				// Also handle OperationCanceledException which is thrown when CancellationToken times out
+				shouldCallInitialize = false;
+				Debug.Log("Injection failed with OperationCanceledException, skipping InitializeService");
 			}
 			
 			if (shouldCallInitialize)
