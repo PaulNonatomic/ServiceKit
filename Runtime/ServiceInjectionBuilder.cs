@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using UnityEngine;
 
@@ -107,18 +108,29 @@ namespace Nonatomic.ServiceKit
 #endif
 		{
 			var fieldsToInject = GetFieldsToInject(_target.GetType());
+#if UNITY_EDITOR
+			if (ServiceKitSettings.Instance.DebugLogging)
+			{
+				Debug.Log($"[ServiceKit] Found {fieldsToInject.Count} fields to inject for {_target.GetType().Name}");
+				foreach (var field in fieldsToInject)
+				{
+					var attr = field.GetCustomAttribute<InjectServiceAttribute>();
+					Debug.Log($"[ServiceKit]   - Field: {field.Name}, Type: {field.FieldType.Name}, Required: {attr.Required}");
+				}
+			}
+#endif
 			if (fieldsToInject.Count == 0) return;
 
 			var resolutionCts = new CancellationTokenSource();
 			ServiceDependencyGraph.RegisterResolving(_targetServiceType, resolutionCts);
+			
+			CancellationTokenSource timeoutCts = null;
+			IDisposable timeoutReg = null;
 
 			try
 			{
 				PrepareForInjection(fieldsToInject);
 				ThrowIfCircularDependencyDetected();
-
-				CancellationTokenSource timeoutCts = null;
-				IDisposable timeoutReg = null;
 
 				if (_timeout > 0f)
 				{
@@ -197,71 +209,23 @@ namespace Nonatomic.ServiceKit
 					}
 				}
 			}
-			catch (OperationCanceledException ex)
+			catch (OperationCanceledException)
 			{
-				// Check if cancellation was due to GameObject destruction or application quit
-				if (_cancellationToken.IsCancellationRequested || !Application.isPlaying)
-				{
-					// The cancellation came from the destroy token, user cancellation, or application quit
-					// This is expected behavior - just return silently
+				bool isExplicitTimeout = timeoutCts?.IsCancellationRequested ?? false;
+				
+				if (ShouldIgnoreCancellation(isExplicitTimeout))
 					return;
-				}
 				
-				// If we have a timeout and it wasn't from destruction or quit, it's a timeout error
-				if (_timeout > 0f)
-				{
-					var sb = ServiceKitObjectPool.RentStringBuilder();
-					try
-					{
-						sb.Append("Service injection timed out after ");
-						sb.Append(_timeout);
-						sb.Append(" seconds for target '");
-						sb.Append(_target.GetType().Name);
-						sb.Append("'.");
-						
-						var hasMissing = false;
-						for (var i = 0; i < fieldsToInject.Count; i++)
-						{
-							var attr = fieldsToInject[i].GetCustomAttribute<InjectServiceAttribute>();
-							if (attr.Required && _serviceKitLocator.GetService(fieldsToInject[i].FieldType) == null)
-							{
-								if (!hasMissing)
-								{
-									sb.Append(" Missing required services: ");
-									hasMissing = true;
-								}
-								else
-								{
-									sb.Append(", ");
-								}
-								sb.Append(fieldsToInject[i].FieldType.Name);
-							}
-						}
-						if (hasMissing) sb.Append(".");
-						
-						var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
-						if (circular != null)
-						{
-							sb.Append("\n\nCircular dependency detected: ");
-							sb.Append(circular.Path);
-						}
-
-						throw new TimeoutException(sb.ToString());
-					}
-					finally
-					{
-						ServiceKitObjectPool.ReturnStringBuilder(sb);
-					}
-				}
 				
-				// Re-throw if it's not a timeout or destruction scenario
-				throw;
+				throw BuildTimeoutException(fieldsToInject, isExplicitTimeout);
 			}
 			finally
 			{
 				ServiceDependencyGraph.SetResolving(_targetServiceType, false);
 				ServiceDependencyGraph.UnregisterResolving(_targetServiceType);
 				resolutionCts.Dispose();
+				timeoutCts?.Dispose();
+				timeoutReg?.Dispose();
 			}
 		}
 
@@ -342,29 +306,79 @@ namespace Nonatomic.ServiceKit
 		private async Task<(FieldInfo field, object service, bool required)> ResolveOptionalService(FieldInfo field, Type serviceType, InjectServiceAttribute serviceAttribute, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
 #endif
 		{
+			// Optional dependencies follow this behavior:
+			// - If service is ready: inject immediately
+			// - If service is registered but not ready: wait for it (treat as temporarily required)
+			// - If service is not registered: return null immediately (truly optional)
+			
 			var locator = _serviceKitLocator as ServiceKitLocator;
 			if (locator == null) return (field, null, serviceAttribute.Required);
+
+#if UNITY_EDITOR
+			if (ServiceKitSettings.Instance.DebugLogging)
+			{
+				Debug.Log($"[ServiceKit] Resolving optional service {serviceType.Name}");
+			}
+#endif
 
 			if (locator.IsServiceReady(serviceType))
 			{
 				var readyService = _serviceKitLocator.GetService(serviceType);
+#if UNITY_EDITOR
+				if (ServiceKitSettings.Instance.DebugLogging)
+				{
+					Debug.Log($"[ServiceKit] Optional service {serviceType.Name} is ready, injecting immediately");
+				}
+#endif
 				return (field, readyService, serviceAttribute.Required);
 			}
 
 			if (!locator.IsServiceRegistered(serviceType))
 			{
+#if UNITY_EDITOR
+				if (ServiceKitSettings.Instance.DebugLogging)
+				{
+					Debug.Log($"[ServiceKit] Optional service {serviceType.Name} is not registered, skipping");
+				}
+#endif
 				return (field, null, serviceAttribute.Required);
 			}
+
+#if UNITY_EDITOR
+			if (ServiceKitSettings.Instance.DebugLogging)
+			{
+				Debug.Log($"[ServiceKit] Optional service {serviceType.Name} is registered but not ready, waiting...");
+			}
+#endif
 
 			try
 			{
 				var pendingService = await _serviceKitLocator.GetServiceAsync(serviceType, cancellationToken);
+#if UNITY_EDITOR
+				if (ServiceKitSettings.Instance.DebugLogging)
+				{
+					Debug.Log($"[ServiceKit] Optional service {serviceType.Name} became ready and was injected");
+				}
+#endif
 				return (field, pendingService, serviceAttribute.Required);
 			}
 			catch (OperationCanceledException) when (resolutionCts.IsCancellationRequested)
 			{
 				HandleCircularDependencyError(serviceType);
 				throw new ServiceInjectionException($"Injection cancelled due to circular dependency involving {serviceType.Name}");
+			}
+			catch (OperationCanceledException)
+			{
+				// For optional services that are registered but not ready, we should propagate the cancellation
+				// This ensures that the injection waits for registered services even if they're optional
+#if UNITY_EDITOR
+				if (ServiceKitSettings.Instance.DebugLogging)
+				{
+					Debug.Log($"[ServiceKit] Optional service {serviceType.Name} timed out or was cancelled");
+				}
+#endif
+				// Re-throw to propagate the timeout/cancellation
+				throw;
 			}
 		}
 
@@ -409,6 +423,104 @@ namespace Nonatomic.ServiceKit
 		}
 
 		public Type TargetServiceType => _targetServiceType;
+
+		private bool ShouldIgnoreCancellation(bool isExplicitTimeout)
+		{
+			// Ignore cancellation if it's from application quit and not an explicit timeout or user cancellation
+			return !isExplicitTimeout && !_cancellationToken.IsCancellationRequested && !Application.isPlaying;
+		}
+
+		private TimeoutException BuildTimeoutException(List<FieldInfo> fieldsToInject, bool isExplicitTimeout)
+		{
+			var sb = ServiceKitObjectPool.RentStringBuilder();
+			try
+			{
+				AppendTimeoutMessage(sb, isExplicitTimeout);
+				AppendWaitingServices(sb, fieldsToInject);
+				AppendCircularDependencyInfo(sb);
+				
+				return new TimeoutException(sb.ToString());
+			}
+			finally
+			{
+				ServiceKitObjectPool.ReturnStringBuilder(sb);
+			}
+		}
+
+		private void AppendTimeoutMessage(StringBuilder sb, bool isExplicitTimeout)
+		{
+			sb.Append("Service injection timed out");
+			
+			if (isExplicitTimeout && _timeout > 0f)
+			{
+				sb.Append(" after ");
+				sb.Append(_timeout);
+				sb.Append(" seconds");
+			}
+			else if (_cancellationToken.IsCancellationRequested)
+			{
+				sb.Append(" (via cancellation token)");
+			}
+			
+			sb.Append(" for target '");
+			sb.Append(_target.GetType().Name);
+			sb.Append("'.");
+		}
+
+		private void AppendWaitingServices(StringBuilder sb, List<FieldInfo> fieldsToInject)
+		{
+			var hasMissing = false;
+			var locator = _serviceKitLocator as ServiceKitLocator;
+			
+			for (var i = 0; i < fieldsToInject.Count; i++)
+			{
+				var field = fieldsToInject[i];
+				var attr = field.GetCustomAttribute<InjectServiceAttribute>();
+				var serviceType = field.FieldType;
+				
+				if (IsServiceMissing(serviceType, attr.Required, locator))
+				{
+					if (!hasMissing)
+					{
+						sb.Append(" Waiting for services: ");
+						hasMissing = true;
+					}
+					else
+					{
+						sb.Append(", ");
+					}
+					
+					sb.Append(serviceType.Name);
+					
+					if (!attr.Required && locator?.IsServiceRegistered(serviceType) == true)
+					{
+						sb.Append(" (optional but registered)");
+					}
+				}
+			}
+			
+			if (hasMissing) 
+				sb.Append(".");
+		}
+
+		private bool IsServiceMissing(Type serviceType, bool isRequired, ServiceKitLocator locator)
+		{
+			var service = _serviceKitLocator.GetService(serviceType);
+			var isRegistered = locator?.IsServiceRegistered(serviceType) ?? false;
+			
+			// Service is missing if it's null and either required or registered (but not ready)
+			return service == null && (isRequired || isRegistered);
+		}
+
+		private void AppendCircularDependencyInfo(StringBuilder sb)
+		{
+			var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+			if (circular != null)
+			{
+				sb.Append("\n\nCircular dependency detected: ");
+				sb.Append(circular.Path);
+			}
+		}
 
 		[SerializeField]
 		private float _timeout = -1f;
