@@ -627,12 +627,6 @@ namespace Nonatomic.ServiceKit
 					_readyServices.Remove(type);
 					_registeredServices.Remove(type);
 
-#if UNITY_EDITOR
-					if (ServiceKitSettings.Instance.DebugLogging)
-					{
-						Debug.Log($"[ServiceKit] Auto-unregistered {type.Name} from unloaded scene '{scene.name}'");
-					}
-#endif
 
 					if (_serviceAwaiters.TryGetValue(type, out var tcs))
 					{
@@ -672,12 +666,6 @@ namespace Nonatomic.ServiceKit
 					_readyServices.Remove(type);
 					_registeredServices.Remove(type);
 
-#if UNITY_EDITOR
-					if (ServiceKitSettings.Instance.DebugLogging)
-					{
-						Debug.Log($"[ServiceKit] Cleaned up destroyed service: {type.Name}");
-					}
-#endif
 				}
 			}
 		}
