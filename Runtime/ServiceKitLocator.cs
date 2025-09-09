@@ -292,6 +292,19 @@ namespace Nonatomic.ServiceKit
 		}
 
 #if SERVICEKIT_UNITASK
+		private async UniTaskVoid ForwardTaskResult(UniTaskCompletionSource<object> source, UniTaskCompletionSource<object> target)
+		{
+			try
+			{
+				var result = await source.Task;
+				target.TrySetResult(result);
+			}
+			catch (Exception ex)
+			{
+				target.TrySetException(ex);
+			}
+		}
+		
 		public async UniTask<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class
 		{
 			var service = await GetServiceAsync(typeof(T), cancellationToken);
@@ -300,7 +313,9 @@ namespace Nonatomic.ServiceKit
 
 		public async UniTask<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default)
 		{
-			UniTaskCompletionSource<object> tcs;
+			UniTaskCompletionSource<object> sharedTcs;
+			UniTaskCompletionSource<object> callerTcs = null;
+			bool isNewAwaiter = false;
 
 			lock (_lock)
 			{
@@ -309,15 +324,38 @@ namespace Nonatomic.ServiceKit
 					return serviceInfo.Service;
 				}
 
-				if (!_serviceAwaiters.TryGetValue(serviceType, out tcs))
+				if (!_serviceAwaiters.TryGetValue(serviceType, out sharedTcs))
 				{
-					tcs = new UniTaskCompletionSource<object>();
-					_serviceAwaiters[serviceType] = tcs;
+					sharedTcs = new UniTaskCompletionSource<object>();
+					_serviceAwaiters[serviceType] = sharedTcs;
+					isNewAwaiter = true;
+				}
+				
+				// Create a separate TCS for this specific caller to handle individual cancellation
+				if (cancellationToken.CanBeCanceled)
+				{
+					callerTcs = new UniTaskCompletionSource<object>();
 				}
 			}
 
-			cancellationToken.Register(() => tcs.TrySetCanceled());
-			return await tcs.Task;
+
+			// If we have a cancellation token, use a separate TCS for this caller
+			if (callerTcs != null)
+			{
+				// Set up forwarding from shared TCS to caller TCS
+				_ = ForwardTaskResult(sharedTcs, callerTcs);
+				
+				// Set up cancellation for this specific caller
+				using (cancellationToken.Register(() => callerTcs.TrySetCanceled()))
+				{
+					return await callerTcs.Task;
+				}
+			}
+			else
+			{
+				// No cancellation token, just wait on the shared TCS
+				return await sharedTcs.Task;
+			}
 		}
 #else
 		public async Task<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class
@@ -344,9 +382,28 @@ namespace Nonatomic.ServiceKit
 				}
 			}
 
-			using (cancellationToken.Register(() => tcs.TrySetCanceled()))
+			// IMPORTANT: We cannot use cancellationToken.Register to cancel the shared TaskCompletionSource
+			// because multiple callers might be waiting on the same TCS.
+			// Instead, we create a linked source that combines the shared task with the cancellation token.
+			
+			// Create a new TCS for this specific caller
+			var callerTcs = new TaskCompletionSource<object>();
+			
+			// When the shared task completes, complete the caller's task
+			tcs.Task.ContinueWith(t =>
 			{
-				return await tcs.Task;
+				if (t.IsCompletedSuccessfully)
+					callerTcs.TrySetResult(t.Result);
+				else if (t.IsCanceled)
+					callerTcs.TrySetCanceled();
+				else if (t.IsFaulted)
+					callerTcs.TrySetException(t.Exception.InnerExceptions);
+			}, TaskContinuationOptions.ExecuteSynchronously);
+			
+			// If the cancellation token is cancelled, cancel only this caller's task
+			using (cancellationToken.Register(() => callerTcs.TrySetCanceled()))
+			{
+				return await callerTcs.Task;
 			}
 		}
 #endif
