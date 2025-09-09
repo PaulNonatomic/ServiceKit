@@ -56,12 +56,12 @@ namespace Tests.EditMode
 			// Start injection
 			var injectionTask = Task.Run(async () =>
 			{
-				using (var cts = new CancellationTokenSource())
+				using (var cts = new CancellationTokenSource(1000)) // 1 second timeout
 				{
 					// Start injection with cancellation
+					// Don't use WithTimeout as it creates GameObjects which can't be done from background thread
 					var task = _serviceLocator.InjectServicesAsync(serviceB)
 						.WithCancellation(cts.Token)
-						.WithTimeout(1f)
 						.ExecuteAsync();
 					
 					// After a short delay, cancel (simulating app quit)
