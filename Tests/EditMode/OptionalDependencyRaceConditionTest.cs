@@ -273,7 +273,7 @@ namespace Tests.EditMode
 			
 			// Act - Start two injections, cancel one, ready the service
 			using (var cts1 = new CancellationTokenSource())
-			using (var cts2 = new CancellationTokenSource())
+			using (var cts2 = new CancellationTokenSource(1000)) // Give second injection 1 second timeout
 			{
 				var injection1 = _serviceLocator.InjectServicesAsync(consumer1)
 					.WithCancellation(cts1.Token)
@@ -287,17 +287,24 @@ namespace Tests.EditMode
 				await Task.Delay(10);
 				cts1.Cancel();
 				
-				// Ready the service
+				// Ready the service shortly after cancelling the first injection
+				await Task.Delay(10);
 				_serviceLocator.ReadyService<IServiceA>();
 				
-				// Wait for second injection
+				// Wait for second injection to complete
+				bool injection2Succeeded = false;
 				try
 				{
 					await injection2;
+					injection2Succeeded = true;
 				}
 				catch (OperationCanceledException)
 				{
-					// This is ok
+					// Timed out or cancelled
+				}
+				catch (TimeoutException)
+				{
+					// Timed out waiting for service
 				}
 				
 				// First injection should have been cancelled
@@ -310,9 +317,16 @@ namespace Tests.EditMode
 				{
 					injection1Cancelled = true;
 				}
+				catch (TimeoutException)
+				{
+					injection1Cancelled = true;
+				}
 				
 				// Assert
 				Assert.IsTrue(injection1Cancelled, "First injection should have been cancelled");
+				
+				// The second injection should succeed since we made the service ready
+				Assert.IsTrue(injection2Succeeded, "Second injection should have succeeded");
 				Assert.IsNotNull(consumer2.OptionalServiceA, "Second consumer should have the service injected");
 				Assert.IsNull(consumer1.OptionalServiceA, "First consumer should not have the service injected (was cancelled)");
 			}

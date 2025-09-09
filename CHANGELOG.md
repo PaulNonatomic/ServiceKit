@@ -7,6 +7,11 @@
   - Fixed by using atomic TryGetService() operation that checks and gets under a single lock
   - Eliminates race condition where ServiceB's InitializeService could be called with null ServiceA
 
+- **Services Not Injected on Ignored Cancellation**: Fixed critical bug where resolved services were not injected when cancellation was ignored
+  - When application quits or ShouldIgnoreCancellation returns true, ExecuteAsync would return early without injecting already-resolved services
+  - This caused InitializeService to be called with null dependencies even though services were successfully resolved
+  - Fixed by ensuring resolved services are always injected before returning, even when cancellation is ignored
+
 ## [2.1.3] - 2025-09-09
 ### Fixed
 - **Optional Dependency Race Condition**: Fixed critical bug in optional dependency resolution

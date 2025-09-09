@@ -126,6 +126,12 @@ namespace Nonatomic.ServiceKit
 			
 			CancellationTokenSource timeoutCts = null;
 			IDisposable timeoutReg = null;
+			SynchronizationContext unityContext = null;
+#if SERVICEKIT_UNITASK
+			(FieldInfo field, object service, bool required)[] results = null;
+#else
+			(FieldInfo field, object service, bool required)[] results = null;
+#endif
 
 			try
 			{
@@ -149,7 +155,7 @@ namespace Nonatomic.ServiceKit
 					timeoutCts?.Token ?? CancellationToken.None))
 				{
 					var finalToken = linked.Token;
-					var unityContext = SynchronizationContext.Current;
+					unityContext = SynchronizationContext.Current;
 
 					var taskCount = fieldsToInject.Count;
 #if SERVICEKIT_UNITASK
@@ -163,9 +169,9 @@ namespace Nonatomic.ServiceKit
 					}
 
 #if SERVICEKIT_UNITASK
-					var results = await UniTask.WhenAll(tasks);
+					results = await UniTask.WhenAll(tasks);
 #else
-					var results = await Task.WhenAll(tasks);
+					results = await Task.WhenAll(tasks);
 #endif
 
 					var missingCount = 0;
@@ -201,12 +207,7 @@ namespace Nonatomic.ServiceKit
 						}
 					}
 
-					await ServiceKitThreading.SwitchToUnityThread(unityContext);
-
-					foreach (var (field, service, _) in results)
-					{
-						field.SetValue(_target, service);
-					}
+					await InjectResolvedServices(results, unityContext);
 				}
 			}
 			catch (OperationCanceledException)
@@ -214,8 +215,13 @@ namespace Nonatomic.ServiceKit
 				bool isExplicitTimeout = timeoutCts?.IsCancellationRequested ?? false;
 				
 				if (ShouldIgnoreCancellation(isExplicitTimeout))
+				{
+					// Even if we're ignoring the cancellation (e.g., app is quitting),
+					// we should still inject any services that were successfully resolved
+					// to avoid leaving fields null when services were actually available
+					await TryInjectResolvedServices(results, unityContext);
 					return;
-				
+				}
 				
 				throw BuildTimeoutException(fieldsToInject, isExplicitTimeout);
 			}
@@ -521,6 +527,42 @@ namespace Nonatomic.ServiceKit
 			{
 				sb.Append("\n\nCircular dependency detected: ");
 				sb.Append(circular.Path);
+			}
+		}
+
+#if SERVICEKIT_UNITASK
+		private async UniTask InjectResolvedServices((FieldInfo field, object service, bool required)[] results, SynchronizationContext unityContext)
+#else
+		private async Task InjectResolvedServices((FieldInfo field, object service, bool required)[] results, SynchronizationContext unityContext)
+#endif
+		{
+			if (results == null || results.Length == 0)
+				return;
+
+			await ServiceKitThreading.SwitchToUnityThread(unityContext);
+
+			foreach (var (field, service, _) in results)
+			{
+				field.SetValue(_target, service);
+			}
+		}
+
+#if SERVICEKIT_UNITASK
+		private async UniTask TryInjectResolvedServices((FieldInfo field, object service, bool required)[] results, SynchronizationContext unityContext)
+#else
+		private async Task TryInjectResolvedServices((FieldInfo field, object service, bool required)[] results, SynchronizationContext unityContext)
+#endif
+		{
+			if (results == null || results.Length == 0)
+				return;
+
+			try
+			{
+				await InjectResolvedServices(results, unityContext);
+			}
+			catch (Exception ex)
+			{
+				Debug.LogError($"Failed to inject resolved services during cancellation: {ex.Message}");
 			}
 		}
 
