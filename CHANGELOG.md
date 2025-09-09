@@ -1,3 +1,21 @@
+## [2.1.3] - 2025-09-09
+### Fixed
+- **Optional Dependency Race Condition**: Fixed critical bug in optional dependency resolution
+  - Optional dependencies marked with `Required = false` that were registered but not ready now correctly wait for the service
+  - Previously, multiple waiters for the same service could interfere with each other's cancellation tokens
+  - Fixed by implementing per-caller TaskCompletionSource to isolate cancellation behavior
+  - This ensures the documented 3-state intelligent resolution works correctly:
+    - Service ready → inject immediately
+    - Service registered but not ready → wait for it (treat as temporarily required)
+    - Service not registered → skip injection (field remains null)
+
+### Improved
+- **Code Quality**: Enhanced ServiceInjectionBuilder for better maintainability
+  - Extracted timeout exception building into well-named helper methods
+  - Improved self-documentation with clear method names
+  - Added explicit comments explaining optional dependency behavior
+  - Removed debug logging and simplified async service resolution
+
 ## [2.1.2] - 2025-09-02
 ## [2.1.1] - 2025-09-02
 - Removed performance tests as they had corrupted meta files
