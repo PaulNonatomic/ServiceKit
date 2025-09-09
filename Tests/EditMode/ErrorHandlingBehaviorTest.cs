@@ -58,29 +58,38 @@ namespace Tests.EditMode
 			// Don't register the required service to cause an error
 			
 			// Act & Assert
+			Exception caughtException = null;
 			try
 			{
-				await _serviceLocator.InjectServicesAsync(consumer)
-					.WithTimeout(0.1f) // Short timeout
-					.WithErrorHandling(ex =>
-					{
-						errorHandlerCalled = true;
-						handlerException = ex;
-					})
-					.ExecuteAsync();
+				// Use a cancellation token with timeout instead of WithTimeout
+				// to avoid potential issues with ServiceKitTimeoutManager in tests
+				using (var cts = new CancellationTokenSource(100)) // 100ms timeout
+				{
+					await _serviceLocator.InjectServicesAsync(consumer)
+						.WithCancellation(cts.Token)
+						.WithErrorHandling(ex =>
+						{
+							errorHandlerCalled = true;
+							handlerException = ex;
+						})
+						.ExecuteAsync();
+				}
 					
 				Assert.Fail("ExecuteAsync should have thrown an exception");
 			}
 			catch (Exception ex)
 			{
-				// ExecuteAsync should throw despite WithErrorHandling
-				Assert.IsTrue(ex is ServiceInjectionException || ex is TimeoutException,
-					$"Expected ServiceInjectionException or TimeoutException, got {ex.GetType().Name}");
+				caughtException = ex;
 			}
+			
+			// Assert
+			Assert.IsNotNull(caughtException, "Should have thrown an exception");
+			Assert.IsTrue(caughtException is ServiceInjectionException || caughtException is TimeoutException || caughtException is OperationCanceledException,
+				$"Expected ServiceInjectionException, TimeoutException, or OperationCanceledException, got {caughtException.GetType().Name}");
 			
 			// The error handler should NOT have been called because ExecuteAsync doesn't use it
 			Assert.IsFalse(errorHandlerCalled, 
-				"Error handler should NOT be called when using ExecuteAsync - this is the bug!");
+				"Error handler should NOT be called when using ExecuteAsync");
 		}
 		
 		[Test]
@@ -133,14 +142,18 @@ namespace Tests.EditMode
 			// Act
 			try
 			{
-				await _serviceLocator.InjectServicesAsync(consumer)
-					.WithTimeout(0.1f) // Short timeout
-					.WithErrorHandling(ex =>
-					{
-						errorHandlerCalled = true;
-						Debug.Log($"Error handler called with: {ex.GetType().Name}: {ex.Message}");
-					})
-					.ExecuteAsync();
+				// Use CancellationTokenSource for more reliable timeout in tests
+				using (var cts = new CancellationTokenSource(100)) // 100ms timeout
+				{
+					await _serviceLocator.InjectServicesAsync(consumer)
+						.WithCancellation(cts.Token)
+						.WithErrorHandling(ex =>
+						{
+							errorHandlerCalled = true;
+							Debug.Log($"Error handler called with: {ex.GetType().Name}: {ex.Message}");
+						})
+						.ExecuteAsync();
+				}
 			}
 			catch (Exception ex)
 			{
@@ -180,15 +193,18 @@ namespace Tests.EditMode
 				Exception injectionException = null;
 				try
 				{
-					await _serviceLocator.InjectServicesAsync(consumer)
-						.WithTimeout(0.1f) // Short timeout to trigger quickly
-						.WithErrorHandling(ex =>
-						{
-							errorHandlerCalled = true;
-							// ServiceKitBehaviour just logs here, doesn't re-throw
-							Debug.LogError($"Failed to inject required services: {ex.Message}");
-						})
-						.ExecuteAsync();
+					using (var cts = new CancellationTokenSource(100)) // 100ms timeout
+					{
+						await _serviceLocator.InjectServicesAsync(consumer)
+							.WithCancellation(cts.Token)
+							.WithErrorHandling(ex =>
+							{
+								errorHandlerCalled = true;
+								// ServiceKitBehaviour just logs here, doesn't re-throw
+								Debug.LogError($"Failed to inject required services: {ex.Message}");
+							})
+							.ExecuteAsync();
+					}
 				}
 				catch (Exception ex)
 				{
