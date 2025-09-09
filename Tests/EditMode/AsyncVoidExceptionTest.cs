@@ -111,7 +111,7 @@ namespace Tests.EditMode
 		
 		private class TestSynchronizationContext : SynchronizationContext
 		{
-			public event EventHandler<UnhandledExceptionEventArgs> UnhandledException;
+			public event EventHandler<TestUnhandledExceptionEventArgs> UnhandledException;
 			
 			public override void Post(SendOrPostCallback d, object state)
 			{
@@ -121,8 +121,18 @@ namespace Tests.EditMode
 				}
 				catch (Exception ex)
 				{
-					UnhandledException?.Invoke(this, new UnhandledExceptionEventArgs(ex, false));
+					UnhandledException?.Invoke(this, new TestUnhandledExceptionEventArgs(ex));
 				}
+			}
+		}
+		
+		private class TestUnhandledExceptionEventArgs : EventArgs
+		{
+			public Exception Exception { get; }
+			
+			public TestUnhandledExceptionEventArgs(Exception exception)
+			{
+				Exception = exception;
 			}
 		}
 	}

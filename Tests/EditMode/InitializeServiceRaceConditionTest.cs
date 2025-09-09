@@ -55,7 +55,7 @@ namespace Tests.EditMode
 				}
 			}
 			
-			private async Task InjectDependenciesAsync(ServiceKitLocator locator)
+			public async Task InjectDependenciesAsync(ServiceKitLocator locator)
 			{
 				InjectionAttempted = true;
 				
