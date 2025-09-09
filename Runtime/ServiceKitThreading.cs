@@ -20,6 +20,14 @@ namespace Nonatomic.ServiceKit
 			{
 				return;
 			}
+			
+			// If unityContext is null (e.g., when called from background thread in tests),
+			// we can't switch to Unity thread. Just return and continue on current thread.
+			if (unityContext == null)
+			{
+				return;
+			}
+			
 #if SERVICEKIT_UNITASK
 			var tcs = new UniTaskCompletionSource<bool>();
 			unityContext.Post(_ => tcs.TrySetResult(true), null);
