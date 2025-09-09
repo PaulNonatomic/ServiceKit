@@ -1,3 +1,12 @@
+## [2.1.4] - 2025-09-09
+### Fixed
+- **TOCTOU Race Condition in Optional Dependencies**: Fixed critical race condition in optional dependency resolution
+  - Previously used separate IsServiceReady() and GetService() calls which weren't atomic
+  - Service could be unregistered between the check and get operations (e.g., during scene unload)
+  - This caused InitializeService to be called with null optional dependencies despite services being ready
+  - Fixed by using atomic TryGetService() operation that checks and gets under a single lock
+  - Eliminates race condition where ServiceB's InitializeService could be called with null ServiceA
+
 ## [2.1.3] - 2025-09-09
 ### Fixed
 - **Optional Dependency Race Condition**: Fixed critical bug in optional dependency resolution

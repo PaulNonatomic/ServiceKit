@@ -321,9 +321,11 @@ namespace Nonatomic.ServiceKit
 			}
 #endif
 
-			if (locator.IsServiceReady(serviceType))
+			// Use atomic TryGetService to avoid TOCTOU race condition
+			// Must get the service in a single atomic operation to prevent it from being
+			// unregistered between the ready check and the get operation
+			if (locator.TryGetService(serviceType, out var readyService))
 			{
-				var readyService = _serviceKitLocator.GetService(serviceType);
 #if UNITY_EDITOR
 				if (ServiceKitSettings.Instance.DebugLogging)
 				{
