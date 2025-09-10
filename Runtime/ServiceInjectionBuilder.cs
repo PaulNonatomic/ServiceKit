@@ -393,9 +393,10 @@ namespace Nonatomic.ServiceKit
 #else
 		private async Task WaitForNextFrame()
 		{
-			// In Unity without UniTask, we use Task.Yield to wait for the next frame
-			// This allows other Awake methods in the scene to complete
-			await Task.Yield();
+			// In Unity without UniTask, we need a small delay to allow other Awake methods to run
+			// Task.Yield doesn't work properly in Unity's Edit Mode tests
+			// A small delay gives other components time to register
+			await Task.Delay(1);
 		}
 #endif
 
