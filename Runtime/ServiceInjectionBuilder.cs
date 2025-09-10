@@ -311,7 +311,8 @@ namespace Nonatomic.ServiceKit
 			// Optional dependencies follow this behavior:
 			// - If service is ready: inject immediately
 			// - If service is registered but not ready: wait for it (treat as temporarily required)
-			// - If service is not registered: return null immediately (truly optional)
+			// - If service is not registered: wait one frame for Awake phase to complete, then check again
+			// - If still not registered after frame delay: return null (truly optional)
 			
 			var locator = _serviceKitLocator as ServiceKitLocator;
 			if (locator == null) return (field, null, serviceAttribute.Required);
@@ -326,7 +327,18 @@ namespace Nonatomic.ServiceKit
 
 			if (!locator.IsServiceRegistered(serviceType))
 			{
-				return (field, null, serviceAttribute.Required);
+				// Wait one frame to allow other services in the scene to register during their Awake phase
+				// This handles the race condition where ServiceA's Awake is called before ServiceB's Awake
+				await WaitForNextFrame();
+				
+				// Check again after the frame delay
+				if (!locator.IsServiceRegistered(serviceType))
+				{
+					// Still not registered - treat as truly optional
+					return (field, null, serviceAttribute.Required);
+				}
+				
+				// Service registered during the frame delay - fall through to wait for it
 			}
 
 			try
@@ -370,6 +382,22 @@ namespace Nonatomic.ServiceKit
 			ServiceDependencyGraph.AddCircularDependencyError(serviceType);
 			ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
 		}
+
+#if SERVICEKIT_UNITASK
+		private async UniTask WaitForNextFrame()
+		{
+			// In Unity, we need to wait for the next frame to allow other Awake methods to run
+			// UniTask.Yield() waits for the next frame in Unity
+			await UniTask.Yield();
+		}
+#else
+		private async Task WaitForNextFrame()
+		{
+			// In Unity without UniTask, we use Task.Yield to wait for the next frame
+			// This allows other Awake methods in the scene to complete
+			await Task.Yield();
+		}
+#endif
 
 		private void DefaultErrorHandler(Exception exception)
 		{
