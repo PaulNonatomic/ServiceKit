@@ -1,4 +1,4 @@
-## [2.1.4] - 2025-09-09
+## [2.1.5] - 2025-09-10
 ### Fixed
 - **TOCTOU Race Condition in Optional Dependencies**: Fixed critical race condition in optional dependency resolution
   - Previously used separate IsServiceReady() and GetService() calls which weren't atomic
@@ -18,6 +18,13 @@
   - ServiceA would check for ServiceB before ServiceB had a chance to register itself
   - Fixed by adding a one-frame delay when optional dependencies are not registered, allowing all services in the scene to complete their Awake phase
   - Now correctly distinguishes between "not registered yet" and "truly absent" optional dependencies
+
+### Improved
+- **Code Quality**: Enhanced code standards and self-documentation
+  - Renamed methods for clarity (e.g., WaitForAwakePhaseCompletion)
+  - Removed redundant comments and debug logging
+  - Extracted complex logic into well-named helper methods
+  - Improved overall code maintainability and readability
 
 ## [2.1.3] - 2025-09-09
 ### Fixed
