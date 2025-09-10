@@ -1,4 +1,4 @@
-## [2.1.4] - 2025-09-09
+## [2.1.5] - 2025-09-10
 ### Fixed
 - **TOCTOU Race Condition in Optional Dependencies**: Fixed critical race condition in optional dependency resolution
   - Previously used separate IsServiceReady() and GetService() calls which weren't atomic
@@ -11,6 +11,20 @@
   - When application quits or ShouldIgnoreCancellation returns true, ExecuteAsync would return early without injecting already-resolved services
   - This caused InitializeService to be called with null dependencies even though services were successfully resolved
   - Fixed by ensuring resolved services are always injected before returning, even when cancellation is ignored
+
+- **Awake Order Race Condition for Optional Dependencies**: Fixed race condition where optional dependencies were incorrectly treated as absent
+  - When ServiceA with optional dependency on ServiceB had its Awake() called before ServiceB's Awake(), ServiceB would be null
+  - This occurred because Unity's Awake order is non-deterministic within a scene
+  - ServiceA would check for ServiceB before ServiceB had a chance to register itself
+  - Fixed by adding a one-frame delay when optional dependencies are not registered, allowing all services in the scene to complete their Awake phase
+  - Now correctly distinguishes between "not registered yet" and "truly absent" optional dependencies
+
+### Improved
+- **Code Quality**: Enhanced code standards and self-documentation
+  - Renamed methods for clarity (e.g., WaitForAwakePhaseCompletion)
+  - Removed redundant comments and debug logging
+  - Extracted complex logic into well-named helper methods
+  - Improved overall code maintainability and readability
 
 ## [2.1.3] - 2025-09-09
 ### Fixed

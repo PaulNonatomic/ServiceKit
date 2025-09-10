@@ -155,9 +155,6 @@ namespace Nonatomic.ServiceKit
 				
 				if (ShouldIgnoreCancellation(isExplicitTimeout))
 				{
-					// Even if we're ignoring the cancellation (e.g., app is quitting),
-					// we should still inject any services that were successfully resolved
-					// to avoid leaving fields null when services were actually available
 					await TryInjectResolvedServices(results, unityContext);
 					return;
 				}
@@ -308,17 +305,9 @@ namespace Nonatomic.ServiceKit
 		private async Task<(FieldInfo field, object service, bool required)> ResolveOptionalService(FieldInfo field, Type serviceType, InjectServiceAttribute serviceAttribute, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
 #endif
 		{
-			// Optional dependencies follow this behavior:
-			// - If service is ready: inject immediately
-			// - If service is registered but not ready: wait for it (treat as temporarily required)
-			// - If service is not registered: return null immediately (truly optional)
-			
 			var locator = _serviceKitLocator as ServiceKitLocator;
 			if (locator == null) return (field, null, serviceAttribute.Required);
 
-			// Use atomic TryGetService to avoid TOCTOU race condition
-			// Must get the service in a single atomic operation to prevent it from being
-			// unregistered between the ready check and the get operation
 			if (locator.TryGetService(serviceType, out var readyService))
 			{
 				return (field, readyService, serviceAttribute.Required);
@@ -326,7 +315,12 @@ namespace Nonatomic.ServiceKit
 
 			if (!locator.IsServiceRegistered(serviceType))
 			{
-				return (field, null, serviceAttribute.Required);
+				await WaitForAwakePhaseCompletion();
+				
+				if (!locator.IsServiceRegistered(serviceType))
+				{
+					return (field, null, serviceAttribute.Required);
+				}
 			}
 
 			try
@@ -341,8 +335,6 @@ namespace Nonatomic.ServiceKit
 			}
 			catch (OperationCanceledException)
 			{
-				// Re-throw to propagate the timeout/cancellation
-				// For optional services that are registered but not ready, we wait for them
 				throw;
 			}
 		}
@@ -370,6 +362,19 @@ namespace Nonatomic.ServiceKit
 			ServiceDependencyGraph.AddCircularDependencyError(serviceType);
 			ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
 		}
+
+#if SERVICEKIT_UNITASK
+		private async UniTask WaitForAwakePhaseCompletion()
+		{
+			await UniTask.Yield();
+		}
+#else
+		private async Task WaitForAwakePhaseCompletion()
+		{
+			// Task.Yield doesn't properly defer in Unity Edit Mode
+			await Task.Delay(1);
+		}
+#endif
 
 		private void DefaultErrorHandler(Exception exception)
 		{
