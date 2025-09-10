@@ -30,11 +30,11 @@ namespace Tests.EditMode
 		public class MockServiceBehaviour<T> : MonoBehaviour where T : class
 		{
 			public ServiceKitLocator ServiceLocator { get; set; }
-			public bool IsRegistered { get; private set; }
-			public bool IsReady { get; private set; }
-			public bool InjectionCompleted { get; private set; }
-			public bool InitializeServiceCalled { get; private set; }
-			public int AwakeOrder { get; private set; }
+			public bool IsRegistered { get; protected set; }
+			public bool IsReady { get; protected set; }
+			public bool InjectionCompleted { get; protected set; }
+			public bool InitializeServiceCalled { get; protected set; }
+			public int AwakeOrder { get; protected set; }
 			public static int AwakeCounter = 0;
 			
 			// Track what happened during injection
