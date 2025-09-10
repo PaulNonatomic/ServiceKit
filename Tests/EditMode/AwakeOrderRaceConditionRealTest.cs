@@ -13,7 +13,6 @@ namespace Tests.EditMode
 	{
 		private ServiceKitLocator _serviceLocator;
 		
-		// Test service interfaces and implementations
 		public interface IServiceA { string Name { get; } }
 		public interface IServiceB { string Name { get; } }
 		
@@ -27,7 +26,6 @@ namespace Tests.EditMode
 			public string Name => "ServiceB";
 		}
 		
-		// Test target that has optional dependency
 		public class ServiceConsumer
 		{
 			[InjectService(Required = false)]
@@ -67,21 +65,15 @@ namespace Tests.EditMode
 		[Test]
 		public async Task OptionalDependency_NotRegistered_WaitsOneFrameThenReturnsNull()
 		{
-			// This tests that when an optional dependency is never registered,
-			// we wait one frame (in case it registers during Awake) then return null
 			
 			var consumer = new ServiceConsumer();
 			
-			// Start injection (ServiceA is not registered at all)
 			var injectionTask = _serviceLocator.InjectServicesAsync(consumer).ExecuteAsync();
 			
-			// Even after a frame, ServiceA is still not registered
 			await Task.Delay(50);
 			
-			// Complete injection
 			await injectionTask;
 			
-			// ServiceA should be null (truly optional - never registered)
 			Assert.IsNull(consumer.OptionalServiceA, 
 				"ServiceA should be null as it was never registered");
 		}
@@ -89,11 +81,9 @@ namespace Tests.EditMode
 		[Test]
 		public async Task OptionalDependency_RegisteredAfterInjectionStarts_ShouldBeInjected()
 		{
-			// This tests the fix: ServiceA registers AFTER injection starts but within a frame
 			
 			var consumer = new ServiceConsumer();
 			
-			// Start injection (ServiceA not registered yet)
 			var injectionTask = Task.Run(async () =>
 			{
 				await _serviceLocator.InjectServicesAsync(consumer).ExecuteAsync();

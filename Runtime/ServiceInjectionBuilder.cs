@@ -155,9 +155,6 @@ namespace Nonatomic.ServiceKit
 				
 				if (ShouldIgnoreCancellation(isExplicitTimeout))
 				{
-					// Even if we're ignoring the cancellation (e.g., app is quitting),
-					// we should still inject any services that were successfully resolved
-					// to avoid leaving fields null when services were actually available
 					await TryInjectResolvedServices(results, unityContext);
 					return;
 				}
@@ -308,18 +305,9 @@ namespace Nonatomic.ServiceKit
 		private async Task<(FieldInfo field, object service, bool required)> ResolveOptionalService(FieldInfo field, Type serviceType, InjectServiceAttribute serviceAttribute, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
 #endif
 		{
-			// Optional dependencies follow this behavior:
-			// - If service is ready: inject immediately
-			// - If service is registered but not ready: wait for it (treat as temporarily required)
-			// - If service is not registered: wait one frame for Awake phase to complete, then check again
-			// - If still not registered after frame delay: return null (truly optional)
-			
 			var locator = _serviceKitLocator as ServiceKitLocator;
 			if (locator == null) return (field, null, serviceAttribute.Required);
 
-			// Use atomic TryGetService to avoid TOCTOU race condition
-			// Must get the service in a single atomic operation to prevent it from being
-			// unregistered between the ready check and the get operation
 			if (locator.TryGetService(serviceType, out var readyService))
 			{
 				return (field, readyService, serviceAttribute.Required);
@@ -327,18 +315,12 @@ namespace Nonatomic.ServiceKit
 
 			if (!locator.IsServiceRegistered(serviceType))
 			{
-				// Wait one frame to allow other services in the scene to register during their Awake phase
-				// This handles the race condition where ServiceA's Awake is called before ServiceB's Awake
-				await WaitForNextFrame();
+				await WaitForAwakePhaseCompletion();
 				
-				// Check again after the frame delay
 				if (!locator.IsServiceRegistered(serviceType))
 				{
-					// Still not registered - treat as truly optional
 					return (field, null, serviceAttribute.Required);
 				}
-				
-				// Service registered during the frame delay - fall through to wait for it
 			}
 
 			try
@@ -353,8 +335,6 @@ namespace Nonatomic.ServiceKit
 			}
 			catch (OperationCanceledException)
 			{
-				// Re-throw to propagate the timeout/cancellation
-				// For optional services that are registered but not ready, we wait for them
 				throw;
 			}
 		}
@@ -384,18 +364,14 @@ namespace Nonatomic.ServiceKit
 		}
 
 #if SERVICEKIT_UNITASK
-		private async UniTask WaitForNextFrame()
+		private async UniTask WaitForAwakePhaseCompletion()
 		{
-			// In Unity, we need to wait for the next frame to allow other Awake methods to run
-			// UniTask.Yield() waits for the next frame in Unity
 			await UniTask.Yield();
 		}
 #else
-		private async Task WaitForNextFrame()
+		private async Task WaitForAwakePhaseCompletion()
 		{
-			// In Unity without UniTask, we need a small delay to allow other Awake methods to run
-			// Task.Yield doesn't work properly in Unity's Edit Mode tests
-			// A small delay gives other components time to register
+			// Task.Yield doesn't properly defer in Unity Edit Mode
 			await Task.Delay(1);
 		}
 #endif
