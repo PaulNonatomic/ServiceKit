@@ -1,3 +1,6 @@
+## [2.1.6] - 2025-09-15
+- Deleted a test with an invalid meta file
+
 ## [2.1.5] - 2025-09-10
 ### Fixed
 - **TOCTOU Race Condition in Optional Dependencies**: Fixed critical race condition in optional dependency resolution
