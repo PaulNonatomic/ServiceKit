@@ -1,3 +1,4 @@
+## [2.1.8] - 2025-10-06
 ## [2.1.7] - 2025-10-06
 - Added an early return to ServiceKitBehaviour.IsServiceLocatorMissing when the application is quitting
 
