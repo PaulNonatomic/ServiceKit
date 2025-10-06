@@ -327,6 +327,9 @@ namespace Nonatomic.ServiceKit
 		{
 			if (HasServiceLocatorAssigned()) return false;
 			
+			// Don't log error during application quit - destruction order is non-deterministic
+			if (!Application.isPlaying) return true;
+			
 			LogMissingServiceLocatorError();
 			return true;
 		}
