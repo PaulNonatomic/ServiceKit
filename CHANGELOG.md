@@ -1,3 +1,6 @@
+## [2.1.7] - 2025-10-06
+- Added an early return to ServiceKitBehaviour.IsServiceLocatorMissing when the application is quitting
+
 ## [2.1.6] - 2025-09-15
 - Deleted a test with an invalid meta file
 
