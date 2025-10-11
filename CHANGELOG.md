@@ -1,3 +1,6 @@
+## [2.1.10] - 2025-10-11
+- Fix for maintaining foldout state in ServiceKitWindow
+
 ## [2.1.9] - 2025-10-11
 - Fix for services registered in addressable scenes being listed under DoNotDestroy in the ServiceKit Window
 
