@@ -252,6 +252,23 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			}
 		}
 
+		public Dictionary<string, bool> GetAllFoldoutStates()
+		{
+			SaveFoldoutStates();
+			return new Dictionary<string, bool>(_sceneFoldoutStates);
+		}
+
+		public void SetInitialFoldoutStates(Dictionary<string, bool> states)
+		{
+			if (states == null) return;
+
+			_sceneFoldoutStates.Clear();
+			foreach (var kvp in states)
+			{
+				_sceneFoldoutStates[kvp.Key] = kvp.Value;
+			}
+		}
+
 		private string GetSceneKey(string sceneName, bool isUnloaded, bool isDontDestroyOnLoad)
 		{
 			if (isDontDestroyOnLoad)
