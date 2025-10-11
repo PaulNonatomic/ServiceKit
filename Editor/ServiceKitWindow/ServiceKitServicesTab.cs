@@ -33,6 +33,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private const string SELECTED_LOCATOR_PREF_KEY = "ServiceKit_SelectedLocatorGuid";
 		private const float STATE_CHECK_INTERVAL = 1.0f;
 		private Dictionary<Type, string> _serviceStateCache = new();
+		private Dictionary<string, Dictionary<string, bool>> _foldoutStatesByLocator = new();
 
 		public ServiceKitServicesTab(Action refreshCallback)
 		{
@@ -265,6 +266,9 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				return;
 			}
 
+			// Save foldout states from current LocatorItems before clearing
+			SaveFoldoutStates();
+
 			_servicesScrollView.Clear();
 			_locatorItems.Clear();
 
@@ -274,12 +278,12 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			// Use the same discovery logic as ServiceKitLocatorDrawer
 			var result = PropertyDrawer.ServiceKitLocatorDrawer.GetAllServiceKitLocatorsWithDisplayNames();
 			_serviceKitLocators = result.locators;
-			
+
 			// Update dropdown choices with the discovered locators
 			UpdateDropdownChoices();
 
 			// Determine which locators to display
-			var locatorsToDisplay = _selectedLocator != null 
+			var locatorsToDisplay = _selectedLocator != null
 				? new List<ServiceKitLocator> { _selectedLocator }
 				: _serviceKitLocators; // Show all if no specific selection
 
@@ -288,7 +292,14 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			{
 				// Always show headers when displaying multiple locators, hide when showing single
 				var showHeader = locatorsToDisplay.Count > 1;
-				var locatorItem = new LocatorItem(locator, showHeader);
+
+				// Get saved foldout states for this locator
+				var locatorGuid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(locator));
+				_foldoutStatesByLocator.TryGetValue(locatorGuid, out var savedStates);
+
+				// Pass saved states to constructor
+				var locatorItem = new LocatorItem(locator, showHeader, savedStates);
+
 				_locatorItems.Add(locatorItem);
 				_servicesScrollView.contentContainer.Add(locatorItem);
 			}
@@ -301,16 +312,41 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			{
 				ApplySearchFilter(_searchField.value);
 			}
-			
+
 			// Update service state cache
 			UpdateServiceStateCache();
 		}
 		
+		private void SaveFoldoutStates()
+		{
+			foreach (var locatorItem in _locatorItems)
+			{
+				var locator = locatorItem.panel != null ? GetLocatorFromItem(locatorItem) : null;
+				if (locator == null) continue;
+
+				var locatorGuid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(locator));
+				var states = locatorItem.GetAllFoldoutStates();
+				_foldoutStatesByLocator[locatorGuid] = states;
+			}
+		}
+
+		private ServiceKitLocator GetLocatorFromItem(LocatorItem item)
+		{
+			var index = _locatorItems.IndexOf(item);
+			if (index < 0) return null;
+
+			var locatorsToDisplay = _selectedLocator != null
+				? new List<ServiceKitLocator> { _selectedLocator }
+				: _serviceKitLocators;
+
+			return index < locatorsToDisplay.Count ? locatorsToDisplay[index] : null;
+		}
+
 		private void UpdateServiceStateCache()
 		{
 			_serviceStateCache.Clear();
 			if (_selectedLocator == null) return;
-		
+
 			var allServices = _selectedLocator.GetAllServices();
 			foreach (var service in allServices)
 			{

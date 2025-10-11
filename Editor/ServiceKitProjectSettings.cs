@@ -8,6 +8,7 @@ namespace Nonatomic.ServiceKit.Editor
 		private const string AUTO_CLEANUP_KEY = "ServiceKit_AutoCleanupOnSceneUnload";
 		private const string DEBUG_LOGGING_KEY = "ServiceKit_DebugLogging";
 		private const string DEFAULT_LOCATOR_KEY = "ServiceKit_DefaultLocatorGUID";
+		private const string DEFAULT_SCENE_GROUPS_EXPANDED_KEY = "ServiceKit_DefaultSceneGroupsExpanded";
 
 		public static bool AutoCleanupOnSceneUnload
 		{
@@ -30,6 +31,18 @@ namespace Nonatomic.ServiceKit.Editor
 			set
 			{
 				EditorPrefs.SetBool(DEBUG_LOGGING_KEY, value);
+			}
+		}
+
+		public static bool DefaultSceneGroupsExpanded
+		{
+			get
+			{
+				return EditorPrefs.GetBool(DEFAULT_SCENE_GROUPS_EXPANDED_KEY, true);
+			}
+			set
+			{
+				EditorPrefs.SetBool(DEFAULT_SCENE_GROUPS_EXPANDED_KEY, value);
 			}
 		}
 

@@ -224,11 +224,15 @@ namespace Nonatomic.ServiceKit.Editor
 		private void DrawGeneralSettings()
 		{
 			EditorGUILayout.LabelField("General Settings", EditorStyles.boldLabel);
-			
+
 			EditorGUI.indentLevel++;
 
+			// Increase label width for better readability
+			var originalLabelWidth = EditorGUIUtility.labelWidth;
+			EditorGUIUtility.labelWidth = 200;
+
 			var newAutoCleanup = EditorGUILayout.Toggle(
-				new GUIContent("Auto Cleanup on Scene Unload", "Automatically unregister services when scenes are unloaded"),
+				new GUIContent("Auto Cleanup Scene Unload", "Automatically unregister services when scenes are unloaded"),
 				ServiceKitProjectSettings.AutoCleanupOnSceneUnload
 			);
 			if (newAutoCleanup != ServiceKitProjectSettings.AutoCleanupOnSceneUnload)
@@ -244,6 +248,18 @@ namespace Nonatomic.ServiceKit.Editor
 			{
 				ServiceKitProjectSettings.DebugLogging = newDebugLogging;
 			}
+
+			var newDefaultSceneGroupsExpanded = EditorGUILayout.Toggle(
+				new GUIContent("Scene Groups Expanded", "Default state for scene groups in the ServiceKit window (true = expanded, false = collapsed)"),
+				ServiceKitProjectSettings.DefaultSceneGroupsExpanded
+			);
+			if (newDefaultSceneGroupsExpanded != ServiceKitProjectSettings.DefaultSceneGroupsExpanded)
+			{
+				ServiceKitProjectSettings.DefaultSceneGroupsExpanded = newDefaultSceneGroupsExpanded;
+			}
+
+			// Restore original label width
+			EditorGUIUtility.labelWidth = originalLabelWidth;
 
 			EditorGUI.indentLevel--;
 		}

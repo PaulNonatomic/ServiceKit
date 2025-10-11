@@ -13,15 +13,16 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private readonly VisualElement _servicesContainer;
 		private readonly Label _headerLabel;
 		private string _currentSearchText = string.Empty;
+		private readonly Dictionary<string, bool> _sceneFoldoutStates = new();
 
-		public LocatorItem(ServiceKitLocator locator, bool showHeader = true)
+		public LocatorItem(ServiceKitLocator locator, bool showHeader = true, Dictionary<string, bool> initialFoldoutStates = null)
 		{
 			_locator = locator;
 			AddToClassList("locator-item");
 
 			_headerLabel = new Label(locator.name);
 			_headerLabel.AddToClassList("locator-header");
-			
+
 			if (showHeader)
 			{
 				Add(_headerLabel);
@@ -30,6 +31,15 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			_servicesContainer = new();
 			_servicesContainer.AddToClassList("services-container");
 			Add(_servicesContainer);
+
+			// Set initial foldout states before refreshing
+			if (initialFoldoutStates != null)
+			{
+				foreach (var kvp in initialFoldoutStates)
+				{
+					_sceneFoldoutStates[kvp.Key] = kvp.Value;
+				}
+			}
 
 			// Refresh services initially
 			RefreshServices();
@@ -42,6 +52,9 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 		private void RefreshServices()
 		{
+			// Save the current foldout states before clearing
+			SaveFoldoutStates();
+
 			_servicesContainer.Clear();
 			_sceneItems.Clear();
 			var services = _locator.GetAllServices();
@@ -60,6 +73,9 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			var servicesByScene = GroupServicesByScene(services);
 			foreach (var sceneGroup in servicesByScene)
 			{
+				// Generate the same scene key used for tracking state
+				var sceneKey = GetSceneKey(sceneGroup.SceneName, sceneGroup.IsUnloaded, sceneGroup.IsDontDestroyOnLoad);
+
 				var sceneItem = new SceneItem(
 					sceneGroup.SceneName,
 					sceneGroup.IsUnloaded,
@@ -67,6 +83,9 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 				_sceneItems.Add(sceneItem);
 				_servicesContainer.Add(sceneItem);
+
+				// Restore the foldout state if it was previously saved
+				RestoreFoldoutState(sceneItem, sceneKey);
 
 				// Reset counter before each scene to ensure the pattern is consistent within each scene
 				ServiceItem.ResetItemCounter();
@@ -223,6 +242,56 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			}
 
 			return false;
+		}
+
+		private void SaveFoldoutStates()
+		{
+			foreach (var sceneItem in _sceneItems)
+			{
+				var sceneKey = GetSceneKey(sceneItem.SceneName, sceneItem.IsUnloaded, sceneItem.IsDontDestroyOnLoad);
+				_sceneFoldoutStates[sceneKey] = sceneItem.GetFoldoutValue();
+			}
+		}
+
+		private void RestoreFoldoutState(SceneItem sceneItem, string sceneKey)
+		{
+			if (_sceneFoldoutStates.TryGetValue(sceneKey, out var savedState))
+			{
+				sceneItem.SetFoldoutValue(savedState);
+			}
+		}
+
+		public Dictionary<string, bool> GetAllFoldoutStates()
+		{
+			SaveFoldoutStates();
+			return new Dictionary<string, bool>(_sceneFoldoutStates);
+		}
+
+		public void SetInitialFoldoutStates(Dictionary<string, bool> states)
+		{
+			if (states == null) return;
+
+			_sceneFoldoutStates.Clear();
+			foreach (var kvp in states)
+			{
+				_sceneFoldoutStates[kvp.Key] = kvp.Value;
+			}
+		}
+
+		private string GetSceneKey(string sceneName, bool isUnloaded, bool isDontDestroyOnLoad)
+		{
+			if (isDontDestroyOnLoad)
+			{
+				return "DONTDESTROY";
+			}
+			else if (isUnloaded)
+			{
+				return $"{ServiceUtils.UnloadedScenePrefix}{sceneName}";
+			}
+			else
+			{
+				return sceneName;
+			}
 		}
 	}
 }
