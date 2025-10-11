@@ -54,7 +54,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			_sceneFoldout = new()
 			{
 				text = displayText,
-				value = true
+				value = ServiceKitProjectSettings.DefaultSceneGroupsExpanded
 			};
 			_sceneFoldout.AddToClassList("scene-header");
 			_sceneFoldout.contentContainer.AddToClassList("scene-content");
@@ -91,6 +91,13 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		{
 			return _sceneType;
 		}
+
+		public string SceneName => _sceneName;
+		public bool IsUnloaded => _isUnloadedScene;
+		public bool IsDontDestroyOnLoad => _isDontDestroyOnLoad;
+
+		public bool GetFoldoutValue() => _sceneFoldout.value;
+		public void SetFoldoutValue(bool value) => _sceneFoldout.value = value;
 
 		/// <summary>
 		///     Gets the number of service items in this scene.
