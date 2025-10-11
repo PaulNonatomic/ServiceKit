@@ -720,14 +720,17 @@ namespace Nonatomic.ServiceKit
 				info.DebugData.SceneName = scene.name;
 				info.DebugData.SceneHandle = scene.handle;
 
-				if (monoBehaviour.gameObject.scene.buildIndex == -1)
+				// Check if the object is in the DontDestroyOnLoad scene
+				// Note: Both DontDestroyOnLoad and addressable scenes have buildIndex == -1,
+				// so we must check the actual scene name to differentiate them
+				if (scene.name == "DontDestroyOnLoad")
 				{
 					info.DebugData.IsDontDestroyOnLoad = true;
-					info.DebugData.SceneName = "DontDestroyOnLoad";
 				}
 				else
 				{
-					// normal scene object
+					// Normal scene object (including addressable scenes)
+					info.DebugData.IsDontDestroyOnLoad = false;
 				}
 			}
 			else
