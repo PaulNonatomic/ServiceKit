@@ -15,14 +15,14 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private string _currentSearchText = string.Empty;
 		private readonly Dictionary<string, bool> _sceneFoldoutStates = new();
 
-		public LocatorItem(ServiceKitLocator locator, bool showHeader = true)
+		public LocatorItem(ServiceKitLocator locator, bool showHeader = true, Dictionary<string, bool> initialFoldoutStates = null)
 		{
 			_locator = locator;
 			AddToClassList("locator-item");
 
 			_headerLabel = new Label(locator.name);
 			_headerLabel.AddToClassList("locator-header");
-			
+
 			if (showHeader)
 			{
 				Add(_headerLabel);
@@ -31,6 +31,15 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			_servicesContainer = new();
 			_servicesContainer.AddToClassList("services-container");
 			Add(_servicesContainer);
+
+			// Set initial foldout states before refreshing
+			if (initialFoldoutStates != null)
+			{
+				foreach (var kvp in initialFoldoutStates)
+				{
+					_sceneFoldoutStates[kvp.Key] = kvp.Value;
+				}
+			}
 
 			// Refresh services initially
 			RefreshServices();

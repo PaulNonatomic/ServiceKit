@@ -292,14 +292,13 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			{
 				// Always show headers when displaying multiple locators, hide when showing single
 				var showHeader = locatorsToDisplay.Count > 1;
-				var locatorItem = new LocatorItem(locator, showHeader);
 
-				// Restore foldout states for this locator
+				// Get saved foldout states for this locator
 				var locatorGuid = AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(locator));
-				if (_foldoutStatesByLocator.TryGetValue(locatorGuid, out var savedStates))
-				{
-					locatorItem.SetInitialFoldoutStates(savedStates);
-				}
+				_foldoutStatesByLocator.TryGetValue(locatorGuid, out var savedStates);
+
+				// Pass saved states to constructor
+				var locatorItem = new LocatorItem(locator, showHeader, savedStates);
 
 				_locatorItems.Add(locatorItem);
 				_servicesScrollView.contentContainer.Add(locatorItem);
