@@ -1,3 +1,15 @@
+## [2.1.11] - 2025-11-17
+### Fixed
+- **Service Injection During Cancellation**: Fixed bug where resolved services were not injected when cancellation occurred
+  - Previously, TryInjectResolvedServices was only called when ShouldIgnoreCancellation returned true
+  - Now always attempts to inject successfully resolved services before returning or throwing
+  - Ensures dependencies are injected even when explicit cancellation tokens are cancelled during resolution
+
+### Changed
+- **ServiceKitLocator Visibility**: Changed ServiceKitLocator field from protected to public in ServiceKitBehaviour
+  - Enables better test scenarios and external access when needed
+  - Non-breaking change that maintains backward compatibility
+
 ## [2.1.10] - 2025-10-11
 - Fix for maintaining foldout state in ServiceKitWindow
 

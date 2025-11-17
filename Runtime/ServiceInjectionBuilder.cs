@@ -152,13 +152,15 @@ namespace Nonatomic.ServiceKit
 			catch (OperationCanceledException)
 			{
 				var isExplicitTimeout = timeoutCts?.IsCancellationRequested ?? false;
-				
+
+				// Always try to inject any services that were successfully resolved before cancellation
+				await TryInjectResolvedServices(results, unityContext);
+
 				if (ShouldIgnoreCancellation(isExplicitTimeout))
 				{
-					await TryInjectResolvedServices(results, unityContext);
 					return;
 				}
-				
+
 				throw BuildTimeoutException(fieldsToInject, isExplicitTimeout);
 			}
 			finally

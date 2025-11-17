@@ -32,6 +32,9 @@ Samples.meta
 # Visual Studio cache directory
 .vs/
 
+# JetBrains Rider/IntelliJ
+.idea/
+
 # Gradle cache directory
 .gradle/
 

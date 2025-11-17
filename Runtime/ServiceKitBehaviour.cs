@@ -11,9 +11,9 @@ using System.Threading.Tasks;
 
 namespace Nonatomic.ServiceKit
 {
-	public abstract class ServiceKitBehaviour<T> : MonoBehaviour where T : class 
+	public abstract class ServiceKitBehaviour<T> : MonoBehaviour where T : class
 	{
-		[SerializeField] protected ServiceKitLocator ServiceKitLocator;
+		[SerializeField] public ServiceKitLocator ServiceKitLocator;
 
 		protected bool IsServiceRegistered { get; private set; }
 		protected bool IsServiceReady { get; private set; }
