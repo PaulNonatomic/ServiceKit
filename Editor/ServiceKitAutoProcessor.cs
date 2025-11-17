@@ -165,9 +165,27 @@ namespace Nonatomic.ServiceKit.Editor
 		[MenuItem("Tools/ServiceKit/Process All Auto-Assignments")]
 		public static void ProcessAllAutoAssignments()
 		{
+			var proceed = EditorUtility.DisplayDialog(
+				"Process Auto-Assignments",
+				"This will process any pending ServiceKitLocator auto-assignments for loaded prefabs and scene objects.\n\n" +
+				"Use this if:\n" +
+				"• Auto-assignment didn't complete automatically\n" +
+				"• You've just changed the default ServiceKitLocator\n" +
+				"• You want to ensure all objects are up-to-date\n\n" +
+				"This is a lightweight operation that only processes currently loaded assets.\n\n" +
+				"Continue?",
+				"Continue",
+				"Cancel"
+			);
+
+			if (!proceed)
+			{
+				return;
+			}
+
 			ProcessPendingAutoAssignments();
 			ProcessSceneAutoAssignments();
-			
+
 			Debug.Log("[ServiceKit] Processed all auto-assignments for ServiceKitLocator references.");
 		}
 

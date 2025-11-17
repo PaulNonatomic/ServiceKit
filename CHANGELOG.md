@@ -1,3 +1,16 @@
+## [2.2.0] - 2025-11-17
+### Improved
+- **Editor Menu Cleanup**: Streamlined Tools > ServiceKit menu from 10 to 6 essential items
+  - Removed duplicate "Auto-Assign All ServiceKit Locators" wrapper
+  - Removed duplicate "Project Settings" entry
+  - Removed testing utility "Clear ServiceKit Window Selection"
+  - Removed debug utility "Debug ServiceKitLocator Discovery"
+
+- **Enhanced User Experience**: Added informative confirmation dialogs to menu items
+  - "Auto-Assign ServiceKit Locators" now shows asset count and default locator before proceeding
+  - "Process All Auto-Assignments" explains when to use and common scenarios
+  - "Validate Configuration" describes what will be checked and shows completion summary
+
 ## [2.1.11] - 2025-11-17
 ### Fixed
 - **Service Injection During Cancellation**: Fixed bug where resolved services were not injected when cancellation occurred

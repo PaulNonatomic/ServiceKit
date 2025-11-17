@@ -19,14 +19,41 @@ namespace Nonatomic.ServiceKit.Editor
 		[MenuItem("Tools/ServiceKit/Auto-Assign ServiceKit Locators")]
 		public static void AutoAssignAllServiceKitLocators()
 		{
-			var processedCount = 0;
 			var defaultLocator = GetDefaultServiceKitLocator();
-			
+
 			if (defaultLocator == null)
 			{
-				Debug.LogWarning("[ServiceKit] No ServiceKitLocator found in project. Auto-assignment skipped.");
+				EditorUtility.DisplayDialog(
+					"No ServiceKitLocator Found",
+					"No ServiceKitLocator asset was found in your project.\n\n" +
+					"Please create one first using:\n" +
+					"Tools > ServiceKit > Create Default ServiceKit Locator",
+					"OK"
+				);
 				return;
 			}
+
+			var prefabCount = AssetDatabase.FindAssets("t:Prefab").Length;
+			var sceneCount = AssetDatabase.FindAssets("t:Scene").Length;
+			var totalAssets = prefabCount + sceneCount;
+
+			var proceed = EditorUtility.DisplayDialog(
+				"Auto-Assign ServiceKit Locators",
+				$"This will scan all prefabs and scenes in your project and automatically assign the default ServiceKitLocator to any ServiceKitBehaviour components that don't have one set.\n\n" +
+				$"Default Locator: {defaultLocator.name}\n" +
+				$"Assets to scan: {totalAssets} ({prefabCount} prefabs, {sceneCount} scenes)\n\n" +
+				"This operation may take a few moments.\n\n" +
+				"Continue?",
+				"Continue",
+				"Cancel"
+			);
+
+			if (!proceed)
+			{
+				return;
+			}
+
+			var processedCount = 0;
 
 			// Find all prefabs and scene files
 			var prefabGuids = AssetDatabase.FindAssets("t:Prefab");
@@ -408,10 +435,28 @@ namespace Nonatomic.ServiceKit.Editor
 		[MenuItem("Tools/ServiceKit/Validate Configuration")]
 		public static void ValidateConfiguration()
 		{
+			var proceed = EditorUtility.DisplayDialog(
+				"Validate Configuration",
+				"This will check your ServiceKit configuration and report any issues or warnings.\n\n" +
+				"The validation will check:\n" +
+				"• All ServiceKitLocators in the project\n" +
+				"• Default ServiceKitLocator settings\n" +
+				"• Priority and fallback configuration\n\n" +
+				"Results will be logged to the Console.\n\n" +
+				"Continue?",
+				"Continue",
+				"Cancel"
+			);
+
+			if (!proceed)
+			{
+				return;
+			}
+
 			var allLocators = AssetUtils.FindAssetsByType<ServiceKitLocator>();
 			var settingsDefault = ServiceKitSettings.Instance.DefaultServiceKitLocator;
 			var configuredDefault = ServiceKitProjectSettings.DefaultServiceKitLocator;
-			
+
 			Debug.Log("=== ServiceKit Configuration Report ===");
 			
 			if (allLocators == null || allLocators.Count == 0)
@@ -479,70 +524,22 @@ namespace Nonatomic.ServiceKit.Editor
 					Debug.Log("[ServiceKit] Consider setting an explicit default in ServiceKitSettings asset (most visible) or Project Settings → ServiceKit");
 				}
 			}
+
+			// Show completion dialog with summary
+			var message = $"Validation Complete!\n\n" +
+				$"ServiceKitLocators found: {allLocators.Count}\n" +
+				$"Active default: {(finalDefault != null ? finalDefault.name : "None")}\n\n" +
+				"See the Console for detailed results.";
+
+			if (finalDefault == null)
+			{
+				EditorUtility.DisplayDialog("Configuration Warning", message, "OK");
+			}
+			else
+			{
+				EditorUtility.DisplayDialog("Configuration Valid", message, "OK");
+			}
 		}
 
-		/// <summary>
-		/// Debug method to compare ServiceKitLocator discovery methods
-		/// </summary>
-		[MenuItem("Tools/ServiceKit/Debug ServiceKitLocator Discovery")]
-		public static void DebugServiceKitLocatorDiscovery()
-		{
-			Debug.Log("=== ServiceKitLocator Discovery Debug ===");
-			
-			// Method 1: AssetUtils
-			var assetUtilsResults = AssetUtils.FindAssetsByType<ServiceKitLocator>();
-			Debug.Log($"\n[AssetUtils.FindAssetsByType] Found {assetUtilsResults?.Count ?? 0} ServiceKitLocator(s):");
-			if (assetUtilsResults != null)
-			{
-				foreach (var locator in assetUtilsResults)
-				{
-					var path = AssetDatabase.GetAssetPath(locator);
-					Debug.Log($"  • {locator.name} at {path}");
-				}
-			}
-			
-			// Method 2: Direct type search
-			var directSearchGuids = AssetDatabase.FindAssets("t:ServiceKitLocator");
-			Debug.Log($"\n[Direct type search 't:ServiceKitLocator'] Found {directSearchGuids.Length} GUID(s):");
-			foreach (var guid in directSearchGuids)
-			{
-				var path = AssetDatabase.GUIDToAssetPath(guid);
-				var asset = AssetDatabase.LoadAssetAtPath<ServiceKitLocator>(path);
-				Debug.Log($"  • {(asset != null ? asset.name : "null")} at {path}");
-			}
-			
-			// Method 3: ScriptableObject search
-			var scriptableObjectGuids = AssetDatabase.FindAssets("t:ScriptableObject");
-			var serviceKitLocators = new List<ServiceKitLocator>();
-			foreach (var guid in scriptableObjectGuids)
-			{
-				var path = AssetDatabase.GUIDToAssetPath(guid);
-				var asset = AssetDatabase.LoadAssetAtPath<ServiceKitLocator>(path);
-				if (asset != null) serviceKitLocators.Add(asset);
-			}
-			Debug.Log($"\n[ScriptableObject filtered] Found {serviceKitLocators.Count} ServiceKitLocator(s):");
-			foreach (var locator in serviceKitLocators)
-			{
-				var path = AssetDatabase.GetAssetPath(locator);
-				Debug.Log($"  • {locator.name} at {path}");
-			}
-			
-			// Method 4: Resources.FindObjectsOfTypeAll (includes loaded assets)
-			var allLoadedLocators = Resources.FindObjectsOfTypeAll<ServiceKitLocator>();
-			Debug.Log($"\n[Resources.FindObjectsOfTypeAll] Found {allLoadedLocators.Length} ServiceKitLocator(s) (includes loaded):");
-			foreach (var locator in allLoadedLocators)
-			{
-				var path = AssetDatabase.GetAssetPath(locator);
-				var isAsset = !string.IsNullOrEmpty(path);
-				if (isAsset)
-				{
-					Debug.Log($"  • {locator.name} at {path}");
-				}
-				else
-				{
-					Debug.Log($"  • {locator.name} (runtime instance, not an asset)");
-				}
-			}
-		}
 	}
 }

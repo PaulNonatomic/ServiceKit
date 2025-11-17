@@ -496,17 +496,6 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		}
 
 		/// <summary>
-		/// Clear persisted ServiceKit window selection - useful for testing
-		/// </summary>
-		[MenuItem("Tools/ServiceKit/Clear ServiceKit Window Selection")]
-		public static void ClearPersistedSelection()
-		{
-			EditorPrefs.DeleteKey(SELECTED_LOCATOR_PREF_KEY);
-			Debug.Log("[ServiceKit] Cleared persisted ServiceKit window selection. The window will now use the configured default.");
-		}
-
-
-		/// <summary>
 		///     Handles search field value changes.
 		/// </summary>
 		private void OnSearchChanged(ChangeEvent<string> evt)

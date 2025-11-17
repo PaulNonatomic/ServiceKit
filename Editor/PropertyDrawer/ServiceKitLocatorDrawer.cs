@@ -276,24 +276,6 @@ namespace Nonatomic.ServiceKit.Editor.PropertyDrawer
 		}
 
 		/// <summary>
-		/// Batch auto-assign ServiceKitLocators to all objects in the project
-		/// </summary>
-		[MenuItem("Tools/ServiceKit/Auto-Assign All ServiceKit Locators")]
-		public static void AutoAssignAllServiceKitLocators()
-		{
-			ServiceKitLocatorAutoAssigner.AutoAssignAllServiceKitLocators();
-		}
-
-		/// <summary>
-		/// Open ServiceKit project settings
-		/// </summary>
-		[MenuItem("Tools/ServiceKit/Project Settings")]
-		public static void OpenProjectSettings()
-		{
-			SettingsService.OpenProjectSettings("Project/ServiceKit");
-		}
-
-		/// <summary>
 		/// Get the default ServiceKitLocator using priority-based selection logic
 		/// </summary>
 		private ServiceKitLocator GetPriorityBasedDefaultLocator()
