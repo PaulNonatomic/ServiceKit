@@ -382,6 +382,108 @@ public class SubordinateService : ServiceKitBehaviour<ISubordinateService>
 }
 ```
 
+### Using ServiceKit with Addressables
+
+ServiceKit fully supports Unity's Addressables system, allowing you to load ServiceKitLocator assets on-demand. However, there are critical considerations regarding how Unity handles ScriptableObjects in Addressable scenes.
+
+#### Making a ServiceKitLocator Addressable
+
+To use an addressable ServiceKitLocator:
+
+1. Check the **Addressable** checkbox on the ServiceKitLocator asset
+2. Add the ServiceKitLocator asset to an addressable group
+3. Load the locator like any other addressable asset
+
+```csharp
+// Example: Loading an addressable ServiceKitLocator
+var handle = Addressables.LoadAssetAsync<ServiceKitLocator>("MyServiceKitLocator");
+await handle.Task;
+var serviceKitLocator = handle.Result;
+```
+
+#### Critical: ScriptableObject Instance Behavior
+
+**Understanding this behavior is crucial for proper ServiceKit functionality in addressable setups.**
+
+When an addressable scene references a ScriptableObject, Unity's behavior differs based on whether the ScriptableObject itself is addressable:
+
+**Non-Addressable ServiceKitLocator (referenced by addressable scene):**
+- Unity creates a **new instance** of the ServiceKitLocator
+- The new instance is embedded in the scene's asset bundle
+- Services registered outside the addressable scene **will not be present** in this new instance
+- This may be desirable if you want complete isolation between addressable scenes
+
+**Addressable ServiceKitLocator (referenced by addressable scene):**
+- Unity uses the **same instance** across all scenes
+- No new instance is created
+- Services registered outside the addressable scene **remain registered**
+- This maintains a global service registry across all scenes
+
+#### Recommendations
+
+**Use Non-Addressable ServiceKitLocator when:**
+- You want complete isolation between addressable scenes
+- Each scene should have its own independent service registry
+- Services should not persist between scene loads
+
+**Use Addressable ServiceKitLocator when:**
+- You want a global service registry across all scenes
+- Services should persist when loading/unloading addressable scenes
+- You need services registered in the bootstrap scene available in addressable scenes
+
+```csharp
+// Example: Bootstrapping with addressable ServiceKitLocator
+public class AddressableBootstrap : MonoBehaviour
+{
+    private async void Start()
+    {
+        // Load the addressable ServiceKitLocator
+        var locatorHandle = Addressables.LoadAssetAsync<ServiceKitLocator>("GlobalServiceKitLocator");
+        await locatorHandle.Task;
+        var serviceKitLocator = locatorHandle.Result;
+
+        // Register global services
+        var audioService = new AudioService();
+        serviceKitLocator.RegisterService<IAudioService>(audioService);
+        serviceKitLocator.ReadyService<IAudioService>();
+
+        // Now load addressable scenes - they will reference the same ServiceKitLocator instance
+        // and have access to the IAudioService
+        await Addressables.LoadSceneAsync("GameplayScene").Task;
+    }
+}
+```
+
+#### Service Lifecycle in Addressable Scenes
+
+**Important:** ServiceKitBehaviours registered in a scene are automatically unregistered and destroyed when that scene is unloaded. This applies to both regular and addressable scenes.
+
+To preserve a ServiceKitBehaviour beyond the lifetime of its scene:
+
+**Option 1: Use DontDestroyOnLoad**
+```csharp
+public class PersistentService : ServiceKitBehaviour<IPersistentService>, IPersistentService
+{
+    protected override void InitializeService()
+    {
+        // Prevent this service from being destroyed when the scene unloads
+        DontDestroyOnLoad(gameObject);
+    }
+}
+```
+
+**Option 2: Load scenes additively**
+```csharp
+// Load scenes additively to keep previous scene services active
+await Addressables.LoadSceneAsync("AdditiveScene", LoadSceneMode.Additive).Task;
+```
+
+**Best Practices:**
+- Use `DontDestroyOnLoad` for global services that should persist across scene transitions (e.g., audio, save system, analytics)
+- Use additive scene loading when you need services from multiple scenes active simultaneously
+- Be mindful of memory usage when keeping services alive - unload scenes explicitly when no longer needed
+- For addressable scenes, consider whether the service should be tied to the scene's lifetime or persist globally
+
 ## ServiceKit Debug Window
 
 Access the powerful debugging interface via `Tools > ServiceKit > ServiceKit Window`:

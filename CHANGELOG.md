@@ -11,6 +11,14 @@
   - "Process All Auto-Assignments" explains when to use and common scenarios
   - "Validate Configuration" describes what will be checked and shows completion summary
 
+### Documentation
+- **Addressables Integration Guide**: Added comprehensive documentation for using ServiceKit with Unity Addressables
+  - Explains how to make ServiceKitLocator addressable
+  - Documents critical ScriptableObject instance behavior in addressable scenes
+  - Provides recommendations for when to use addressable vs non-addressable ServiceKitLocators
+  - Includes practical code examples for bootstrapping with addressable locators
+  - Added service lifecycle section explaining automatic cleanup and persistence options (DontDestroyOnLoad, additive loading)
+
 ## [2.1.11] - 2025-11-17
 ### Fixed
 - **Service Injection During Cancellation**: Fixed bug where resolved services were not injected when cancellation occurred
