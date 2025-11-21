@@ -33,8 +33,6 @@ namespace Tests.EditMode
 			}
 		}
 
-		#region Manual Registration with Additional Types
-
 		[Test]
 		public void RegisterService_WithAdditionalTypes_ServiceResolvableByAllTypes()
 		{
@@ -109,10 +107,6 @@ namespace Tests.EditMode
 			Assert.IsNull(_serviceKit.GetService<ITestGameService>(), "Additional type should be unregistered");
 		}
 
-		#endregion
-
-		#region Builder Pattern Tests
-
 		[Test]
 		public void RegisterService_WithBuilderPattern_ServiceResolvableByAllTypes()
 		{
@@ -167,10 +161,6 @@ namespace Tests.EditMode
 			Assert.That(ex.ParamName, Is.EqualTo("additionalType"));
 		}
 
-		#endregion
-
-		#region ServiceInfo Tests
-
 		[Test]
 		public void ServiceInfo_TracksAllRegisteredTypes()
 		{
@@ -193,10 +183,6 @@ namespace Tests.EditMode
 			Assert.IsNotNull(_serviceKit.GetService<ITestGameService>());
 		}
 
-		#endregion
-
-		#region First-Registered Priority Tests
-
 		[Test]
 		public void MultipleServices_SameBaseType_FirstRegisteredWins()
 		{
@@ -215,10 +201,6 @@ namespace Tests.EditMode
 			Assert.AreSame(service1, resolved, "First registered service should be returned");
 		}
 
-		#endregion
-
-		#region Validation Tests
-
 		[Test]
 		public void RegisterService_NullAdditionalType_ThrowsArgumentNullException()
 		{
@@ -232,19 +214,13 @@ namespace Tests.EditMode
 
 			Assert.That(ex.Message, Does.Contain("Additional type cannot be null"));
 		}
-
-		#endregion
 	}
 
-	#region Test Service Classes and Interfaces
-
-	// Base interface
 	public interface ITestBaseService
 	{
 		string GetName();
 	}
 
-	// Derived interfaces
 	public interface ITestPlayerService : ITestBaseService
 	{
 		void DoPlayerAction();
@@ -260,13 +236,11 @@ namespace Tests.EditMode
 		void DoAlternativeAction();
 	}
 
-	// Unrelated interface for negative tests
 	public interface ITestUnrelatedService
 	{
 		void UnrelatedMethod();
 	}
 
-	// Service that implements multiple interfaces
 	public class TestMultiInterfaceService : ITestPlayerService, ITestGameService
 	{
 		public string GetName() => "TestMultiInterfaceService";
@@ -274,12 +248,9 @@ namespace Tests.EditMode
 		public void Update() { }
 	}
 
-	// Alternative service for testing first-registered priority
 	public class TestAlternativeService : ITestAlternativeService
 	{
 		public string GetName() => "TestAlternativeService";
 		public void DoAlternativeAction() { }
 	}
-
-	#endregion
 }

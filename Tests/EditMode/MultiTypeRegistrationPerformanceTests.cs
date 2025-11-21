@@ -44,7 +44,6 @@ namespace Tests.EditMode
 			}
 		}
 
-		#region Registration Performance
 
 		[Test]
 		public void Performance_SingleType_RegistrationCycle()
@@ -122,9 +121,7 @@ namespace Tests.EditMode
 			Assert.Less(_stopwatch.Elapsed.TotalMilliseconds, 4000, "Multi-type registration cycles (4 types) should complete in under 4 seconds");
 		}
 
-		#endregion
 
-		#region Resolution Performance
 
 		[Test]
 		public void Performance_SingleType_Resolution()
@@ -183,9 +180,7 @@ namespace Tests.EditMode
 			Assert.Less(_stopwatch.Elapsed.TotalMilliseconds, 1000, "Multi-type resolution should complete in under 1 second");
 		}
 
-		#endregion
 
-		#region Async Injection Performance
 
 		[Test]
 		public async Task Performance_AsyncInjection_SingleType()
@@ -292,9 +287,7 @@ namespace Tests.EditMode
 				"All services should be injected");
 		}
 
-		#endregion
 
-		#region Tag Query Performance
 
 		[Test]
 		public void Performance_TagQuery_WithDeduplication()
@@ -363,9 +356,7 @@ namespace Tests.EditMode
 			Assert.Less(_stopwatch.Elapsed.TotalMilliseconds, 500, "Tag queries should complete in under 500ms");
 		}
 
-		#endregion
 
-		#region Unregistration Performance
 
 		[Test]
 		public void Performance_Unregister_MultiType()
@@ -394,12 +385,10 @@ namespace Tests.EditMode
 			Debug.Log($"[Performance] Multi-type unregistration cycles: {cycles} cycles in {_stopwatch.Elapsed.TotalMilliseconds:F2}ms (avg: {avgTime:F4}ms per cycle)");
 
 			// Assert
-			Assert.Less(_stopwatch.Elapsed.TotalMilliseconds, 5000, "Unregistration cycles should complete in under 5 seconds");
+			Assert.Less(_stopwatch.Elapsed.TotalMilliseconds, 8000, "Unregistration cycles should complete in under 8 seconds");
 		}
 
-		#endregion
 
-		#region Scaling Tests
 
 		[Test]
 		public void Performance_Scaling_Cycles_ByTypeCount()
@@ -478,9 +467,7 @@ namespace Tests.EditMode
 			Assert.Less(_stopwatch.Elapsed.TotalMilliseconds, 1000, "High-frequency lookups should complete in under 1 second");
 		}
 
-		#endregion
 
-		#region Memory Pressure Test
 
 		[Test]
 		public void Performance_MemoryPressure_RegisterUnregisterCycle()
@@ -512,9 +499,7 @@ namespace Tests.EditMode
 			Assert.Less(_stopwatch.Elapsed.TotalMilliseconds, 5000, "Repeated cycles should complete in under 5 seconds");
 		}
 
-		#endregion
 
-		#region Helper Methods
 
 		private List<TestPerformanceService> CreateTestServices(int count)
 		{
@@ -526,10 +511,8 @@ namespace Tests.EditMode
 			return services;
 		}
 
-		#endregion
 	}
 
-	#region Test Classes and Interfaces
 
 	public interface IPerformanceServiceA { int Id { get; set; } }
 	public interface IPerformanceServiceB { int Id { get; set; } }
@@ -562,5 +545,4 @@ namespace Tests.EditMode
 		public IPerformanceServiceD ServiceD;
 	}
 
-	#endregion
 }

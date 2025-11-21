@@ -49,8 +49,6 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			}
 		}
 
-		#region Multi-Type Registration Tests
-
 		[UnityTest]
 		public IEnumerator MultiType_ServiceKitBehaviour_InjectsAllTypes()
 		{
@@ -137,10 +135,6 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			Assert.IsFalse(_locator.IsServiceReady<IServiceB>(), "ServiceB should not be ready");
 		}
 
-		#endregion
-
-		#region Concurrent Multi-Type Tests
-
 		[UnityTest]
 		public IEnumerator MultiType_MultipleBehaviours_AllGetSameInstance()
 		{
@@ -199,10 +193,6 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			Assert.IsNotNull(behaviour.ServiceB, "ServiceB should be injected");
 			Assert.IsTrue(behaviour.InitializeServiceCalled, "InitializeService should be called");
 		}
-
-		#endregion
-
-		#region ServiceKitBehaviour Destruction with Timeout Tests
 
 		[UnityTest]
 		public IEnumerator Destruction_DuringInjection_CancelsTimeout()
@@ -325,10 +315,6 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			Assert.Pass("Multi-type awaiter cleanup handled gracefully");
 		}
 
-		#endregion
-
-		#region Timeout Manager Integration Tests
-
 		[UnityTest]
 		public IEnumerator TimeoutManager_MultipleTimeouts_AllCancelledOnDestruction()
 		{
@@ -399,10 +385,6 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			Assert.Pass("Multiple create/destroy cycles completed without memory leaks");
 		}
 
-		#endregion
-
-		#region Play Mode Specific Edge Cases
-
 		[UnityTest]
 		public IEnumerator PlayMode_MultiType_DisableEnableGameObject_MaintainsInjection()
 		{
@@ -470,29 +452,20 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			Assert.Pass("Parent-child destruction handled without exceptions");
 		}
 
-		#endregion
+		private interface IServiceA { string Name { get; } }
+		private interface IServiceB { string Name { get; } }
+		private interface IServiceC { string Name { get; } }
 
-		#region Test Helper Classes
-
-		public interface IServiceA { string Name { get; } }
-		public interface IServiceB { string Name { get; } }
-		public interface IServiceC { string Name { get; } }
-
-		public class MultiTypeTestService : IServiceA, IServiceB, IServiceC
+		private class MultiTypeTestService : IServiceA, IServiceB, IServiceC
 		{
 			public string Name => "MultiTypeService";
 		}
 
-		public class MultiTypeConsumerBehaviour : MonoBehaviour
+		private class MultiTypeConsumerBehaviour : MonoBehaviour
 		{
-			[InjectService]
-			public IServiceA ServiceA;
-
-			[InjectService]
-			public IServiceB ServiceB;
-
-			[InjectService(Required = false)]
-			public IServiceC ServiceC;
+			[InjectService] public IServiceA ServiceA;
+			[InjectService] public IServiceB ServiceB;
+			[InjectService(Required = false)] public IServiceC ServiceC;
 
 			public bool InitializeServiceCalled { get; private set; }
 
@@ -533,10 +506,9 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			}
 		}
 
-		public class TimeoutTestBehaviour : MonoBehaviour
+		private class TimeoutTestBehaviour : MonoBehaviour
 		{
-			[InjectService]
-			public IServiceA ServiceA;
+			[InjectService] public IServiceA ServiceA;
 
 			private ServiceKitLocator _locator;
 
@@ -568,7 +540,5 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 #endif
 			}
 		}
-
-		#endregion
 	}
 }
