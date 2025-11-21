@@ -300,7 +300,14 @@ public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerC
 
 ### Multi-Type Service Registration
 
-Register services under multiple types (base classes or interfaces) to enable polymorphic resolution. This is useful when you have derived classes or services that implement multiple interfaces, and you want to resolve them by any compatible type.
+Register a single service under multiple types (base classes or interfaces) to enable polymorphic resolution. This powerful feature allows one service instance to be accessible through different interfaces, reducing duplication and enabling flexible architectural patterns.
+
+**Key Benefits:**
+- ✅ **Single Instance, Multiple Interfaces**: One service, many ways to access it
+- ✅ **O(1) Lookup Performance**: No polymorphic search overhead - each type is a direct dictionary lookup
+- ✅ **Automatic Lifecycle**: Ready/Unregister one type, affects all types
+- ✅ **Tag Integration**: Tags are shared across all registered types
+- ✅ **Type Safety**: Compile-time validation ensures your service implements all specified types
 
 #### Using ServiceKitBehaviour with GetAdditionalRegistrationTypes
 
@@ -394,9 +401,9 @@ public class CustomGameService : BaseGameService, ISpecialService
 }
 ```
 
-#### Manual Registration with Builder Pattern
+#### Manual Registration with Fluent Builder API
 
-For non-ServiceKitBehaviour services, use the fluent builder API:
+For non-ServiceKitBehaviour services, use the intuitive fluent builder API:
 
 ```csharp
 public class GameBootstrap : MonoBehaviour
@@ -418,9 +425,28 @@ public class GameBootstrap : MonoBehaviour
         var service1 = _serviceKit.GetService<IPlayerService>();
         var service2 = _serviceKit.GetService<IBaseService>();
         var service3 = _serviceKit.GetService<IUpdatableService>();
-        // service1 == service2 == service3
+
+        Debug.Log(service1 == service2 && service2 == service3); // true
     }
 }
+```
+
+**Advanced Fluent API Examples:**
+
+```csharp
+// Chain multiple AlsoAs calls for many types
+_serviceKit.RegisterService<IPlayerService>(playerService)
+    .AlsoAs<IBaseService>()
+    .AlsoAs<IUpdatableService>()
+    .AlsoAs<ISerializableService>()
+    .AlsoAs<INetworkService>();
+
+// Combine with tags for organization
+_serviceKit.RegisterService<IPlayerService>(
+    playerService,
+    new[] { new ServiceTag("core"), new ServiceTag("player") })
+    .AlsoAs<IBaseService>()
+    .AlsoAs<IUpdatableService>();
 ```
 
 #### Manual Registration with Additional Types Array
@@ -464,13 +490,74 @@ public class GameplayManager : MonoBehaviour
 }
 ```
 
+#### Lifecycle Behavior: Ready and Unregister
+
+Multi-type services have unified lifecycle operations - calling `ReadyService` or `UnregisterService` on **any** registered type affects **all** types:
+
+```csharp
+// Register service as multiple types
+_serviceKit.RegisterService<IPlayerService>(playerService)
+    .AlsoAs<IBaseService>()
+    .AlsoAs<IUpdatableService>();
+
+// Ready via ANY type - all types become ready
+_serviceKit.ReadyService<IBaseService>(); // Using alternate type
+
+// All types are now ready
+Debug.Log(_serviceKit.IsServiceReady<IPlayerService>()); // true
+Debug.Log(_serviceKit.IsServiceReady<IBaseService>()); // true
+Debug.Log(_serviceKit.IsServiceReady<IUpdatableService>()); // true
+
+// Unregister via ANY type - all types are removed
+_serviceKit.UnregisterService<IUpdatableService>(); // Using alternate type
+
+// All types are now unregistered
+Debug.Log(_serviceKit.GetService<IPlayerService>()); // null
+Debug.Log(_serviceKit.GetService<IBaseService>()); // null
+Debug.Log(_serviceKit.GetService<IUpdatableService>()); // null
+```
+
+**This unified behavior ensures:**
+- ✅ No orphaned type registrations
+- ✅ Consistent ready state across all types
+- ✅ Clean lifecycle management
+- ✅ Predictable service availability
+
+#### Tag Integration
+
+Tags are shared across all registered types. Query by tag returns each service instance once, even when registered under multiple types:
+
+```csharp
+var service = new PlayerService();
+
+// Register with tags under multiple types
+_serviceKit.RegisterService<IPlayerService>(
+    service,
+    new[] { new ServiceTag("core"), new ServiceTag("gameplay") })
+    .AlsoAs<IBaseService>()
+    .AlsoAs<IUpdatableService>();
+
+_serviceKit.ReadyService<IPlayerService>();
+
+// Tags accessible via any registered type
+var primaryTags = _serviceKit.GetServiceTags<IPlayerService>();
+var baseTags = _serviceKit.GetServiceTags<IBaseService>();
+// Both return: ["core", "gameplay"]
+
+// Query by tag returns service ONCE (automatic deduplication)
+var coreServices = _serviceKit.GetServicesWithTag("core");
+Debug.Log(coreServices.Count); // 1 (not 3, despite 3 registered types)
+Debug.Log(coreServices[0].Service == service); // true
+```
+
 #### Performance Characteristics
 
-Multi-type registration maintains O(1) lookup performance:
-- Each type is stored as a separate dictionary key
-- All keys point to the same ServiceInfo instance
-- No polymorphic search or type traversal required
-- Lookup speed is identical to single-type registration
+Multi-type registration maintains **O(1) lookup performance** with zero overhead:
+- Each type is stored as a separate dictionary key pointing to the same `ServiceInfo`
+- All keys reference the same service instance (no duplication)
+- No polymorphic search or type hierarchy traversal required
+- **Lookup speed is identical to single-type registration**
+- Tag queries include automatic deduplication for multi-type services
 
 #### Important Notes
 
@@ -508,6 +595,293 @@ Debug.Log(_serviceKit.GetService<IUpdatableService>()); // null
 // This will throw InvalidOperationException
 _serviceKit.RegisterService<IPlayerService>(playerService)
     .AlsoAs<IUnrelatedService>(); // PlayerService doesn't implement this!
+```
+
+#### Common Use Cases
+
+Multi-type registration excels in several architectural patterns:
+
+**1. Layered Architecture with Interface Segregation**
+```csharp
+// Separate interfaces for different concerns
+public interface IPlayerData
+{
+    int GetHealth();
+    void SetHealth(int health);
+}
+
+public interface IPlayerMovement
+{
+    void Move(Vector3 direction);
+}
+
+public interface IPlayerCombat
+{
+    void Attack();
+}
+
+// Single service implementing all concerns
+public class PlayerController : ServiceKitBehaviour<IPlayerData>,
+    IPlayerData, IPlayerMovement, IPlayerCombat
+{
+    protected override Type[] GetAdditionalRegistrationTypes()
+    {
+        return new[] { typeof(IPlayerMovement), typeof(IPlayerCombat) };
+    }
+
+    // Implementation...
+}
+
+// Consumers only inject what they need
+public class HealthUI : MonoBehaviour
+{
+    [InjectService] private IPlayerData _playerData; // Only data access
+}
+
+public class EnemyAI : MonoBehaviour
+{
+    [InjectService] private IPlayerMovement _playerMovement; // Only movement tracking
+}
+```
+
+**2. Plugin/Extension Pattern**
+```csharp
+// Core system interface
+public interface IGameSystem
+{
+    void Initialize();
+}
+
+// Optional capability interfaces
+public interface ISaveable
+{
+    void Save();
+    void Load();
+}
+
+public interface INetworkSyncable
+{
+    void SyncToNetwork();
+}
+
+// Service with optional capabilities
+public class InventorySystem : ServiceKitBehaviour<IGameSystem>,
+    IGameSystem, ISaveable, INetworkSyncable
+{
+    protected override Type[] GetAdditionalRegistrationTypes()
+    {
+        return new[] { typeof(ISaveable), typeof(INetworkSyncable) };
+    }
+
+    // Implementation...
+}
+
+// Save manager queries all saveable services
+public class SaveManager : MonoBehaviour
+{
+    public void SaveAll()
+    {
+        var saveables = _serviceKit.GetServicesWithTag("saveable");
+        foreach (var service in saveables)
+        {
+            (service.Service as ISaveable)?.Save();
+        }
+    }
+}
+```
+
+**3. Singleton Pattern with Multiple Facades**
+```csharp
+// Different facades for the same core service
+public interface IAudioPlayer
+{
+    void PlaySound(string soundId);
+}
+
+public interface IAudioMixer
+{
+    void SetVolume(float volume);
+}
+
+public interface IAudioSettings
+{
+    void LoadSettings();
+}
+
+// Single audio service with multiple access patterns
+public class AudioService : ServiceKitBehaviour<IAudioPlayer>,
+    IAudioPlayer, IAudioMixer, IAudioSettings
+{
+    protected override Type[] GetAdditionalRegistrationTypes()
+    {
+        return new[] { typeof(IAudioMixer), typeof(IAudioSettings) };
+    }
+
+    // Gameplay code uses IAudioPlayer
+    public void PlaySound(string soundId) { }
+
+    // Audio system uses IAudioMixer
+    public void SetVolume(float volume) { }
+
+    // Settings UI uses IAudioSettings
+    public void LoadSettings() { }
+}
+```
+
+**4. Update Loop Organization**
+```csharp
+// Define update interfaces
+public interface IEarlyUpdate { void EarlyUpdate(); }
+public interface IUpdate { void Update(); }
+public interface ILateUpdate { void LateUpdate(); }
+
+// Service that needs to update
+public class PhysicsController : ServiceKitBehaviour<IPhysicsController>,
+    IPhysicsController, IEarlyUpdate, ILateUpdate
+{
+    protected override Type[] GetAdditionalRegistrationTypes()
+    {
+        return new[] { typeof(IEarlyUpdate), typeof(ILateUpdate) };
+    }
+
+    public void EarlyUpdate() { /* Pre-physics logic */ }
+    public void LateUpdate() { /* Post-physics logic */ }
+}
+
+// Update manager queries by update type
+public class UpdateManager : MonoBehaviour
+{
+    private void Update()
+    {
+        foreach (var service in _serviceKit.GetServicesWithTag("early-update"))
+        {
+            (service.Service as IEarlyUpdate)?.EarlyUpdate();
+        }
+
+        foreach (var service in _serviceKit.GetServicesWithTag("update"))
+        {
+            (service.Service as IUpdate)?.Update();
+        }
+
+        foreach (var service in _serviceKit.GetServicesWithTag("late-update"))
+        {
+            (service.Service as ILateUpdate)?.LateUpdate();
+        }
+    }
+}
+```
+
+#### Multi-Type Best Practices
+
+**When to Use Multi-Type Registration:**
+- ✅ Service implements logically distinct interfaces (e.g., IPlayerData + IPlayerMovement)
+- ✅ Service provides multiple capability levels (e.g., IBaseService + IAdvancedService)
+- ✅ Service participates in multiple systems (e.g., IGameSystem + ISaveable + IUpdatable)
+- ✅ You want to query services by capability tags
+- ✅ Interface segregation principle - consumers should only depend on interfaces they use
+
+**When to Avoid Multi-Type Registration:**
+- ❌ Service only has a single logical interface
+- ❌ Multiple types represent different responsibilities better served by separate services
+- ❌ Types have no relationship (poor cohesion)
+- ❌ Using it to work around circular dependencies (use proper dependency management instead)
+
+**Design Guidelines:**
+- **Interface Segregation**: Keep interfaces focused on specific capabilities
+- **Cohesion**: All registered types should relate to the same core service responsibility
+- **Tag Organization**: Use tags to group services by capability rather than type
+- **Performance**: Multi-type has zero overhead compared to single-type registration
+
+#### Troubleshooting Multi-Type Registration
+
+**Problem: Service not found when querying by alternate type**
+```csharp
+// ❌ WRONG: Only registering primary type
+_serviceKit.RegisterService<IPlayerService>(playerService);
+_serviceKit.ReadyService<IPlayerService>();
+
+var baseService = _serviceKit.GetService<IBaseService>(); // null!
+
+// ✅ CORRECT: Register alternate types
+_serviceKit.RegisterService<IPlayerService>(playerService)
+    .AlsoAs<IBaseService>();
+_serviceKit.ReadyService<IPlayerService>();
+
+var baseService = _serviceKit.GetService<IBaseService>(); // Found!
+```
+
+**Problem: Service registered multiple times in tag queries**
+```csharp
+// This is expected behavior - ServiceKit handles deduplication
+var services = _serviceKit.GetServicesWithTag("core");
+// Returns each service instance ONCE, even if registered under multiple types
+```
+
+**Problem: Validation error - service doesn't implement type**
+```csharp
+// ❌ WRONG: PlayerService doesn't implement IUnrelatedService
+_serviceKit.RegisterService<IPlayerService>(playerService)
+    .AlsoAs<IUnrelatedService>(); // InvalidOperationException!
+
+// ✅ CORRECT: Only register types the service actually implements
+public class PlayerService : IPlayerService, IBaseService { }
+
+_serviceKit.RegisterService<IPlayerService>(playerService)
+    .AlsoAs<IBaseService>(); // Works!
+```
+
+**Problem: Circular dependency with multi-type registration**
+```csharp
+// ❌ WRONG: ServiceKitBehaviour registers itself, creating a circular dependency
+public class PlayerController : ServiceKitBehaviour<IPlayerService>, IPlayerService
+{
+    [InjectService] private IPlayerService _playerService; // Circular!
+}
+
+// ✅ CORRECT: Only inject other services, not your own type
+public class PlayerController : ServiceKitBehaviour<IPlayerService>, IPlayerService
+{
+    [InjectService] private IInventoryService _inventoryService; // Different service
+}
+```
+
+**Problem: Ready/Unregister only affecting one type**
+```csharp
+// This is not a problem - it's correct behavior!
+// Multi-type services have unified lifecycle
+
+_serviceKit.RegisterService<IPlayerService>(playerService)
+    .AlsoAs<IBaseService>();
+
+// Ready via ANY type affects ALL types
+_serviceKit.ReadyService<IBaseService>(); // Using alternate type
+
+Debug.Log(_serviceKit.IsServiceReady<IPlayerService>()); // true - all ready!
+
+// Same for Unregister - removes ALL types
+_serviceKit.UnregisterService<IPlayerService>();
+Debug.Log(_serviceKit.GetService<IBaseService>()); // null - all gone!
+```
+
+**Problem: GetAdditionalRegistrationTypes not being called**
+```csharp
+// ❌ WRONG: Not overriding correctly
+public class PlayerController : ServiceKitBehaviour<IPlayerService>
+{
+    public Type[] GetAdditionalRegistrationTypes() // Missing 'protected override'!
+    {
+        return new[] { typeof(IBaseService) };
+    }
+}
+
+// ✅ CORRECT: Proper override
+public class PlayerController : ServiceKitBehaviour<IPlayerService>
+{
+    protected override Type[] GetAdditionalRegistrationTypes()
+    {
+        return new[] { typeof(IBaseService) };
+    }
+}
 ```
 
 ### Asynchronous Service Resolution
