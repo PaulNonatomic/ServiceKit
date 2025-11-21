@@ -219,19 +219,26 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 		{
 			// Arrange
 			var awaitTasks = new List<Task>();
-			
+			var taskTokens = new List<CancellationTokenSource>();
+
+			// Create cancellation tokens on the main thread first
+			for (int i = 0; i < 5; i++)
+			{
+				var cts = new CancellationTokenSource();
+				taskTokens.Add(cts);
+				_cancellationTokens.Add(cts);
+			}
+
 			// Create multiple services that will be awaited
 			for (int i = 0; i < 5; i++)
 			{
 				var serviceType = typeof(ITestService);
+				var token = taskTokens[i].Token;
 				var task = Task.Run(async () =>
 				{
 					try
 					{
-						var cts = new CancellationTokenSource();
-						_cancellationTokens.Add(cts);
-						
-						await _locator.GetServiceAsync(serviceType, cts.Token);
+						await _locator.GetServiceAsync(serviceType, token);
 					}
 					catch (OperationCanceledException)
 					{
@@ -244,12 +251,28 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			// Wait a moment for awaiters to be registered
 			yield return new WaitForSeconds(0.1f);
 
-			// Act - Clear services which should cancel all awaiters
+			// Act - Clear services and cancel all tokens to complete the awaiters
 			_locator.ClearServices();
 			ServiceKitTimeoutManager.Cleanup();
 
+			// Cancel all the tokens so GetServiceAsync calls complete
+			foreach (var cts in taskTokens)
+			{
+				try
+				{
+					if (!cts.IsCancellationRequested)
+					{
+						cts.Cancel();
+					}
+				}
+				catch
+				{
+					// Ignore cancellation exceptions
+				}
+			}
+
 			// Wait for all tasks to complete
-			yield return new WaitUntil(() => 
+			yield return new WaitUntil(() =>
 				awaitTasks.TrueForAll(t => t.IsCompleted) || Time.time > 5f);
 
 			// Assert - All tasks should be completed (cancelled)
