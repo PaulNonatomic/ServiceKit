@@ -57,6 +57,11 @@ namespace Tests.EditMode
 			if (_serviceLocator != null)
 			{
 				_serviceLocator.ClearServices();
+
+				// Wait synchronously for async operations to complete before destroying the locator
+				// This prevents NullReferenceExceptions in async continuations
+				System.Threading.Thread.Sleep(50);
+
 				Object.DestroyImmediate(_serviceLocator);
 				_serviceLocator = null;
 			}

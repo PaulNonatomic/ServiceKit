@@ -45,6 +45,11 @@ namespace Tests.EditMode
 			if (_realServiceKitLocator != null)
 			{
 				_realServiceKitLocator.ClearServices();
+
+				// Wait synchronously for async operations to complete before destroying the locator
+				// This prevents NullReferenceExceptions in async continuations
+				System.Threading.Thread.Sleep(50);
+
 				Object.DestroyImmediate(_realServiceKitLocator);
 				_realServiceKitLocator = null;
 			}

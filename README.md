@@ -298,6 +298,218 @@ public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerC
 }
 ```
 
+### Multi-Type Service Registration
+
+Register services under multiple types (base classes or interfaces) to enable polymorphic resolution. This is useful when you have derived classes or services that implement multiple interfaces, and you want to resolve them by any compatible type.
+
+#### Using ServiceKitBehaviour with GetAdditionalRegistrationTypes
+
+Override `GetAdditionalRegistrationTypes()` to register your service under additional types:
+
+```csharp
+// Define your interfaces
+public interface IBaseService
+{
+    void DoBaseAction();
+}
+
+public interface IPlayerService : IBaseService
+{
+    void DoPlayerAction();
+}
+
+public interface IUpdatableService
+{
+    void Update();
+}
+
+// Service implementing multiple interfaces
+public class PlayerController : ServiceKitBehaviour<IPlayerService>,
+    IPlayerService, IUpdatableService
+{
+    // Register under additional types
+    protected override Type[] GetAdditionalRegistrationTypes()
+    {
+        return new[] { typeof(IBaseService), typeof(IUpdatableService) };
+    }
+
+    public void DoBaseAction() => Debug.Log("Base action");
+    public void DoPlayerAction() => Debug.Log("Player action");
+    public void Update() => Debug.Log("Updating");
+}
+
+// Now resolvable by any registered type
+public class GameManager : MonoBehaviour
+{
+    [SerializeField] private ServiceKitLocator _serviceKit;
+
+    private void Start()
+    {
+        // All these resolve to the same instance
+        var byPlayer = _serviceKit.GetService<IPlayerService>();
+        var byBase = _serviceKit.GetService<IBaseService>();
+        var byUpdatable = _serviceKit.GetService<IUpdatableService>();
+
+        Debug.Log(byPlayer == byBase == byUpdatable); // true
+    }
+}
+```
+
+#### Inheritance Support
+
+Derived classes can extend or replace the base class's additional types:
+
+```csharp
+// Base service
+public class BaseGameService : ServiceKitBehaviour<IGameService>, IGameService, IUpdatableService
+{
+    protected override Type[] GetAdditionalRegistrationTypes()
+    {
+        return new[] { typeof(IUpdatableService) };
+    }
+}
+
+// Derived service extending additional types
+public class AdvancedGameService : BaseGameService, ISpecialService
+{
+    protected override Type[] GetAdditionalRegistrationTypes()
+    {
+        // Add to base types
+        return base.GetAdditionalRegistrationTypes()
+            .Concat(new[] { typeof(ISpecialService) })
+            .ToArray();
+        // Registered as: IGameService, IUpdatableService, ISpecialService
+    }
+}
+
+// Derived service replacing additional types
+public class CustomGameService : BaseGameService, ISpecialService
+{
+    protected override Type[] GetAdditionalRegistrationTypes()
+    {
+        // Replace base types entirely
+        return new[] { typeof(ISpecialService) };
+        // Registered as: IGameService, ISpecialService (NOT IUpdatableService)
+    }
+}
+```
+
+#### Manual Registration with Builder Pattern
+
+For non-ServiceKitBehaviour services, use the fluent builder API:
+
+```csharp
+public class GameBootstrap : MonoBehaviour
+{
+    [SerializeField] private ServiceKitLocator _serviceKit;
+
+    private void Awake()
+    {
+        var playerService = new PlayerService();
+
+        // Register under multiple types using fluent API
+        _serviceKit.RegisterService<IPlayerService>(playerService)
+            .AlsoAs<IBaseService>()
+            .AlsoAs<IUpdatableService>();
+
+        _serviceKit.ReadyService<IPlayerService>();
+
+        // All types now resolve to the same instance
+        var service1 = _serviceKit.GetService<IPlayerService>();
+        var service2 = _serviceKit.GetService<IBaseService>();
+        var service3 = _serviceKit.GetService<IUpdatableService>();
+        // service1 == service2 == service3
+    }
+}
+```
+
+#### Manual Registration with Additional Types Array
+
+Alternatively, pass additional types directly during registration:
+
+```csharp
+var playerService = new PlayerService();
+
+// Register with additional types in one call
+_serviceKit.RegisterService<IPlayerService>(
+    playerService,
+    new[] { typeof(IBaseService), typeof(IUpdatableService) }
+);
+
+_serviceKit.ReadyService<IPlayerService>();
+```
+
+#### Injection with Multi-Type Services
+
+Services registered under multiple types can be injected using any of their registered types:
+
+```csharp
+public class GameplayManager : MonoBehaviour
+{
+    [SerializeField] private ServiceKitLocator _serviceKit;
+
+    // Inject by different types - all resolve to same instance
+    [InjectService] private IPlayerService _playerService;
+    [InjectService] private IBaseService _baseService;
+    [InjectService] private IUpdatableService _updatableService;
+
+    private async void Awake()
+    {
+        await _serviceKit.InjectServicesAsync(this).ExecuteAsync();
+
+        // All three references point to the same PlayerController instance
+        Debug.Log(_playerService == _baseService); // true
+        Debug.Log(_baseService == _updatableService); // true
+    }
+}
+```
+
+#### Performance Characteristics
+
+Multi-type registration maintains O(1) lookup performance:
+- Each type is stored as a separate dictionary key
+- All keys point to the same ServiceInfo instance
+- No polymorphic search or type traversal required
+- Lookup speed is identical to single-type registration
+
+#### Important Notes
+
+**First-Registered Priority**: If multiple services register under the same type, the first registered service takes priority:
+```csharp
+var service1 = new PlayerService();
+var service2 = new AlternativeService();
+
+// Both register as IBaseService
+_serviceKit.RegisterService<IPlayerService>(service1)
+    .AlsoAs<IBaseService>();
+_serviceKit.RegisterService<IAlternativeService>(service2)
+    .AlsoAs<IBaseService>();
+
+_serviceKit.ReadyService<IPlayerService>();
+_serviceKit.ReadyService<IAlternativeService>();
+
+// Returns service1 (first registered)
+var resolved = _serviceKit.GetService<IBaseService>();
+```
+
+**Automatic Cleanup**: When a multi-type service is unregistered, ALL registered types are removed:
+```csharp
+// Unregister removes all type mappings
+_serviceKit.UnregisterService<IPlayerService>();
+
+// All types are now unregistered
+Debug.Log(_serviceKit.GetService<IPlayerService>()); // null
+Debug.Log(_serviceKit.GetService<IBaseService>()); // null
+Debug.Log(_serviceKit.GetService<IUpdatableService>()); // null
+```
+
+**Validation**: ServiceKit validates that your service actually implements all specified types:
+```csharp
+// This will throw InvalidOperationException
+_serviceKit.RegisterService<IPlayerService>(playerService)
+    .AlsoAs<IUnrelatedService>(); // PlayerService doesn't implement this!
+```
+
 ### Asynchronous Service Resolution
 
 Wait for services that may not be immediately available (or ready):

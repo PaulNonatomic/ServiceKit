@@ -10,12 +10,27 @@ namespace Nonatomic.ServiceKit
 		/// The actual service instance
 		/// </summary>
 		public object Service { get; set; }
-		
+
+		/// <summary>
+		/// The primary type used for service registration (usually the interface type)
+		/// </summary>
+		public Type PrimaryType { get; set; }
+
+		/// <summary>
+		/// All types this service is registered under (primary + additional types)
+		/// </summary>
+		public IReadOnlyList<Type> AllTypes { get; set; } = Array.Empty<Type>();
+
 		/// <summary>
 		/// The type of the service (usually the interface type)
+		/// For backward compatibility - same as PrimaryType
 		/// </summary>
-		public Type ServiceType { get; set; }
-		
+		public Type ServiceType
+		{
+			get => PrimaryType;
+			set => PrimaryType = value;
+		}
+
 		/// <summary>
 		/// Custom tags associated with this service (e.g. "ThirdParty", "Firebase", "Debug")
 		/// </summary>

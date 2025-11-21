@@ -153,11 +153,11 @@ namespace Nonatomic.ServiceKit
 			{
 				var isExplicitTimeout = timeoutCts?.IsCancellationRequested ?? false;
 
-				// Always try to inject any services that were successfully resolved before cancellation
-				await TryInjectResolvedServices(results, unityContext);
-
+				// Only inject partial results if we're ignoring cancellation (app quit scenario)
+				// For explicit timeouts, we should throw without injecting
 				if (ShouldIgnoreCancellation(isExplicitTimeout))
 				{
+					await TryInjectResolvedServices(_partialResults, unityContext);
 					return;
 				}
 
@@ -217,35 +217,104 @@ namespace Nonatomic.ServiceKit
 
 #if SERVICEKIT_UNITASK
 		private async UniTask<(FieldInfo field, object service, bool required)[]> ResolveAllServicesInParallel(
-			List<FieldInfo> fieldsToInject, 
-			CancellationToken cancellationToken, 
+			List<FieldInfo> fieldsToInject,
+			CancellationToken cancellationToken,
 			CancellationTokenSource resolutionCts)
 		{
 			var taskCount = fieldsToInject.Count;
 			var tasks = new UniTask<(FieldInfo field, object service, bool required)>[taskCount];
-			
+			var completedResults = new List<(FieldInfo field, object service, bool required)>();
+			var completedLock = new object();
+
+			// Wrap each task to track completions
 			for (int i = 0; i < taskCount; i++)
 			{
-				tasks[i] = ResolveServiceForField(fieldsToInject[i], cancellationToken, resolutionCts);
+				var index = i;
+				tasks[i] = TrackCompletion(ResolveServiceForField(fieldsToInject[i], cancellationToken, resolutionCts), completedResults, completedLock);
 			}
-			
-			return await UniTask.WhenAll(tasks);
+
+			// Use WhenAll with try-catch to capture partial results on cancellation
+			try
+			{
+				return await UniTask.WhenAll(tasks);
+			}
+			catch (OperationCanceledException)
+			{
+				// Store partial results for ExecuteAsync catch block
+				// Don't return them here - let ExecuteAsync decide whether to inject based on cancellation reason
+				lock (completedLock)
+				{
+					_partialResults = completedResults.ToArray();
+				}
+
+				throw;
+			}
+		}
+
+		private async UniTask<(FieldInfo field, object service, bool required)> TrackCompletion(
+			UniTask<(FieldInfo field, object service, bool required)> task,
+			List<(FieldInfo field, object service, bool required)> completedResults,
+			object lockObject)
+		{
+			var result = await task;
+			lock (lockObject)
+			{
+				completedResults.Add(result);
+			}
+			return result;
 		}
 #else
 		private async Task<(FieldInfo field, object service, bool required)[]> ResolveAllServicesInParallel(
-			List<FieldInfo> fieldsToInject, 
-			CancellationToken cancellationToken, 
+			List<FieldInfo> fieldsToInject,
+			CancellationToken cancellationToken,
 			CancellationTokenSource resolutionCts)
 		{
 			var taskCount = fieldsToInject.Count;
 			var tasks = new Task<(FieldInfo field, object service, bool required)>[taskCount];
-			
+
 			for (int i = 0; i < taskCount; i++)
 			{
 				tasks[i] = ResolveServiceForField(fieldsToInject[i], cancellationToken, resolutionCts);
 			}
-			
-			return await Task.WhenAll(tasks);
+
+			// Use WhenAll with try-catch to capture partial results on cancellation
+			try
+			{
+				return await Task.WhenAll(tasks);
+			}
+			catch (OperationCanceledException)
+			{
+				// Store partial results for ExecuteAsync catch block
+				// Don't return them here - let ExecuteAsync decide whether to inject based on cancellation reason
+				_partialResults = ExtractPartialResultsFromTask(tasks);
+
+				throw;
+			}
+		}
+
+		private (FieldInfo field, object service, bool required)[] ExtractPartialResultsFromTask(
+			Task<(FieldInfo field, object service, bool required)>[] tasks)
+		{
+			var results = new List<(FieldInfo field, object service, bool required)>();
+
+			foreach (var task in tasks)
+			{
+				// Only include successfully completed tasks
+				if (task.Status == TaskStatus.RanToCompletion)
+				{
+					try
+					{
+						var result = task.Result;
+						results.Add(result);
+					}
+					catch
+					{
+						// Skip tasks that failed
+					}
+				}
+			}
+
+			return results.ToArray();
 		}
 #endif
 
@@ -538,5 +607,6 @@ namespace Nonatomic.ServiceKit
 		private readonly Type _targetServiceType;
 		private CancellationToken _cancellationToken = CancellationToken.None;
 		private Action<Exception> _errorHandler;
+		private (FieldInfo field, object service, bool required)[] _partialResults;
 	}
 }

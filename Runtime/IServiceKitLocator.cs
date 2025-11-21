@@ -15,16 +15,16 @@ namespace Nonatomic.ServiceKit
 	public interface IServiceKitLocator
 	{
 		// Phase 1: Registration (service not available yet)
-		void RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
-		
+		ServiceRegistrationBuilder RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+
 		// Phase 1: Registration with tags
-		void RegisterService<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
-		
+		ServiceRegistrationBuilder RegisterService<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
+
 		// Phase 1: Registration with circular dependency exemption
-		void RegisterServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
-		
+		ServiceRegistrationBuilder RegisterServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+
 		// Phase 1: Registration with circular dependency exemption and tags
-		void RegisterServiceWithCircularExemption<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
+		ServiceRegistrationBuilder RegisterServiceWithCircularExemption<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
 		
 		// Phase 3: Ready (service becomes available)
 		void ReadyService<T>() where T : class;

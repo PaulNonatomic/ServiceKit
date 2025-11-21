@@ -62,12 +62,23 @@ namespace Nonatomic.ServiceKit
 			UnregisterServiceFromLocator();
 		}
 
+		/// <summary>
+		/// Override this method to register the service under additional types (base classes or interfaces).
+		/// The service will be registered under the primary type T and all additional types returned by this method.
+		/// </summary>
+		/// <returns>Array of additional types to register the service under, or empty array if none</returns>
+		protected virtual Type[] GetAdditionalRegistrationTypes()
+		{
+			return Array.Empty<Type>();
+		}
+
 		protected virtual void RegisterServiceWithLocator()
 		{
 			if (IsServiceLocatorMissing()) return;
-			
+
 			var serviceInstance = CastThisToServiceInterface();
-			RegisterInstanceWithLocator(serviceInstance);
+			var additionalTypes = GetAdditionalRegistrationTypes();
+			RegisterInstanceWithLocator(serviceInstance, additionalTypes);
 			LogRegistrationIfDebugEnabled();
 		}
 
@@ -170,9 +181,16 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		private void RegisterInstanceWithLocator(T serviceInstance)
+		private void RegisterInstanceWithLocator(T serviceInstance, Type[] additionalTypes)
 		{
-			ServiceKitLocator.RegisterService<T>(serviceInstance);
+			if (additionalTypes == null || additionalTypes.Length == 0)
+			{
+				ServiceKitLocator.RegisterService<T>(serviceInstance);
+			}
+			else
+			{
+				ServiceKitLocator.RegisterService<T>(serviceInstance, additionalTypes);
+			}
 			MarkAsRegistered();
 		}
 		
