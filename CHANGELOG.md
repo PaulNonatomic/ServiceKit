@@ -5,6 +5,10 @@
   - Registration is automatically triggered when `UseLocator()` is called with a valid locator
   - `RegisterServiceWithLocator()` is now idempotent - safe to call multiple times
 
+### Changed
+- **Missing Locator Logging**: Downgraded from error to warning when ServiceKitLocator is missing
+  - Less alarming for `UseLocator` test pattern where locator is assigned after `Awake()`
+
 ### Documentation
 - Updated unit testing guide with examples showing automatic registration behavior
 

@@ -356,7 +356,7 @@ namespace Nonatomic.ServiceKit
 			// Don't log error during destruction - destruction order is non-deterministic
 			if (!Application.isPlaying || IsObjectDestroyed()) return true;
 			
-			LogMissingServiceLocatorError();
+			LogMissingServiceLocatorWarning();
 			return true;
 		}
 
@@ -365,9 +365,9 @@ namespace Nonatomic.ServiceKit
 			return Locator != null;
 		}
 
-		private void LogMissingServiceLocatorError()
+		private void LogMissingServiceLocatorWarning()
 		{
-			Debug.LogError($"{GetType().Name} requires a reference to a ServiceKitLocator.", this);
+			Debug.LogWarning($"{GetType().Name} requires a reference to a ServiceKitLocator.", this);
 		}
 	}
 }
