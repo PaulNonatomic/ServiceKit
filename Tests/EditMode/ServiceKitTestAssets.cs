@@ -111,18 +111,12 @@ namespace Tests.EditMode
 	// Test ServiceKitBehaviour for testing InitializeService timing with optional dependencies
 	public class TestInitializeServiceBehaviour : ServiceKitBehaviour<ITestInitializeService>, ITestInitializeService
 	{
-		[InjectService(Required = false)] 
+		[InjectService(Required = false)]
 		private IInventoryService _optionalInventoryService;
-		
+
 		public IInventoryService OptionalInventoryService => _optionalInventoryService;
 		public bool IsInitialized { get; private set; }
 		public System.Action OnInitializeServiceCalled { get; set; }
-
-		// Method to set the ServiceKitLocator for testing
-		public void SetServiceKitLocator(ServiceKitLocator locator)
-		{
-			ServiceKitLocator = locator;
-		}
 
 		protected override void InitializeService()
 		{
@@ -139,17 +133,17 @@ namespace Tests.EditMode
 #endif
 		{
 			RegisterServiceWithLocator();
-			
+
 			// Manually inject services without using destroyCancellationToken
-			await ServiceKitLocator.InjectServicesAsync(this)
-				.WithCancellation(cancellationToken) 
+			await Locator.InjectServicesAsync(this)
+				.WithCancellation(cancellationToken)
 				.WithTimeout()
 				.WithErrorHandling(HandleDependencyInjectionFailure)
 				.ExecuteAsync();
-			
+
 			await InitializeServiceAsync();
 			InitializeService();
-			
+
 			MarkServiceAsReady();
 		}
 	}

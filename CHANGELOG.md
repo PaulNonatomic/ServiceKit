@@ -1,3 +1,16 @@
+## [2.3.0] - 2025-12-06
+### Added
+- **Unit Testing Support**: Added `UseLocator(IServiceKitLocator)` method to `ServiceKitBehaviour<T>`
+  - Enables injection of mock or test locators without serialized field assignment
+  - Internal references now use `Locator` property which returns override or serialized field
+  - Supports both mock-based unit tests and real `ServiceKitLocator` integration tests
+
+### Documentation
+- **Unit Testing Guide**: Added comprehensive documentation for testing ServiceKitBehaviours
+  - Examples for mock-based testing with NSubstitute
+  - Examples for integration testing with real ServiceKitLocator
+  - Pattern for creating testable ServiceKitBehaviours with `TestAwake` method
+
 ## [2.2.0] - 2025-11-17
 ### Improved
 - **Editor Menu Cleanup**: Streamlined Tools > ServiceKit menu from 10 to 6 essential items

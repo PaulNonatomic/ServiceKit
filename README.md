@@ -853,6 +853,126 @@ public class MyService : ServiceKitBehaviour<IMyService>
 
 The core functionality remains unchanged - only the naming has been improved for better clarity and maintainability.
 
+## Unit Testing
+
+ServiceKit provides first-class support for unit testing through the `UseLocator()` method, which allows you to inject mock or test instances of `IServiceKitLocator` without requiring Unity's serialized field assignment.
+
+### Testing with Mocks
+
+Use NSubstitute or any mocking framework to create isolated unit tests:
+
+```csharp
+[TestFixture]
+public class MyServiceTests
+{
+    private IServiceKitLocator _mockLocator;
+    private IServiceInjectionBuilder _mockBuilder;
+
+    [SetUp]
+    public void Setup()
+    {
+        _mockLocator = Substitute.For<IServiceKitLocator>();
+        _mockBuilder = Substitute.For<IServiceInjectionBuilder>();
+
+        // Setup fluent API chain
+        _mockBuilder.WithCancellation(Arg.Any<CancellationToken>()).Returns(_mockBuilder);
+        _mockBuilder.WithTimeout(Arg.Any<float>()).Returns(_mockBuilder);
+        _mockBuilder.WithTimeout().Returns(_mockBuilder);
+        _mockBuilder.WithErrorHandling(Arg.Any<Action<Exception>>()).Returns(_mockBuilder);
+        _mockBuilder.ExecuteAsync().Returns(Task.CompletedTask);
+        _mockLocator.InjectServicesAsync(Arg.Any<object>()).Returns(_mockBuilder);
+    }
+
+    [Test]
+    public async Task MyBehaviour_RegistersService_OnAwake()
+    {
+        // Arrange
+        var go = new GameObject();
+        var behaviour = go.AddComponent<MyServiceBehaviour>();
+        behaviour.UseLocator(_mockLocator);
+
+        // Act
+        await behaviour.TestAwake(CancellationToken.None);
+
+        // Assert
+        _mockLocator.Received(1).RegisterService(Arg.Any<IMyService>(), Arg.Any<string>());
+    }
+}
+```
+
+### Testing with Real ServiceKitLocator
+
+For integration tests, use a real `ServiceKitLocator` instance:
+
+```csharp
+[TestFixture]
+public class MyServiceIntegrationTests
+{
+    private ServiceKitLocator _locator;
+
+    [SetUp]
+    public void Setup()
+    {
+        _locator = ScriptableObject.CreateInstance<ServiceKitLocator>();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _locator?.ClearServices();
+        if (_locator != null) Object.DestroyImmediate(_locator);
+    }
+
+    [Test]
+    public async Task MyBehaviour_InjectsDependencies_WhenServicesReady()
+    {
+        // Arrange
+        var playerService = new PlayerService();
+        _locator.RegisterAndReadyService<IPlayerService>(playerService);
+
+        var go = new GameObject();
+        var behaviour = go.AddComponent<MyServiceBehaviour>();
+        behaviour.UseLocator(_locator);
+
+        // Act
+        await behaviour.TestAwake(CancellationToken.None);
+
+        // Assert
+        Assert.IsNotNull(behaviour.PlayerService);
+        Assert.AreSame(playerService, behaviour.PlayerService);
+    }
+}
+```
+
+### Creating Testable ServiceKitBehaviours
+
+Expose a `TestAwake` method to manually trigger the initialization sequence in tests:
+
+```csharp
+public class MyServiceBehaviour : ServiceKitBehaviour<IMyService>, IMyService
+{
+    [InjectService] private IPlayerService _playerService;
+
+    public IPlayerService PlayerService => _playerService;
+
+    public async Task TestAwake(CancellationToken cancellationToken)
+    {
+        RegisterServiceWithLocator();
+
+        await Locator.InjectServicesAsync(this)
+            .WithCancellation(cancellationToken)
+            .WithTimeout()
+            .WithErrorHandling(HandleDependencyInjectionFailure)
+            .ExecuteAsync();
+
+        await InitializeServiceAsync();
+        InitializeService();
+
+        MarkServiceAsReady();
+    }
+}
+```
+
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.

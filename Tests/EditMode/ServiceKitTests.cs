@@ -336,12 +336,12 @@ namespace Tests.EditMode
 		{
 			// Arrange - Test that InitializeService waits for optional but registered dependencies
 			var inventoryService = new InventoryService();
-			
+
 			// Register but don't ready the service initially
 			_realServiceKitLocator.RegisterService<IInventoryService>(inventoryService);
-			
+
 			var testBehaviour = new TestInitializeServiceBehaviour();
-			testBehaviour.SetServiceKitLocator(_realServiceKitLocator);
+			testBehaviour.UseLocator(_realServiceKitLocator);
 			
 			// Track when InitializeService is called
 			bool initializeServiceCalled = false;

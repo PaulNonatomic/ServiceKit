@@ -15,6 +15,22 @@ namespace Nonatomic.ServiceKit
 	{
 		[SerializeField] public ServiceKitLocator ServiceKitLocator;
 
+		private IServiceKitLocator _locatorOverride;
+
+		/// <summary>
+		/// Returns the active service locator. Uses the override if set, otherwise falls back to the serialized field.
+		/// </summary>
+		protected IServiceKitLocator Locator => _locatorOverride ?? ServiceKitLocator;
+
+		/// <summary>
+		/// Sets an override for the ServiceKitLocator. Useful for unit testing with mocks.
+		/// </summary>
+		/// <param name="locator">The IServiceKitLocator to use (can be a mock)</param>
+		public void UseLocator(IServiceKitLocator locator)
+		{
+			_locatorOverride = locator;
+		}
+
 		protected bool IsServiceRegistered { get; private set; }
 		protected bool IsServiceReady { get; private set; }
 		
@@ -172,7 +188,7 @@ namespace Nonatomic.ServiceKit
 
 		private void RegisterInstanceWithLocator(T serviceInstance)
 		{
-			ServiceKitLocator.RegisterService<T>(serviceInstance);
+			Locator.RegisterService<T>(serviceInstance);
 			MarkAsRegistered();
 		}
 		
@@ -199,7 +215,7 @@ namespace Nonatomic.ServiceKit
 
 		private void NotifyLocatorServiceIsReady()
 		{
-			ServiceKitLocator.ReadyService<T>();
+			Locator.ReadyService<T>();
 			MarkAsReady();
 		}
 		
@@ -242,7 +258,7 @@ namespace Nonatomic.ServiceKit
 		private void RemoveFromServiceLocator()
 		{
 			var serviceType = typeof(T);
-			ServiceKitLocator.UnregisterService(serviceType);
+			Locator.UnregisterService(serviceType);
 		}
 
 #if SERVICEKIT_UNITASK
@@ -271,8 +287,8 @@ namespace Nonatomic.ServiceKit
 		private async Task PerformDependencyInjection()
 #endif
 		{
-			await ServiceKitLocator.InjectServicesAsync(this)
-				.WithCancellation(CachedDestroyToken) 
+			await Locator.InjectServicesAsync(this)
+				.WithCancellation(CachedDestroyToken)
 				.WithTimeout()
 				.WithErrorHandling(HandleDependencyInjectionFailure)
 				.ExecuteAsync();
@@ -336,7 +352,7 @@ namespace Nonatomic.ServiceKit
 
 		private bool HasServiceLocatorAssigned()
 		{
-			return ServiceKitLocator != null;
+			return Locator != null;
 		}
 
 		private void LogMissingServiceLocatorError()
