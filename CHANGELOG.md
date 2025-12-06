@@ -1,3 +1,13 @@
+## [2.3.1] - 2025-12-06
+### Fixed
+- **UseLocator Auto-Registration**: `UseLocator()` now triggers registration if `Awake()` was skipped
+  - Fixes issue where `AddComponent<T>()` calls `Awake()` before `UseLocator()` can be called
+  - Registration is automatically triggered when `UseLocator()` is called with a valid locator
+  - `RegisterServiceWithLocator()` is now idempotent - safe to call multiple times
+
+### Documentation
+- Updated unit testing guide with examples showing automatic registration behavior
+
 ## [2.3.0] - 2025-12-06
 ### Added
 - **Unit Testing Support**: Added `UseLocator(IServiceKitLocator)` method to `ServiceKitBehaviour<T>`

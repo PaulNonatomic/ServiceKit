@@ -857,6 +857,8 @@ The core functionality remains unchanged - only the naming has been improved for
 
 ServiceKit provides first-class support for unit testing through the `UseLocator()` method, which allows you to inject mock or test instances of `IServiceKitLocator` without requiring Unity's serialized field assignment.
 
+**Important:** When using `AddComponent<T>()` to create a `ServiceKitBehaviour`, Unity calls `Awake()` immediately—before you can assign a locator. `UseLocator()` handles this automatically by triggering registration if it was skipped during `Awake()`.
+
 ### Testing with Mocks
 
 Use NSubstitute or any mocking framework to create isolated unit tests:
@@ -924,6 +926,20 @@ public class MyServiceIntegrationTests
     }
 
     [Test]
+    public void MyBehaviour_RegistersAutomatically_WhenUseLocatorCalled()
+    {
+        // Arrange - AddComponent triggers Awake, but registration is skipped (no locator yet)
+        var go = new GameObject();
+        var behaviour = go.AddComponent<MyServiceBehaviour>();
+
+        // Act - UseLocator triggers registration automatically
+        behaviour.UseLocator(_locator);
+
+        // Assert - Service is now registered
+        Assert.IsTrue(_locator.IsServiceRegistered<IMyService>());
+    }
+
+    [Test]
     public async Task MyBehaviour_InjectsDependencies_WhenServicesReady()
     {
         // Arrange
@@ -934,8 +950,13 @@ public class MyServiceIntegrationTests
         var behaviour = go.AddComponent<MyServiceBehaviour>();
         behaviour.UseLocator(_locator);
 
-        // Act
-        await behaviour.TestAwake(CancellationToken.None);
+        // Act - Complete injection manually
+        await _locator.InjectServicesAsync(behaviour)
+            .WithCancellation(CancellationToken.None)
+            .WithTimeout()
+            .ExecuteAsync();
+
+        _locator.ReadyService<IMyService>();
 
         // Assert
         Assert.IsNotNull(behaviour.PlayerService);

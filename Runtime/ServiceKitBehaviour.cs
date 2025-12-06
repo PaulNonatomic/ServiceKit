@@ -24,11 +24,20 @@ namespace Nonatomic.ServiceKit
 
 		/// <summary>
 		/// Sets an override for the ServiceKitLocator. Useful for unit testing with mocks.
+		/// If Awake() already ran but registration was skipped due to missing locator,
+		/// this method will trigger registration automatically.
 		/// </summary>
 		/// <param name="locator">The IServiceKitLocator to use (can be a mock)</param>
 		public void UseLocator(IServiceKitLocator locator)
 		{
 			_locatorOverride = locator;
+
+			// If Awake already ran but registration was skipped due to missing locator,
+			// perform registration now
+			if (!IsServiceRegistered && Locator != null)
+			{
+				RegisterServiceWithLocator();
+			}
 		}
 
 		protected bool IsServiceRegistered { get; private set; }
@@ -81,7 +90,8 @@ namespace Nonatomic.ServiceKit
 		protected virtual void RegisterServiceWithLocator()
 		{
 			if (IsServiceLocatorMissing()) return;
-			
+			if (IsServiceRegistered) return;
+
 			var serviceInstance = CastThisToServiceInterface();
 			RegisterInstanceWithLocator(serviceInstance);
 			LogRegistrationIfDebugEnabled();

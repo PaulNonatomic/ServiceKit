@@ -209,6 +209,93 @@ namespace Tests.EditMode
 			Assert.Pass("Setting null locator did not throw");
 		}
 
+		[Test]
+		public void UseLocator_AfterAddComponent_TriggersRegistration()
+		{
+			// Arrange - AddComponent triggers Awake, but registration is skipped (no locator)
+			_testGameObject = new GameObject("TestBehaviour");
+			var behaviour = _testGameObject.AddComponent<TestServiceBehaviour>();
+
+			// At this point, Awake has run but registration was skipped
+			Assert.IsFalse(_realLocator.IsServiceRegistered<ITestService>());
+
+			// Act - UseLocator should trigger registration automatically
+			behaviour.UseLocator(_realLocator);
+
+			// Assert - Service should now be registered
+			Assert.IsTrue(_realLocator.IsServiceRegistered<ITestService>());
+		}
+
+		[Test]
+		public void UseLocator_AfterAddComponent_WithMock_TriggersRegistration()
+		{
+			// Arrange - AddComponent triggers Awake, but registration is skipped (no locator)
+			_testGameObject = new GameObject("TestBehaviour");
+			var behaviour = _testGameObject.AddComponent<TestServiceBehaviour>();
+
+			// Act - UseLocator should trigger registration automatically
+			behaviour.UseLocator(_mockLocator);
+
+			// Assert - RegisterService should have been called
+			_mockLocator.Received(1).RegisterService(Arg.Any<ITestService>(), Arg.Any<string>());
+		}
+
+		[Test]
+		public void UseLocator_AfterAddComponent_ServiceCanBeRetrieved()
+		{
+			// Arrange
+			_testGameObject = new GameObject("TestBehaviour");
+			var behaviour = _testGameObject.AddComponent<TestServiceBehaviour>();
+
+			// Act
+			behaviour.UseLocator(_realLocator);
+
+			// Assert - Service should be retrievable (registered but not ready yet)
+			Assert.IsTrue(_realLocator.IsServiceRegistered<ITestService>());
+		}
+
+		[Test]
+		public void UseLocator_CalledTwice_DoesNotRegisterTwice()
+		{
+			// Arrange
+			_testGameObject = new GameObject("TestBehaviour");
+			var behaviour = _testGameObject.AddComponent<TestServiceBehaviour>();
+
+			// Act - Call UseLocator twice
+			behaviour.UseLocator(_mockLocator);
+			behaviour.UseLocator(_mockLocator);
+
+			// Assert - RegisterService should only be called once
+			_mockLocator.Received(1).RegisterService(Arg.Any<ITestService>(), Arg.Any<string>());
+		}
+
+		[Test]
+		public async Task UseLocator_AfterAddComponent_FullLifecycleWorks()
+		{
+			// Arrange - Simulates real usage: AddComponent -> UseLocator -> manual init
+			_testGameObject = new GameObject("TestBehaviour");
+			var behaviour = _testGameObject.AddComponent<TestServiceBehaviourWithDependency>();
+
+			var playerService = new PlayerService();
+			_realLocator.RegisterAndReadyService<IPlayerService>(playerService);
+
+			// Act - UseLocator triggers registration, then we complete the lifecycle
+			behaviour.UseLocator(_realLocator);
+
+			// Complete injection and ready the service
+			await _realLocator.InjectServicesAsync(behaviour)
+				.WithCancellation(CancellationToken.None)
+				.WithTimeout()
+				.ExecuteAsync();
+
+			_realLocator.ReadyService<ITestServiceWithDependency>();
+
+			// Assert
+			Assert.IsTrue(_realLocator.IsServiceReady<ITestServiceWithDependency>());
+			Assert.IsNotNull(behaviour.InjectedPlayerService);
+			Assert.AreSame(playerService, behaviour.InjectedPlayerService);
+		}
+
 		private TestServiceBehaviour CreateTestBehaviour()
 		{
 			_testGameObject = new GameObject("TestBehaviour");
