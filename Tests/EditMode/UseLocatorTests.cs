@@ -97,8 +97,8 @@ namespace Tests.EditMode
 			// Act
 			await behaviour.TestAwake(CancellationToken.None);
 
-			// Assert
-			_mockLocator.Received(1).RegisterService(Arg.Any<ITestService>(), Arg.Any<string>());
+			// Assert - ServiceBehaviour uses non-generic RegisterService
+			_mockLocator.Received(1).RegisterService(typeof(ITestService), Arg.Any<object>(), Arg.Any<string>());
 		}
 
 		[Test]
@@ -111,8 +111,8 @@ namespace Tests.EditMode
 			// Act
 			await behaviour.TestAwake(CancellationToken.None);
 
-			// Assert
-			_mockLocator.Received(1).ReadyService<ITestService>();
+			// Assert - ServiceBehaviour uses non-generic ReadyService
+			_mockLocator.Received(1).ReadyService(typeof(ITestService));
 		}
 
 		[Test]
@@ -236,8 +236,8 @@ namespace Tests.EditMode
 			// Act - UseLocator should trigger registration automatically
 			behaviour.UseLocator(_mockLocator);
 
-			// Assert - RegisterService should have been called
-			_mockLocator.Received(1).RegisterService(Arg.Any<ITestService>(), Arg.Any<string>());
+			// Assert - ServiceBehaviour uses non-generic RegisterService
+			_mockLocator.Received(1).RegisterService(typeof(ITestService), Arg.Any<object>(), Arg.Any<string>());
 		}
 
 		[Test]
@@ -265,8 +265,8 @@ namespace Tests.EditMode
 			behaviour.UseLocator(_mockLocator);
 			behaviour.UseLocator(_mockLocator);
 
-			// Assert - RegisterService should only be called once
-			_mockLocator.Received(1).RegisterService(Arg.Any<ITestService>(), Arg.Any<string>());
+			// Assert - ServiceBehaviour uses non-generic RegisterService, should only be called once
+			_mockLocator.Received(1).RegisterService(typeof(ITestService), Arg.Any<object>(), Arg.Any<string>());
 		}
 
 		[Test]
@@ -314,7 +314,8 @@ namespace Tests.EditMode
 		void DoSomething();
 	}
 
-	public class TestServiceBehaviour : ServiceKitBehaviour<ITestService>, ITestService
+	[Service(typeof(ITestService))]
+	public class TestServiceBehaviour : ServiceBehaviour, ITestService
 	{
 		public void DoSomething() { }
 
@@ -344,7 +345,8 @@ namespace Tests.EditMode
 		IPlayerService InjectedPlayerService { get; }
 	}
 
-	public class TestServiceBehaviourWithDependency : ServiceKitBehaviour<ITestServiceWithDependency>, ITestServiceWithDependency
+	[Service(typeof(ITestServiceWithDependency))]
+	public class TestServiceBehaviourWithDependency : ServiceBehaviour, ITestServiceWithDependency
 	{
 		[InjectService] private IPlayerService _playerService;
 

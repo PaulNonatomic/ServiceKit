@@ -332,7 +332,7 @@ namespace Tests.EditMode
 		}
 
 		[Test]
-		public async Task ServiceKitBehaviour_InitializeService_WaitsForOptionalRegisteredDependencies()
+		public async Task ServiceBehaviour_InitializeService_WaitsForOptionalRegisteredDependencies()
 		{
 			// Arrange - Test that InitializeService waits for optional but registered dependencies
 			var inventoryService = new InventoryService();

@@ -39,7 +39,7 @@ namespace Nonatomic.ServiceKit.Editor
 
 			var proceed = EditorUtility.DisplayDialog(
 				"Auto-Assign ServiceKit Locators",
-				$"This will scan all prefabs and scenes in your project and automatically assign the default ServiceKitLocator to any ServiceKitBehaviour components that don't have one set.\n\n" +
+				$"This will scan all prefabs and scenes in your project and automatically assign the default ServiceKitLocator to any ServiceBehaviour components that don't have one set.\n\n" +
 				$"Default Locator: {defaultLocator.name}\n" +
 				$"Assets to scan: {totalAssets} ({prefabCount} prefabs, {sceneCount} scenes)\n\n" +
 				"This operation may take a few moments.\n\n" +

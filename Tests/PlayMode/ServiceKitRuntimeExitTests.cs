@@ -298,7 +298,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 		}
 
 		[UnityTest]
-		public IEnumerator ServiceKitBehaviour_HandlesDestructionDuringInjection()
+		public IEnumerator ServiceBehaviour_HandlesDestructionDuringInjection()
 		{
 			// Arrange
 			var testService = new TestServiceImpl();
@@ -306,7 +306,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 
 			var behaviourObject = new GameObject("TestBehaviour");
 			// Don't add to _createdObjects since we're destroying it manually
-			var behaviour = behaviourObject.AddComponent<TestServiceKitBehaviourWithDelay>();
+			var behaviour = behaviourObject.AddComponent<TestServiceBehaviourWithDelay>();
 			behaviour.SetServiceKitLocator(_locator);
 
 			// Wait for injection to start
@@ -322,7 +322,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 
 			// Assert - Wait to ensure no additional exceptions occur
 			yield return new WaitForSeconds(0.1f);
-			
+
 			// Verify cleanup completed without timeout exceptions
 			Assert.Pass("Cleanup completed and handled destruction gracefully");
 		}
@@ -356,7 +356,8 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			public ServiceKitLocator ServiceKitLocator { get; set; }
 		}
 
-		private class TestServiceKitBehaviourWithDelay : ServiceKitBehaviour<ITestService>, ITestService
+		[Service(typeof(ITestService))]
+		private class TestServiceBehaviourWithDelay : ServiceBehaviour, ITestService
 		{
 			[InjectService(Required = false)]
 			private IDelayedService _delayedService;
@@ -369,7 +370,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			}
 
 			public void DoSomething() { }
-			
+
 			public void SetServiceKitLocator(ServiceKitLocator locator)
 			{
 				ServiceKitLocator = locator;

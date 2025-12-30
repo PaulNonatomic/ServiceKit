@@ -59,13 +59,39 @@ namespace Nonatomic.ServiceKit
 			RegisterService(service, true, tags, registeredBy);
 		}
 
+		// Non-generic registration methods
+		public void RegisterService(Type serviceType, object service, [CallerMemberName] string registeredBy = null)
+		{
+			RegisterServiceInternal(serviceType, service, false, null, registeredBy);
+		}
+
+		public void RegisterService(Type serviceType, object service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null)
+		{
+			RegisterServiceInternal(serviceType, service, false, tags, registeredBy);
+		}
+
+		public void RegisterServiceWithCircularExemption(Type serviceType, object service, [CallerMemberName] string registeredBy = null)
+		{
+			RegisterServiceInternal(serviceType, service, true, null, registeredBy);
+		}
+
+		public void RegisterServiceWithCircularExemption(Type serviceType, object service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null)
+		{
+			RegisterServiceInternal(serviceType, service, true, tags, registeredBy);
+		}
+
 		private void RegisterService<T>(T service, bool exemptFromCircularDependencyCheck, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class
 		{
 			ValidateServiceNotNull<T>(service, registeredBy);
+			RegisterServiceInternal(typeof(T), service, exemptFromCircularDependencyCheck, tags, registeredBy);
+		}
+
+		private void RegisterServiceInternal(Type serviceType, object service, bool exemptFromCircularDependencyCheck, ServiceTag[] tags, [CallerMemberName] string registeredBy = null)
+		{
+			ValidateServiceNotNull(serviceType, service, registeredBy);
 
 			lock (_lock)
 			{
-				var serviceType = typeof(T);
 				var serviceInfo = CreateServiceInfo(service, serviceType, registeredBy, tags);
 
 				if (_readyServices.ContainsKey(serviceType))
@@ -213,6 +239,17 @@ namespace Nonatomic.ServiceKit
 			ReadyService<T>();
 		}
 
+		// Fluent registration API
+		public IServiceRegistrationBuilder Register<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
+		{
+			return new ServiceRegistrationBuilder(this, service, registeredBy);
+		}
+
+		public IServiceRegistrationBuilder Register(object service, [CallerMemberName] string registeredBy = null)
+		{
+			return new ServiceRegistrationBuilder(this, service, registeredBy);
+		}
+
 		public T GetService<T>() where T : class
 		{
 			return GetService(typeof(T)) as T;
@@ -344,11 +381,27 @@ namespace Nonatomic.ServiceKit
 			{
 				// Set up forwarding from shared TCS to caller TCS
 				_ = ForwardTaskResult(sharedTcs, callerTcs);
-				
+
 				// Set up cancellation for this specific caller
 				using (cancellationToken.Register(() => callerTcs.TrySetCanceled()))
 				{
-					return await callerTcs.Task;
+					try
+					{
+						return await callerTcs.Task;
+					}
+					catch (OperationCanceledException)
+					{
+						// Before propagating cancellation, check if the service became ready during the race
+						// This handles the edge case where cancellation and service ready happen simultaneously
+						lock (_lock)
+						{
+							if (_readyServices.TryGetValue(serviceType, out var serviceInfo))
+							{
+								return serviceInfo.Service;
+							}
+						}
+						throw;
+					}
 				}
 			}
 			else
@@ -385,10 +438,10 @@ namespace Nonatomic.ServiceKit
 			// IMPORTANT: We cannot use cancellationToken.Register to cancel the shared TaskCompletionSource
 			// because multiple callers might be waiting on the same TCS.
 			// Instead, we create a linked source that combines the shared task with the cancellation token.
-			
+
 			// Create a new TCS for this specific caller
 			var callerTcs = new TaskCompletionSource<object>();
-			
+
 			// When the shared task completes, complete the caller's task
 			tcs.Task.ContinueWith(t =>
 			{
@@ -399,11 +452,27 @@ namespace Nonatomic.ServiceKit
 				else if (t.IsFaulted)
 					callerTcs.TrySetException(t.Exception.InnerExceptions);
 			}, TaskContinuationOptions.ExecuteSynchronously);
-			
+
 			// If the cancellation token is cancelled, cancel only this caller's task
 			using (cancellationToken.Register(() => callerTcs.TrySetCanceled()))
 			{
-				return await callerTcs.Task;
+				try
+				{
+					return await callerTcs.Task;
+				}
+				catch (OperationCanceledException)
+				{
+					// Before propagating cancellation, check if the service became ready during the race
+					// This handles the edge case where cancellation and service ready happen simultaneously
+					lock (_lock)
+					{
+						if (_readyServices.TryGetValue(serviceType, out var serviceInfo))
+						{
+							return serviceInfo.Service;
+						}
+					}
+					throw;
+				}
 			}
 		}
 #endif
@@ -755,7 +824,37 @@ namespace Nonatomic.ServiceKit
 				ThrowDetailedInterfaceImplementationError(serviceType, callerType);
 			}
 
-			throw new ArgumentNullException(nameof(service), 
+			throw new ArgumentNullException(nameof(service),
+				$"Service registration failed for type '{serviceType.Name}'. The service object cannot be null.");
+		}
+
+		private static void ValidateServiceNotNull(Type serviceType, object service, string registeredBy)
+		{
+			if (serviceType == null)
+			{
+				throw new ArgumentNullException(nameof(serviceType), "Service type cannot be null.");
+			}
+
+			if (service != null)
+			{
+				// Validate that service implements the declared type
+				if (!serviceType.IsInstanceOfType(service))
+				{
+					throw new ArgumentException(
+						$"Service of type '{service.GetType().Name}' does not implement '{serviceType.Name}'.",
+						nameof(service));
+				}
+				return;
+			}
+
+			var callerType = registeredBy != null ? GetCallerTypeFromStackTrace() : null;
+
+			if (serviceType.IsInterface && callerType != null)
+			{
+				ThrowDetailedInterfaceImplementationError(serviceType, callerType);
+			}
+
+			throw new ArgumentNullException(nameof(service),
 				$"Service registration failed for type '{serviceType.Name}'. The service object cannot be null.");
 		}
 
@@ -766,27 +865,25 @@ namespace Nonatomic.ServiceKit
 			{
 				sb.Append("Service registration failed for type '");
 				sb.Append(serviceType.Name);
-				sb.Append("'. The service object is null, which often occurs when a ServiceKitBehaviour<");
-				sb.Append(serviceType.Name);
-				sb.Append("> does not implement the interface '");
+				sb.Append("'. The service object is null, which often occurs when the service class does not implement '");
 				sb.Append(serviceType.Name);
 				sb.Append("'. Caller type: '");
 				sb.Append(callerType.Name);
 				sb.Append("' Implements interfaces: [");
-				
+
 				var interfaces = callerType.GetInterfaces();
 				for (int i = 0; i < interfaces.Length; i++)
 				{
 					if (i > 0) sb.Append(", ");
 					sb.Append(interfaces[i].Name);
 				}
-				
+
 				sb.Append("]. Please ensure that '");
 				sb.Append(callerType.Name);
 				sb.Append("' implements '");
 				sb.Append(serviceType.Name);
 				sb.Append("'.");
-				
+
 				throw new InvalidOperationException(sb.ToString());
 			}
 			finally
@@ -920,9 +1017,9 @@ namespace Nonatomic.ServiceKit
 							return method.DeclaringType;
 						}
 						
-						// Check if it's a ServiceKitBehaviour derived type
-						if (method.DeclaringType.IsSubclassOf(typeof(MonoBehaviour)) && 
-							method.DeclaringType.Name.Contains("ServiceKitBehaviour"))
+						// Check if it's a ServiceBehaviour derived type
+						if (method.DeclaringType.IsSubclassOf(typeof(MonoBehaviour)) &&
+							method.DeclaringType.Name.Contains("ServiceBehaviour"))
 						{
 							return method.DeclaringType;
 						}

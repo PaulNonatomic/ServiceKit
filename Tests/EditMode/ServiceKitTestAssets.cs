@@ -80,23 +80,25 @@ namespace Tests.EditMode
 		}
 	}
 
-    public interface IPlayerController
-    {
-        IPlayerService PlayerService { get; }
-        IInventoryService InventoryService { get; }
-    }
-    
-	public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerController
+	public interface IPlayerController
+	{
+		IPlayerService PlayerService { get; }
+		IInventoryService InventoryService { get; }
+	}
+
+	[Service(typeof(IPlayerController))]
+	public class PlayerController : ServiceBehaviour, IPlayerController
 	{
 		public IPlayerService PlayerService => _playerService;
 		public IInventoryService InventoryService => _inventoryService;
-		
+
 		[InjectService] private IPlayerService _playerService;
 		[InjectService] private IInventoryService _inventoryService;
 	}
 
 	// Test class that doesn't implement its interface (for testing error scenarios)
-	public class BrokenPlayerController : ServiceKitBehaviour<IPlayerController>
+	[Service(typeof(IPlayerController))]
+	public class BrokenPlayerController : ServiceBehaviour
 	{
 		// This class intentionally doesn't implement IPlayerController
 		// This should trigger our improved error messages
@@ -108,8 +110,9 @@ namespace Tests.EditMode
 		bool IsInitialized { get; }
 	}
 
-	// Test ServiceKitBehaviour for testing InitializeService timing with optional dependencies
-	public class TestInitializeServiceBehaviour : ServiceKitBehaviour<ITestInitializeService>, ITestInitializeService
+	// Test ServiceBehaviour for testing InitializeService timing with optional dependencies
+	[Service(typeof(ITestInitializeService))]
+	public class TestInitializeServiceBehaviour : ServiceBehaviour, ITestInitializeService
 	{
 		[InjectService(Required = false)]
 		private IInventoryService _optionalInventoryService;

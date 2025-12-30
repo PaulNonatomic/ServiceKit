@@ -1,3 +1,74 @@
+## [2.4.0] - 2025-12-19
+### Breaking Changes
+- **Attribute-Based Registration**: Replaced `ServiceKitBehaviour<T>` with `ServiceBehaviour` and `[Service]` attribute
+  - Services now use `[Service(typeof(IFoo))]` attribute instead of generic inheritance
+  - Enables multi-type registration: `[Service(typeof(IFoo), typeof(IBar))]`
+  - Concrete type fallback when no attribute provided
+  - Removes confusing generic inheritance chains when extending services
+
+### Added
+- **Fluent Registration API**: New chainable API for service registration
+  - `Register(service).As<IFoo>().As<IBar>().WithTags("core").Ready()`
+  - Cleaner, more discoverable than separate method calls
+  - Supports multi-type registration, tags, and circular dependency exemption
+  - Matches the existing `InjectServicesAsync().WithTimeout().ExecuteAsync()` pattern
+
+- **IServiceRegistrationBuilder**: New fluent builder interface
+  - `.As<T>()` - Register under additional interface types
+  - `.WithTags(...)` - Add tags for filtering and organization
+  - `.WithCircularExemption()` - Exempt from circular dependency detection
+  - `.Register()` - Complete registration without marking ready
+  - `.Ready()` - Complete registration and mark as ready
+
+- **ServiceAttribute**: New attribute for declaring service types
+  - Supports multiple interface types per service
+  - `CircularDependencyExempt` property replaces `RegisterServiceWithCircularExemption` pattern
+  - Example: `[Service(typeof(IFoo), typeof(IBar), CircularDependencyExempt = true)]`
+
+- **ServiceBehaviour**: New non-generic base class for MonoBehaviour services
+  - Reads `[Service]` attribute via reflection (cached for performance)
+  - Registers instance under all declared types
+  - Unregisters from all types on destroy
+  - Full lifecycle support: Awake → Register → Inject → Init → Ready
+
+- **Non-Generic Registration Methods**: Added to `IServiceKitLocator`
+  - `RegisterService(Type serviceType, object service, ...)`
+  - `RegisterServiceWithCircularExemption(Type serviceType, object service, ...)`
+  - Enables runtime type registration for advanced scenarios
+
+### Removed
+- **ServiceKitBehaviour<T>**: Removed in favor of attribute-based `ServiceBehaviour`
+
+### Migration Guide
+```csharp
+// Before (v2.3.x) - Manual registration
+_serviceKit.RegisterService<IAudioService>(audioService);
+_serviceKit.ReadyService<IAudioService>();
+
+// After (v2.4.0) - Fluent API
+_serviceKit.Register(audioService).As<IAudioService>().Ready();
+
+// Before (v2.3.x) - ServiceKitBehaviour
+public class AudioManager : ServiceKitBehaviour<IAudioService>, IAudioService { }
+
+// After (v2.4.0) - ServiceBehaviour with attribute
+[Service(typeof(IAudioService))]
+public class AudioManager : ServiceBehaviour, IAudioService { }
+
+// Multi-type registration (new capability)
+_serviceKit.Register(audioManager)
+    .As<IAudioService>()
+    .As<IMusicService>()
+    .WithTags("audio")
+    .Ready();
+```
+
+### Documentation
+- Updated README with new Quick Start section for ServiceBehaviour
+- Added Fluent Registration API section with comprehensive examples
+- Added migration guide from v2.3.x to v2.4.0
+- Updated all examples to use fluent API and attribute-based registration
+
 ## [2.3.1] - 2025-12-06
 ### Fixed
 - **UseLocator Auto-Registration**: `UseLocator()` now triggers registration if `Awake()` was skipped

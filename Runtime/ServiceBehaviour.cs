@@ -1,5 +1,5 @@
-﻿using System;
-using System.Linq;
+using System;
+using System.Reflection;
 using System.Threading;
 using UnityEngine;
 
@@ -11,11 +11,23 @@ using System.Threading.Tasks;
 
 namespace Nonatomic.ServiceKit
 {
-	public abstract class ServiceKitBehaviour<T> : MonoBehaviour where T : class
+	/// <summary>
+	/// Base class for services that can be registered with ServiceKit.
+	/// Use the [Service] attribute to specify what types this service registers as.
+	///
+	/// Examples:
+	/// [Service(typeof(IMyService))]                  // Single interface
+	/// [Service(typeof(IFoo), typeof(IBar))]          // Multiple interfaces
+	/// [Service]                                       // Concrete type (no attribute needed)
+	/// public class MyService : ServiceBehaviour { }
+	/// </summary>
+	public abstract class ServiceBehaviour : MonoBehaviour
 	{
 		[SerializeField] public ServiceKitLocator ServiceKitLocator;
 
 		private IServiceKitLocator _locatorOverride;
+		private Type[] _cachedServiceTypes;
+		private bool _isCircularDependencyExempt;
 
 		/// <summary>
 		/// Returns the active service locator. Uses the override if set, otherwise falls back to the serialized field.
@@ -42,33 +54,60 @@ namespace Nonatomic.ServiceKit
 
 		protected bool IsServiceRegistered { get; private set; }
 		protected bool IsServiceReady { get; private set; }
-		
+
 		/// <summary>
 		/// Cached destroy cancellation token to avoid MissingReferenceException.
 		/// Use this for any async operations that should be cancelled when the GameObject is destroyed.
 		/// </summary>
 		protected CancellationToken CachedDestroyToken { get; private set; }
 
+		/// <summary>
+		/// The types this service is registered as.
+		/// Determined by the [Service] attribute, or falls back to the concrete type.
+		/// </summary>
+		protected Type[] ServiceTypes
+		{
+			get
+			{
+				if (_cachedServiceTypes != null) return _cachedServiceTypes;
+
+				var attribute = GetType().GetCustomAttribute<ServiceAttribute>();
+				if (attribute == null || attribute.ServiceTypes.Length == 0)
+				{
+					// No attribute or empty types - use concrete class type
+					_cachedServiceTypes = new[] { GetType() };
+					_isCircularDependencyExempt = false;
+				}
+				else
+				{
+					_cachedServiceTypes = attribute.ServiceTypes;
+					_isCircularDependencyExempt = attribute.CircularDependencyExempt;
+				}
+
+				return _cachedServiceTypes;
+			}
+		}
+
 		protected virtual async void Awake()
 		{
 			if (IsObjectDestroyed()) return;
-			
+
 			CacheDestroyToken();
 			RegisterServiceWithLocator();
-			
+
 			await PerformServiceInitializationSequence();
 		}
-		
+
 		private bool IsObjectDestroyed()
 		{
 			return !this || !gameObject;
 		}
-		
+
 		private void CacheDestroyToken()
 		{
 			CachedDestroyToken = destroyCancellationToken;
 		}
-		
+
 #if SERVICEKIT_UNITASK
 		private async UniTask PerformServiceInitializationSequence()
 #else
@@ -77,11 +116,11 @@ namespace Nonatomic.ServiceKit
 		{
 			await InjectDependenciesAsync();
 			await InitializeServiceAsync();
-			
+
 			InitializeService();
 			MarkServiceAsReady();
 		}
-	   
+
 		protected virtual void OnDestroy()
 		{
 			UnregisterServiceFromLocator();
@@ -92,116 +131,40 @@ namespace Nonatomic.ServiceKit
 			if (IsServiceLocatorMissing()) return;
 			if (IsServiceRegistered) return;
 
-			var serviceInstance = CastThisToServiceInterface();
-			RegisterInstanceWithLocator(serviceInstance);
+			ValidateServiceTypeImplementations();
+			RegisterInstanceWithLocator();
 			LogRegistrationIfDebugEnabled();
 		}
 
-		private T CastThisToServiceInterface()
+		private void ValidateServiceTypeImplementations()
 		{
-			return this is T serviceInstance 
-				? serviceInstance 
-				: ThrowInterfaceNotImplementedException();
-		}
-
-		private T ThrowInterfaceNotImplementedException()
-		{
-			var errorMessage = GenerateInterfaceNotImplementedErrorMessage();
-			LogAndThrowError(errorMessage);
-			return null;
-		}
-		
-		private string GenerateInterfaceNotImplementedErrorMessage()
-		{
-			var serviceType = typeof(T);
-			var implementationType = GetType();
-			var implementedInterfaces = GetImplementedInterfaceNames(implementationType);
-			return BuildInterfaceNotImplementedMessage(implementationType, serviceType, implementedInterfaces);
-		}
-		
-		private void LogAndThrowError(string errorMessage)
-		{
-			Debug.LogError($"[ServiceKit] {errorMessage}", this);
-			throw new InvalidOperationException(errorMessage);
-		}
-
-		private static string GetImplementedInterfaceNames(Type type)
-		{
-			var interfaces = type.GetInterfaces();
-			if (HasNoInterfaces(interfaces)) return string.Empty;
-			
-			return FormatInterfaceList(interfaces);
-		}
-		
-		private static bool HasNoInterfaces(Type[] interfaces)
-		{
-			return interfaces.Length == 0;
-		}
-		
-		private static string FormatInterfaceList(Type[] interfaces)
-		{
-			var stringBuilder = ServiceKitObjectPool.RentStringBuilder();
-			try
+			foreach (var serviceType in ServiceTypes)
 			{
-				AppendInterfaceNames(stringBuilder, interfaces);
-				return stringBuilder.ToString();
-			}
-			finally
-			{
-				ServiceKitObjectPool.ReturnStringBuilder(stringBuilder);
-			}
-		}
-		
-		private static void AppendInterfaceNames(System.Text.StringBuilder stringBuilder, Type[] interfaces)
-		{
-			for (int i = 0; i < interfaces.Length; i++)
-			{
-				if (IsNotFirstInterface(i)) stringBuilder.Append(", ");
-				stringBuilder.Append(interfaces[i].Name);
-			}
-		}
-		
-		private static bool IsNotFirstInterface(int index)
-		{
-			return index > 0;
-		}
-
-		private static string BuildInterfaceNotImplementedMessage(Type implementationType, Type serviceType, string implementedInterfaces)
-		{
-			var sb = ServiceKitObjectPool.RentStringBuilder();
-			try
-			{
-				sb.Append("Failed to register service for '");
-				sb.Append(implementationType.Name);
-				sb.Append("' as '");
-				sb.Append(serviceType.Name);
-				sb.Append("'. This typically means '");
-				sb.Append(implementationType.Name);
-				sb.Append("' does not implement interface '");
-				sb.Append(serviceType.Name);
-				sb.Append("'. Current class '");
-				sb.Append(implementationType.Name);
-				sb.Append("' implements: [");
-				sb.Append(implementedInterfaces);
-				sb.Append("]. Please ensure '");
-				sb.Append(implementationType.Name);
-				sb.Append("' properly implements '");
-				sb.Append(serviceType.Name);
-				sb.Append("'.");
-				return sb.ToString();
-			}
-			finally
-			{
-				ServiceKitObjectPool.ReturnStringBuilder(sb);
+				if (!serviceType.IsInstanceOfType(this))
+				{
+					var errorMessage = BuildInterfaceNotImplementedMessage(GetType(), serviceType);
+					LogAndThrowError(errorMessage);
+				}
 			}
 		}
 
-		private void RegisterInstanceWithLocator(T serviceInstance)
+		private void RegisterInstanceWithLocator()
 		{
-			Locator.RegisterService<T>(serviceInstance);
+			foreach (var serviceType in ServiceTypes)
+			{
+				if (_isCircularDependencyExempt)
+				{
+					Locator.RegisterServiceWithCircularExemption(serviceType, this);
+				}
+				else
+				{
+					Locator.RegisterService(serviceType, this);
+				}
+			}
+
 			MarkAsRegistered();
 		}
-		
+
 		private void MarkAsRegistered()
 		{
 			IsServiceRegistered = true;
@@ -210,7 +173,7 @@ namespace Nonatomic.ServiceKit
 		private void LogRegistrationIfDebugEnabled()
 		{
 			if (!IsDebugLoggingEnabled()) return;
-			
+
 			Debug.Log($"[{GetType().Name}] Service registered (not ready yet)");
 		}
 
@@ -218,17 +181,21 @@ namespace Nonatomic.ServiceKit
 		{
 			if (IsServiceLocatorMissing()) return;
 			if (!IsServiceRegistered) return;
-			
+
 			NotifyLocatorServiceIsReady();
 			LogReadyStatusIfDebugEnabled();
 		}
 
 		private void NotifyLocatorServiceIsReady()
 		{
-			Locator.ReadyService<T>();
+			foreach (var serviceType in ServiceTypes)
+			{
+				Locator.ReadyService(serviceType);
+			}
+
 			MarkAsReady();
 		}
-		
+
 		private void MarkAsReady()
 		{
 			IsServiceReady = true;
@@ -237,14 +204,14 @@ namespace Nonatomic.ServiceKit
 		private void LogReadyStatusIfDebugEnabled()
 		{
 			if (!IsDebugLoggingEnabled()) return;
-			
+
 			Debug.Log($"[{GetType().Name}] Service is now READY!");
 		}
-	   
+
 		protected virtual void UnregisterServiceFromLocator()
 		{
 			if (IsServiceLocatorMissing()) return;
-			
+
 			ResetServiceRegistrationState();
 			RemoveFromServiceLocator();
 		}
@@ -254,12 +221,12 @@ namespace Nonatomic.ServiceKit
 			MarkAsUnregistered();
 			MarkAsNotReady();
 		}
-		
+
 		private void MarkAsUnregistered()
 		{
 			IsServiceRegistered = false;
 		}
-		
+
 		private void MarkAsNotReady()
 		{
 			IsServiceReady = false;
@@ -267,18 +234,20 @@ namespace Nonatomic.ServiceKit
 
 		private void RemoveFromServiceLocator()
 		{
-			var serviceType = typeof(T);
-			Locator.UnregisterService(serviceType);
+			foreach (var serviceType in ServiceTypes)
+			{
+				Locator.UnregisterService(serviceType);
+			}
 		}
 
 #if SERVICEKIT_UNITASK
 		protected virtual async UniTask InjectDependenciesAsync()
 #else
-	protected virtual async Task InjectDependenciesAsync()
+		protected virtual async Task InjectDependenciesAsync()
 #endif
 		{
 			if (IsServiceLocatorMissing()) return;
-			
+
 			LogWaitingForDependenciesIfDebugEnabled();
 			await PerformDependencyInjection();
 			LogDependenciesInjectedIfDebugEnabled();
@@ -287,7 +256,7 @@ namespace Nonatomic.ServiceKit
 		private void LogWaitingForDependenciesIfDebugEnabled()
 		{
 			if (!IsDebugLoggingEnabled()) return;
-			
+
 			Debug.Log($"[{GetType().Name}] Waiting for dependencies...");
 		}
 
@@ -303,12 +272,12 @@ namespace Nonatomic.ServiceKit
 				.WithErrorHandling(HandleDependencyInjectionFailure)
 				.ExecuteAsync();
 		}
-		
+
 
 		private void LogDependenciesInjectedIfDebugEnabled()
 		{
 			if (!IsDebugLoggingEnabled()) return;
-			
+
 			Debug.Log($"[{GetType().Name}] Dependencies injected!");
 		}
 
@@ -348,14 +317,14 @@ namespace Nonatomic.ServiceKit
 		{
 			Debug.LogError($"Failed to inject required services: {exception.Message}", this);
 		}
-	   
+
 		private bool IsServiceLocatorMissing()
 		{
 			if (HasServiceLocatorAssigned()) return false;
-			
+
 			// Don't log error during destruction - destruction order is non-deterministic
 			if (!Application.isPlaying || IsObjectDestroyed()) return true;
-			
+
 			LogMissingServiceLocatorWarning();
 			return true;
 		}
@@ -368,6 +337,65 @@ namespace Nonatomic.ServiceKit
 		private void LogMissingServiceLocatorWarning()
 		{
 			Debug.LogWarning($"{GetType().Name} requires a reference to a ServiceKitLocator.", this);
+		}
+
+		private void LogAndThrowError(string errorMessage)
+		{
+			Debug.LogError($"[ServiceKit] {errorMessage}", this);
+			throw new InvalidOperationException(errorMessage);
+		}
+
+		private static string GetImplementedInterfaceNames(Type type)
+		{
+			var interfaces = type.GetInterfaces();
+			if (interfaces.Length == 0) return string.Empty;
+
+			var stringBuilder = ServiceKitObjectPool.RentStringBuilder();
+			try
+			{
+				for (int i = 0; i < interfaces.Length; i++)
+				{
+					if (i > 0) stringBuilder.Append(", ");
+					stringBuilder.Append(interfaces[i].Name);
+				}
+
+				return stringBuilder.ToString();
+			}
+			finally
+			{
+				ServiceKitObjectPool.ReturnStringBuilder(stringBuilder);
+			}
+		}
+
+		private static string BuildInterfaceNotImplementedMessage(Type implementationType, Type serviceType)
+		{
+			var implementedInterfaces = GetImplementedInterfaceNames(implementationType);
+			var sb = ServiceKitObjectPool.RentStringBuilder();
+			try
+			{
+				sb.Append("Failed to register service for '");
+				sb.Append(implementationType.Name);
+				sb.Append("' as '");
+				sb.Append(serviceType.Name);
+				sb.Append("'. This typically means '");
+				sb.Append(implementationType.Name);
+				sb.Append("' does not implement '");
+				sb.Append(serviceType.Name);
+				sb.Append("'. Current class '");
+				sb.Append(implementationType.Name);
+				sb.Append("' implements: [");
+				sb.Append(implementedInterfaces);
+				sb.Append("]. Please ensure '");
+				sb.Append(implementationType.Name);
+				sb.Append("' properly implements '");
+				sb.Append(serviceType.Name);
+				sb.Append("'.");
+				return sb.ToString();
+			}
+			finally
+			{
+				ServiceKitObjectPool.ReturnStringBuilder(sb);
+			}
 		}
 	}
 }

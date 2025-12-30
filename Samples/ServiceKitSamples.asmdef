@@ -1,0 +1,16 @@
+{
+    "name": "ServiceKitSamples",
+    "rootNamespace": "ServiceKitSamples",
+    "references": [
+        "GUID:1b0144b25b4099e45a5beb8f8f7bee63"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
