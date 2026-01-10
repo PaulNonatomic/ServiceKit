@@ -10,6 +10,19 @@ A powerful, ScriptableObject-based service locator pattern implementation for Un
 
 </div>
 
+## Installation
+
+Add **Service Kit** to your Unity project via Package Manager:
+
+1. Open **Window > Package Manager**
+2. Click **+** > **Add package from git URL**
+3. Enter:
+```
+https://www.pkglnk.dev/track/servicekit.git
+```
+
+[![pkglnk](https://www.pkglnk.dev/badge/servicekit.svg)](https://www.pkglnk.dev/pkg/servicekit)
+
 ## Features
 
 -   **ScriptableObject-Based**: Clean, asset-based architecture that integrates seamlessly with Unity's workflow.
