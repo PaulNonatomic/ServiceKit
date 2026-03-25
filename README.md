@@ -23,10 +23,10 @@ Add **Service Kit** to your Unity project via Package Manager:
 2. Click **+** > **Add package from git URL**
 3. Enter:
 ```
-https://www.pkglnk.dev/track/servicekit.git
+https://www.pkglnk.dev/servicekit.git
 ```
 
-[![pkglnk](https://www.pkglnk.dev/badge/servicekit.svg)](https://www.pkglnk.dev/pkg/servicekit)
+[![pkglnk](https://www.pkglnk.dev/card/servicekit.svg)](https://www.pkglnk.dev/pkg/servicekit)
 
 ## Features
 
