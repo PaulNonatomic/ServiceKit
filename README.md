@@ -11,7 +11,7 @@ A powerful, ScriptableObject-based service locator pattern implementation for Un
 </div>
 
 ## Support
-If you like my work then please consider showing your support for ServiceKit by buying me a brew
+If you like my work then please consider showing your support for ServiceKit by giving the repo a star or buying me a brew
 <br><br>
 <a href="https://www.buymeacoffee.com/nonatomic" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
