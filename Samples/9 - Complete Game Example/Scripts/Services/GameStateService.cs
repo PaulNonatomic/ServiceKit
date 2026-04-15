@@ -11,8 +11,6 @@ namespace ServiceKitSamples.CompleteGameExample
     [Service(typeof(IGameStateService))]
     public class GameStateService : ServiceBehaviour, IGameStateService
     {
-        private static GameStateService _instance;
-
         [InjectService] private IPlayerService _playerService;
         [InjectService] private IUIService _uiService;
         [InjectService] private IMusicService _musicService;
@@ -27,12 +25,6 @@ namespace ServiceKitSamples.CompleteGameExample
 
         protected override void Awake()
         {
-            if (_instance != null && _instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
-            _instance = this;
             DontDestroyOnLoad(gameObject);
             base.Awake();
         }
@@ -140,10 +132,6 @@ namespace ServiceKitSamples.CompleteGameExample
                 _playerService.OnPlayerDied -= HandlePlayerDeath;
             }
 
-            if (_instance == this)
-            {
-                _instance = null;
-            }
             base.OnDestroy();
         }
     }

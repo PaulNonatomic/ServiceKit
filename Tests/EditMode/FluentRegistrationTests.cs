@@ -158,17 +158,18 @@ namespace Nonatomic.ServiceKit.Tests.EditMode
 		}
 
 		[Test]
-		public void Register_GenericVersion_InfersTypeFromParameter()
+		public void Register_GenericVersion_RegistersAsConcreteTypeNotGenericParameter()
 		{
 			// Arrange
 			var service = new TestService();
 
-			// Act
+			// Act - Register<T> uses T for type inference only, NOT as the registration type.
+			// The service registers as its concrete type unless .As<>() is used.
 			_locator.Register<ITestService>(service).Ready();
 
-			// Assert - Should NOT register as ITestService because we need As<T>
-			// The generic version just helps with type inference for the service instance
+			// Assert
 			Assert.IsTrue(_locator.IsServiceReady<TestService>());
+			Assert.IsFalse(_locator.IsServiceReady<ITestService>());
 		}
 
 		[Test]

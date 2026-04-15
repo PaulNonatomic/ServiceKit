@@ -178,7 +178,7 @@ namespace Nonatomic.ServiceKit.Editor
 
             var type = component.GetType();
 
-            // Look for ServiceKitLocator field
+            // ServiceBehaviour uses a public ServiceKitLocator field
             var field = type.GetField("ServiceKitLocator",
                 System.Reflection.BindingFlags.Public |
                 System.Reflection.BindingFlags.Instance);
@@ -186,16 +186,6 @@ namespace Nonatomic.ServiceKit.Editor
             if (field != null && field.FieldType == typeof(ServiceKitLocator))
             {
                 field.SetValue(component, locator);
-            }
-
-            // Also check for _serviceKitLocator (private with SerializeField)
-            var privateField = type.GetField("_serviceKitLocator",
-                System.Reflection.BindingFlags.NonPublic |
-                System.Reflection.BindingFlags.Instance);
-
-            if (privateField != null && privateField.FieldType == typeof(ServiceKitLocator))
-            {
-                privateField.SetValue(component, locator);
             }
         }
 

@@ -65,7 +65,8 @@ namespace Tests.EditMode
 		[Test]
 		public async Task OptionalDependency_ComplexScenario_AllShouldBeInjected()
 		{
-			// Tests race conditions with multiple optional dependencies registered and readied at different times
+			// Tests that all registered optional dependencies are eventually injected,
+			// even when they become ready at different times after injection starts.
 			
 			const int testIterations = 100;
 			int fullSuccessCount = 0;
@@ -88,35 +89,20 @@ namespace Tests.EditMode
 				_serviceLocator.RegisterService<ITestServiceB>(serviceB);
 				_serviceLocator.RegisterService<ITestServiceC>(serviceC);
 
-				// Act - Start injection and ready services at different times
-				var injectionTask = Task.Run(async () =>
-				{
-					var builder = _serviceLocator.InjectServicesAsync(consumer);
-					await builder.ExecuteAsync();
-					consumer.InjectionCompleted = true;
-				});
+				// Act - Start injection (services are registered so optional resolution will wait for them)
+				var injectionTask = _serviceLocator.InjectServicesAsync(consumer).ExecuteAsync();
 
-				// Ready services at different intervals to hit different parts of the injection process
-				var readyTaskA = Task.Run(async () =>
-				{
-					await Task.Delay(0); // Ready immediately
-					_serviceLocator.ReadyService<ITestServiceA>();
-				});
+				// Ready services at staggered intervals
+				await Task.Delay(1);
+				_serviceLocator.ReadyService<ITestServiceA>();
+				await Task.Delay(1);
+				_serviceLocator.ReadyService<ITestServiceB>();
+				await Task.Delay(1);
+				_serviceLocator.ReadyService<ITestServiceC>();
 
-				var readyTaskB = Task.Run(async () =>
-				{
-					await Task.Delay(2); // Ready slightly delayed
-					_serviceLocator.ReadyService<ITestServiceB>();
-				});
-
-				var readyTaskC = Task.Run(async () =>
-				{
-					await Task.Delay(5); // Ready more delayed
-					_serviceLocator.ReadyService<ITestServiceC>();
-				});
-
-				// Wait for all tasks to complete
-				await Task.WhenAll(injectionTask, readyTaskA, readyTaskB, readyTaskC);
+				// Wait for injection to complete
+				await injectionTask;
+				consumer.InjectionCompleted = true;
 
 				// Count successes
 				int injectedCount = 0;

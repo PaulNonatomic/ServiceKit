@@ -372,4 +372,111 @@ namespace Tests.EditMode
 			MarkServiceAsReady();
 		}
 	}
+
+	// Multi-interface test types
+	public interface IMultiA { }
+	public interface IMultiB { }
+
+	[Service(typeof(IMultiA), typeof(IMultiB))]
+	public class MultiInterfaceServiceBehaviour : ServiceBehaviour, IMultiA, IMultiB
+	{
+#if SERVICEKIT_UNITASK
+		public async UniTask TestAwake(CancellationToken cancellationToken)
+#else
+		public async Task TestAwake(CancellationToken cancellationToken)
+#endif
+		{
+			RegisterServiceWithLocator();
+
+			await Locator.InjectServicesAsync(this)
+				.WithCancellation(cancellationToken)
+				.WithTimeout()
+				.WithErrorHandling(HandleDependencyInjectionFailure)
+				.ExecuteAsync();
+
+			await InitializeServiceAsync();
+			InitializeService();
+
+			MarkServiceAsReady();
+		}
+	}
+
+	[TestFixture]
+	public class MultiInterfaceServiceBehaviourTests
+	{
+		private ServiceKitLocator _locator;
+		private GameObject _testGameObject;
+
+		[SetUp]
+		public void Setup()
+		{
+			_locator = ScriptableObject.CreateInstance<ServiceKitLocator>();
+		}
+
+		[TearDown]
+		public void TearDown()
+		{
+			if (_locator != null)
+			{
+				_locator.ClearServices();
+				Object.DestroyImmediate(_locator);
+				_locator = null;
+			}
+
+			if (_testGameObject != null)
+			{
+				Object.DestroyImmediate(_testGameObject);
+				_testGameObject = null;
+			}
+		}
+
+		[Test]
+		public async Task MultiInterface_RegistersUnderAllTypes()
+		{
+			// Arrange
+			_testGameObject = new GameObject("MultiTest");
+			var behaviour = _testGameObject.AddComponent<MultiInterfaceServiceBehaviour>();
+			behaviour.UseLocator(_locator);
+
+			// Act
+			await behaviour.TestAwake(CancellationToken.None);
+
+			// Assert — retrievable via both interfaces
+			Assert.IsTrue(_locator.IsServiceReady<IMultiA>());
+			Assert.IsTrue(_locator.IsServiceReady<IMultiB>());
+			Assert.AreSame(behaviour, _locator.GetService<IMultiA>());
+			Assert.AreSame(behaviour, _locator.GetService<IMultiB>());
+		}
+
+		[Test]
+		public async Task MultiInterface_UnregisterRemovesAllTypes()
+		{
+			// Arrange
+			_testGameObject = new GameObject("MultiTest");
+			var behaviour = _testGameObject.AddComponent<MultiInterfaceServiceBehaviour>();
+			behaviour.UseLocator(_locator);
+			await behaviour.TestAwake(CancellationToken.None);
+
+			// Act — unregister one type
+			_locator.UnregisterService<IMultiA>();
+
+			// Assert — only the unregistered type is gone
+			Assert.IsFalse(_locator.IsServiceReady<IMultiA>());
+			Assert.IsTrue(_locator.IsServiceReady<IMultiB>());
+		}
+
+		[Test]
+		public async Task MultiInterface_ReadyServiceFiresForAllTypes()
+		{
+			// Arrange
+			_testGameObject = new GameObject("MultiTest");
+			var behaviour = _testGameObject.AddComponent<MultiInterfaceServiceBehaviour>();
+			behaviour.UseLocator(_locator);
+			await behaviour.TestAwake(CancellationToken.None);
+
+			// Assert — both types should be ready (not just registered)
+			Assert.AreEqual("Ready", _locator.GetServiceStatus<IMultiA>());
+			Assert.AreEqual("Ready", _locator.GetServiceStatus<IMultiB>());
+		}
+	}
 }

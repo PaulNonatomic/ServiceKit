@@ -34,13 +34,44 @@ https://www.pkglnk.dev/servicekit.git
 -   **ScriptableObject-Based**: Clean, asset-based architecture that integrates seamlessly with Unity's workflow.
 -   **Multi-Phase Initialization**: A robust, automated lifecycle ensures services are registered, injected, and initialized safely.
 -   **Async Service Resolution**: Wait for services to become fully ready with cancellation and timeout support.
+-   **Atomic 3-State Resolution**: Race-condition-free optional dependency resolution distinguishes ready, registered-but-not-ready, and absent services in a single atomic check.
 -   **UniTask Integration**: Automatic performance optimization when [UniTask](https://github.com/Cysharp/UniTask) is available - zero allocations and faster async operations.
 -   **Fluent Dependency Injection**: Elegant builder pattern for configuring service injection.
 -   **Automatic Scene Management**: Services are automatically tracked and cleaned up when scenes unload.
 -   **Comprehensive Debugging**: Built-in editor window with search, filtering, and service inspection.
 -   **Type-Safe**: Full generic support with compile-time type checking.
 -   **Performance Optimized**: Efficient service lookup with minimal overhead, enhanced further with UniTask.
--   **Thread-Safe**: Concurrent access protection for multi-threaded scenarios.
+-   **Thread-Safe**: Lock-guarded async resolution, atomic registration guards, and race-condition-hardened service awaiting.
+
+## What's New in V2.5
+
+### Race Condition Fixes
+- **GetServiceAsync** — Caller task forwarding is now set up inside the lock, preventing a race where the shared `TaskCompletionSource` could complete before forwarding was established.
+- **Optional Dependency Resolution** — The two-step check (`TryGetService` + `IsServiceRegistered`) has been replaced with a single atomic `TryResolveService` call that returns a `ServiceResolutionStatus` enum (`Ready`, `RegisteredNotReady`, `NotRegistered`), eliminating a race window between the two checks.
+- **ServiceBehaviour.UseLocator** — An `Interlocked.CompareExchange` registration guard prevents double-registration when `UseLocator` is called concurrently with `Awake`.
+- **Circular Dependency Detection** — `CancelCircularChain` and `MarkAllInPathAsError` now use `Type` references instead of string name matching, preventing false matches between types with similar names.
+
+### New Public API
+```csharp
+// Atomic 3-state service resolution
+ServiceResolutionStatus status = locator.TryResolveService(typeof(IMyService), out object service);
+// Returns: Ready (with service), RegisteredNotReady (service is null), or NotRegistered (service is null)
+```
+
+### Improved Reliability
+- **DontDestroyOnLoad detection** now requires both `scene.name == "DontDestroyOnLoad"` and `scene.buildIndex == -1`, reducing false positives from user-named scenes.
+- **Stack trace parsing** scans by namespace instead of using a hardcoded frame index, and uses `IsAssignableFrom` for type checks instead of string matching.
+- **Timeout manager** index removal is documented and defensively guarded.
+- **Object pool** locking is now consistent across all pool types.
+
+### Test Coverage
+- **Tag operations** — 12 new tests covering `GetServicesWithTag`, `GetServicesWithAnyTag`, `GetServicesWithAllTags`, `AddTagsToService`, `RemoveTagsFromService`, and tag survival across register-to-ready transitions.
+- **Service attribute reflection** — 7 tests validating `[Service]` attribute metadata, concrete type fallback, and `ServiceBehaviour.ServiceTypes` property behavior.
+- **Multi-interface ServiceBehaviour** — 3 tests verifying `[Service(typeof(IA), typeof(IB))]` registration, retrieval via both types, and per-type unregistration.
+
+### Sample Improvements
+- **Sample 9** (Complete Game) — Removed redundant singleton pattern from `GameStateService`, letting ServiceKit manage the lifecycle exclusively.
+- **Sample 7** (Async Resolution) — Cancellation demo now actually demonstrates cancellation.
 
 ## Installation
 
@@ -480,13 +511,13 @@ public class AnalyticsReporter : MonoBehaviour
 }
 ```
 
-**When `Required = false`, ServiceKit uses intelligent 3-state resolution:**
+**When `Required = false`, ServiceKit uses intelligent 3-state resolution via an atomic `TryResolveService` check:**
 
 - **Service is ready** → Inject immediately
 - **Service is registered but not ready** → Wait for it (treat as required temporarily)
 - **Service is not registered** → Skip injection (field remains null)
 
-This eliminates guesswork - you don't need to predict whether a service will be available. The system automatically waits for registered services that are "coming soon" while skipping services that will "never come."
+All three states are determined in a single lock-guarded operation, eliminating race conditions between the check and the resolution. This means you don't need to predict whether a service will be available — the system automatically waits for registered services that are "coming soon" while skipping services that will "never come."
 
 **When `Required = true` (default):**
 - Always wait for the service regardless of registration status
@@ -649,12 +680,21 @@ void UnregisterService<T>() where T : class;
 T GetService<T>() where T : class;
 bool TryGetService<T>(out T service) where T : class;
 
+// Atomic 3-State Resolution
+ServiceResolutionStatus TryResolveService(Type serviceType, out object service);
+// Returns Ready, RegisteredNotReady, or NotRegistered — single lock, no race conditions
+
 // Asynchronous Access (automatically uses UniTask when available)
 Task<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class;
 // Returns UniTask<T> when UniTask package is installed
 
 // Dependency Injection
 IServiceInjectionBuilder InjectServicesAsync(object target);
+
+// Tag Queries
+IReadOnlyList<ServiceInfo> GetServicesWithTag(string tag);
+IReadOnlyList<ServiceInfo> GetServicesWithAnyTag(params string[] tags);
+IReadOnlyList<ServiceInfo> GetServicesWithAllTags(params string[] tags);
 
 // Management
 IReadOnlyList<ServiceInfo> GetAllServices();
@@ -702,6 +742,7 @@ Task ExecuteAsync(); // Awaitable (UniTask when available)
 * **Use timeouts** for service resolution to avoid indefinite waits.
 * **Handle injection failures** gracefully with proper error handling.
 * **Avoid circular dependency exemptions** unless absolutely necessary and the lifecycle is fully understood.
+* **Use `TryResolveService`** when you need to atomically distinguish ready, registered-not-ready, and absent services without race conditions.
 
 ### Performance Optimization
 

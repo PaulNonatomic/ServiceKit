@@ -321,8 +321,8 @@ namespace Nonatomic.ServiceKit
 			var circularDependency = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
 			if (circularDependency == null) return;
 
-			ServiceDependencyGraph.CancelCircularChain(circularDependency.Path);
-			ServiceDependencyGraph.MarkAllInPathAsError(circularDependency.Path);
+			ServiceDependencyGraph.CancelCircularChain(circularDependency.TypesInPath);
+			ServiceDependencyGraph.MarkAllInPathAsError(circularDependency.TypesInPath);
 			throw new ServiceInjectionException($"Circular dependency detected: {circularDependency.Path}");
 		}
 
@@ -354,21 +354,34 @@ namespace Nonatomic.ServiceKit
 			var locator = _serviceKitLocator as ServiceKitLocator;
 			if (locator == null) return (field, null, serviceAttribute.Required);
 
-			if (locator.TryGetService(serviceType, out var readyService))
+			// Atomic check: determines if the service is ready, registered-but-not-ready, or absent
+			var status = locator.TryResolveService(serviceType, out var readyService);
+
+			if (status == ServiceResolutionStatus.Ready)
 			{
 				return (field, readyService, serviceAttribute.Required);
 			}
 
-			if (!locator.IsServiceRegistered(serviceType))
+			if (status == ServiceResolutionStatus.NotRegistered)
 			{
+				// Give one frame for late-registering services (e.g., other Awake calls)
 				await WaitForAwakePhaseCompletion();
-				
-				if (!locator.IsServiceRegistered(serviceType))
+
+				// Re-check atomically after the yield
+				status = locator.TryResolveService(serviceType, out readyService);
+
+				if (status == ServiceResolutionStatus.Ready)
+				{
+					return (field, readyService, serviceAttribute.Required);
+				}
+
+				if (status == ServiceResolutionStatus.NotRegistered)
 				{
 					return (field, null, serviceAttribute.Required);
 				}
 			}
 
+			// Service is registered but not yet ready — wait for it
 			try
 			{
 				var pendingService = await _serviceKitLocator.GetServiceAsync(serviceType, cancellationToken);
@@ -412,12 +425,15 @@ namespace Nonatomic.ServiceKit
 #if SERVICEKIT_UNITASK
 		private async UniTask WaitForAwakePhaseCompletion()
 		{
-			await UniTask.Yield();
+			// Yield to allow other Awake calls to complete registration
+			await UniTask.NextFrame();
 		}
 #else
 		private async Task WaitForAwakePhaseCompletion()
 		{
-			// Task.Yield doesn't properly defer in Unity Edit Mode
+			// Yield to allow other Awake calls to complete registration.
+			// Task.Yield doesn't properly defer in Unity Edit Mode, so we use Task.Delay
+			// as a fallback. This is imprecise but sufficient since we re-check atomically after.
 			await Task.Delay(1);
 		}
 #endif

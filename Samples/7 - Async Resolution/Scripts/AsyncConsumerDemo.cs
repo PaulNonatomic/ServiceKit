@@ -89,9 +89,9 @@ namespace ServiceKitSamples.AsyncResolutionExample
             {
                 var resolveTask = _serviceKitLocator.GetServiceAsync<INetworkService>(_cancellationTokenSource.Token);
 
-                // Simulate user cancellation after short delay
-                // (In real code, this might be triggered by a cancel button)
-                // _cancellationTokenSource.CancelAfter(100);
+                // Simulate user cancellation after a short delay
+                // In real code, this might be triggered by a cancel button or timeout
+                _cancellationTokenSource.CancelAfter(100);
 
                 var service = await resolveTask;
                 Debug.Log($"Resolution completed (Connected: {service.IsConnected})");

@@ -28,6 +28,7 @@ namespace Nonatomic.ServiceKit
 		private IServiceKitLocator _locatorOverride;
 		private Type[] _cachedServiceTypes;
 		private bool _isCircularDependencyExempt;
+		private int _registrationGuard;
 
 		/// <summary>
 		/// Returns the active service locator. Uses the override if set, otherwise falls back to the serialized field.
@@ -130,6 +131,9 @@ namespace Nonatomic.ServiceKit
 		{
 			if (IsServiceLocatorMissing()) return;
 			if (IsServiceRegistered) return;
+
+			// Prevent concurrent double-registration (e.g., Awake + UseLocator racing)
+			if (Interlocked.CompareExchange(ref _registrationGuard, 1, 0) != 0) return;
 
 			ValidateServiceTypeImplementations();
 			RegisterInstanceWithLocator();

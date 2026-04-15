@@ -15,6 +15,16 @@ using System.Threading.Tasks;
 
 namespace Nonatomic.ServiceKit
 {
+	/// <summary>
+	/// Result of an atomic service resolution check.
+	/// </summary>
+	public enum ServiceResolutionStatus
+	{
+		Ready,
+		RegisteredNotReady,
+		NotRegistered
+	}
+
 	[CreateAssetMenu(fileName = "ServiceKit", menuName = "ServiceKit/ServiceKitLocator")]
 	public class ServiceKitLocator : ScriptableObject, IServiceKitLocator
 	{
@@ -137,13 +147,12 @@ namespace Nonatomic.ServiceKit
 					if (circularDependency != null)
 					{
 						ServiceDependencyGraph.AddCircularDependencyError(serviceType);
-
-						MarkCircularDependencyChainAsError(circularDependency);
+						ServiceDependencyGraph.MarkAllInPathAsError(circularDependency.TypesInPath);
 
 #if UNITY_EDITOR
 						if (ServiceKitSettings.Instance.DebugLogging)
 						{
-							Debug.LogError($"[ServiceKit] Circular dependency detected during registration: {circularDependency}");
+							Debug.LogError($"[ServiceKit] Circular dependency detected during registration: {circularDependency.Path}");
 						}
 #endif
 					}
@@ -328,6 +337,31 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
+		/// <summary>
+		/// Atomically checks if a service is ready, registered-but-not-ready, or not registered.
+		/// Prevents race conditions when the caller needs to distinguish all three states.
+		/// </summary>
+		public ServiceResolutionStatus TryResolveService(Type serviceType, out object service)
+		{
+			lock (_lock)
+			{
+				if (_readyServices.TryGetValue(serviceType, out var serviceInfo))
+				{
+					service = serviceInfo.Service;
+					return ServiceResolutionStatus.Ready;
+				}
+
+				service = null;
+
+				if (_registeredServices.ContainsKey(serviceType))
+				{
+					return ServiceResolutionStatus.RegisteredNotReady;
+				}
+
+				return ServiceResolutionStatus.NotRegistered;
+			}
+		}
+
 #if SERVICEKIT_UNITASK
 		private async UniTaskVoid ForwardTaskResult(UniTaskCompletionSource<object> source, UniTaskCompletionSource<object> target)
 		{
@@ -352,7 +386,6 @@ namespace Nonatomic.ServiceKit
 		{
 			UniTaskCompletionSource<object> sharedTcs;
 			UniTaskCompletionSource<object> callerTcs = null;
-			bool isNewAwaiter = false;
 
 			lock (_lock)
 			{
@@ -365,24 +398,20 @@ namespace Nonatomic.ServiceKit
 				{
 					sharedTcs = new UniTaskCompletionSource<object>();
 					_serviceAwaiters[serviceType] = sharedTcs;
-					isNewAwaiter = true;
 				}
-				
-				// Create a separate TCS for this specific caller to handle individual cancellation
+
+				// Create caller TCS and set up forwarding INSIDE the lock to prevent
+				// the shared TCS from completing before forwarding is established
 				if (cancellationToken.CanBeCanceled)
 				{
 					callerTcs = new UniTaskCompletionSource<object>();
+					_ = ForwardTaskResult(sharedTcs, callerTcs);
 				}
 			}
 
-
-			// If we have a cancellation token, use a separate TCS for this caller
+			// If we have a cancellation token, use the per-caller TCS
 			if (callerTcs != null)
 			{
-				// Set up forwarding from shared TCS to caller TCS
-				_ = ForwardTaskResult(sharedTcs, callerTcs);
-
-				// Set up cancellation for this specific caller
 				using (cancellationToken.Register(() => callerTcs.TrySetCanceled()))
 				{
 					try
@@ -395,9 +424,9 @@ namespace Nonatomic.ServiceKit
 						// This handles the edge case where cancellation and service ready happen simultaneously
 						lock (_lock)
 						{
-							if (_readyServices.TryGetValue(serviceType, out var serviceInfo))
+							if (_readyServices.TryGetValue(serviceType, out var readyInfo))
 							{
-								return serviceInfo.Service;
+								return readyInfo.Service;
 							}
 						}
 						throw;
@@ -419,7 +448,8 @@ namespace Nonatomic.ServiceKit
 
 		public async Task<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default)
 		{
-			TaskCompletionSource<object> tcs;
+			TaskCompletionSource<object> sharedTcs;
+			var callerTcs = new TaskCompletionSource<object>();
 
 			lock (_lock)
 			{
@@ -428,30 +458,24 @@ namespace Nonatomic.ServiceKit
 					return serviceInfo.Service;
 				}
 
-				if (!_serviceAwaiters.TryGetValue(serviceType, out tcs))
+				if (!_serviceAwaiters.TryGetValue(serviceType, out sharedTcs))
 				{
-					tcs = new TaskCompletionSource<object>();
-					_serviceAwaiters[serviceType] = tcs;
+					sharedTcs = new TaskCompletionSource<object>();
+					_serviceAwaiters[serviceType] = sharedTcs;
 				}
+
+				// Set up forwarding INSIDE the lock to prevent the shared TCS from
+				// completing (via CompleteAwaiters) before this continuation is registered
+				sharedTcs.Task.ContinueWith(t =>
+				{
+					if (t.IsCompletedSuccessfully)
+						callerTcs.TrySetResult(t.Result);
+					else if (t.IsCanceled)
+						callerTcs.TrySetCanceled();
+					else if (t.IsFaulted)
+						callerTcs.TrySetException(t.Exception.InnerExceptions);
+				}, TaskContinuationOptions.ExecuteSynchronously);
 			}
-
-			// IMPORTANT: We cannot use cancellationToken.Register to cancel the shared TaskCompletionSource
-			// because multiple callers might be waiting on the same TCS.
-			// Instead, we create a linked source that combines the shared task with the cancellation token.
-
-			// Create a new TCS for this specific caller
-			var callerTcs = new TaskCompletionSource<object>();
-
-			// When the shared task completes, complete the caller's task
-			tcs.Task.ContinueWith(t =>
-			{
-				if (t.IsCompletedSuccessfully)
-					callerTcs.TrySetResult(t.Result);
-				else if (t.IsCanceled)
-					callerTcs.TrySetCanceled();
-				else if (t.IsFaulted)
-					callerTcs.TrySetException(t.Exception.InnerExceptions);
-			}, TaskContinuationOptions.ExecuteSynchronously);
 
 			// If the cancellation token is cancelled, cancel only this caller's task
 			using (cancellationToken.Register(() => callerTcs.TrySetCanceled()))
@@ -466,9 +490,9 @@ namespace Nonatomic.ServiceKit
 					// This handles the edge case where cancellation and service ready happen simultaneously
 					lock (_lock)
 					{
-						if (_readyServices.TryGetValue(serviceType, out var serviceInfo))
+						if (_readyServices.TryGetValue(serviceType, out var readyInfo))
 						{
-							return serviceInfo.Service;
+							return readyInfo.Service;
 						}
 					}
 					throw;
@@ -790,17 +814,9 @@ namespace Nonatomic.ServiceKit
 				info.DebugData.SceneHandle = scene.handle;
 
 				// Check if the object is in the DontDestroyOnLoad scene
-				// Note: Both DontDestroyOnLoad and addressable scenes have buildIndex == -1,
-				// so we must check the actual scene name to differentiate them
-				if (scene.name == "DontDestroyOnLoad")
-				{
-					info.DebugData.IsDontDestroyOnLoad = true;
-				}
-				else
-				{
-					// Normal scene object (including addressable scenes)
-					info.DebugData.IsDontDestroyOnLoad = false;
-				}
+				// Both DontDestroyOnLoad and addressable scenes have buildIndex == -1,
+				// so we check both name and buildIndex to reduce false positives
+				info.DebugData.IsDontDestroyOnLoad = scene.name == "DontDestroyOnLoad" && scene.buildIndex == -1;
 			}
 			else
 			{
@@ -971,59 +987,34 @@ namespace Nonatomic.ServiceKit
 			return fields;
 		}
 
-		private Type FindTypeByName(string typeName)
-		{
-			foreach (var registeredType in _registeredServices.Keys)
-			{
-				if (registeredType.Name == typeName) return registeredType;
-			}
-			
-			foreach (var readyType in _readyServices.Keys)
-			{
-				if (readyType.Name == typeName) return readyType;
-			}
-			return null;
-		}
-
-		private void MarkCircularDependencyChainAsError(string circularDependency)
-		{
-			var typesInPath = circularDependency.Split(new[] { " → " }, StringSplitOptions.None);
-			foreach (var typeName in typesInPath)
-			{
-				var trimmedTypeName = typeName.Trim();
-				var foundType = FindTypeByName(trimmedTypeName);
-				if (foundType != null)
-				{
-					ServiceDependencyGraph.AddCircularDependencyError(foundType);
-				}
-			}
-		}
 
 		private static Type GetCallerTypeFromStackTrace()
 		{
 			try
 			{
 				var stackTrace = new System.Diagnostics.StackTrace();
-				
-				// Skip frames: GetCallerTypeFromStackTrace, RegisterService, and public RegisterService wrapper
-				for (var i = 3; i < stackTrace.FrameCount; i++)
+
+				for (var i = 0; i < stackTrace.FrameCount; i++)
 				{
 					var method = stackTrace.GetFrame(i)?.GetMethod();
-					if (method != null && method.DeclaringType != null)
+					if (method?.DeclaringType == null) continue;
+
+					var declaringType = method.DeclaringType;
+
+					// Skip ServiceKit internal types (unless they're a user's ServiceBehaviour subclass)
+					if (declaringType.Namespace?.StartsWith("Nonatomic.ServiceKit") ?? false)
 					{
-						// Skip ServiceKit internal types
-						if (!method.DeclaringType.Namespace?.StartsWith("Nonatomic.ServiceKit") ?? false)
-						{
-							return method.DeclaringType;
-						}
-						
-						// Check if it's a ServiceBehaviour derived type
-						if (method.DeclaringType.IsSubclassOf(typeof(MonoBehaviour)) &&
-							method.DeclaringType.Name.Contains("ServiceBehaviour"))
-						{
-							return method.DeclaringType;
-						}
+						continue;
 					}
+
+					// Check if it's a ServiceBehaviour derived type (user code inheriting from ServiceBehaviour)
+					if (typeof(ServiceBehaviour).IsAssignableFrom(declaringType))
+					{
+						return declaringType;
+					}
+
+					// First non-ServiceKit frame is the caller
+					return declaringType;
 				}
 			}
 			catch

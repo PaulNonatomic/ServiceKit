@@ -45,12 +45,10 @@ namespace Nonatomic.ServiceKit
 			ReturnToPool(StringListPool, list);
 		}
 		
+		// Locking is handled by RentFromPool — no need for an additional lock here
 		public static StringBuilder RentStringBuilder()
 		{
-			lock (StringBuilderPool)
-			{
-				return RentFromPool(StringBuilderPool) ?? new StringBuilder(InitialStringBuilderCapacity);
-			}
+			return RentFromPool(StringBuilderPool) ?? new StringBuilder(InitialStringBuilderCapacity);
 		}
 		
 		public static void ReturnStringBuilder(StringBuilder stringBuilder)
