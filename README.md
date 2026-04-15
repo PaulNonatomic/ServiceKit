@@ -10,6 +10,24 @@ A powerful, ScriptableObject-based service locator pattern implementation for Un
 
 </div>
 
+## Support
+If you like my work then please consider showing your support for ServiceKit by giving the repo a star or buying me a brew
+<br><br>
+<a href="https://www.buymeacoffee.com/nonatomic" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
+## Installation
+
+Add **Service Kit** to your Unity project via Package Manager:
+
+1. Open **Window > Package Manager**
+2. Click **+** > **Add package from git URL**
+3. Enter:
+```
+https://www.pkglnk.dev/servicekit.git
+```
+
+[![pkglnk](https://www.pkglnk.dev/card/servicekit.svg)](https://www.pkglnk.dev/pkg/servicekit)
+
 ## Features
 
 -   **Attribute-Based Registration**: Use `[Service(typeof(IFoo))]` to declare service types - supports multiple interfaces per service.
