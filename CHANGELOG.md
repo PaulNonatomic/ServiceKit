@@ -1,3 +1,8 @@
+## [2.0.1] - 2026-04-18
+
+### Changed
+- **Samples directory**: Renamed `Samples/` to `Samples~/` following Unity package convention. Samples are now hidden from the project and importable via Package Manager.
+
 ## [2.0.0] - 2026-04-17
 
 ### Breaking Changes
