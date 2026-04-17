@@ -98,104 +98,25 @@
 ### Migration Guide
 See the README.md for detailed migration instructions from v1.x to v2.0.
 
+### Note on Versioning
+Releases have been renumbered for clarity. What was previously tagged as various 1.x and 2.x releases during development has been consolidated into two clean releases: **1.0.0** (the stable generic `ServiceKitBehaviour<T>` API) and **2.0.0** (the attribute-based `[Service]` API). All pre-1.0 tags remain in git history for reference.
+
 ---
 
-## [1.4.3] - Aug 29, 2025
-### Fixed
-- **Edit Mode Test Compatibility**: Fixed DontDestroyOnLoad error in ServiceKitTimeoutManager during Edit Mode tests
+## [1.0.0] - 2025-11-17
 
-### Added
-- **Test Coverage**: Comprehensive test for InitializeService timing with optional dependencies
+The first stable release of ServiceKit, featuring:
 
-## [1.4.2] - Aug 29, 2025
-### Fixed
-- **Compilation Error**: Fixed CS0246 error in ServiceKitThreading.cs when SERVICEKIT_UNITASK is not defined
-
-## [1.4.1] - Aug 29, 2025
-### Improved
-- **Code Quality**: Comprehensive coding standards review and refactoring
-
-## [1.4.0] - Aug 29, 2025
-### Added
-- **Intelligent 3-State Dependency Resolution**: Enhanced `InjectService` attribute with smart behavior when `Required = false`
-
-### Changed
-- **BREAKING CHANGE**: Enhanced `Required = false` behavior - now uses intelligent resolution instead of simple ready-check
-
-## [1.3.3] - Aug 12, 2025
-- Improved error handling for service registration failures
-
-## [1.3.2] - Aug 12, 2025
-- Hotfix: Added ExecuteWithCancellationAsync method to IServiceInjectionBuilder
-
-## [1.3.1] - Aug 12, 2025
-- Moved Roslyn Analyzers to separate repository
-
-## [1.3.0] - Aug 12, 2025
-- Abstracted functionality out of ServiceInjectionBuilder
-- Added convenience method for execute and cancel
-
-## [1.2.2] - Aug 10, 2025
-- Updated package path in README
-
-## [1.2.1] - Aug 04, 2025
-- Hotfix for race condition in ServiceKitTimeoutManager
-
-## [1.2.0] - Aug 04, 2025
-- Added performance tests and documentation
-
-## [1.1.1] - Jul 29, 2025
-- Changed UniTask define from INCLUDE_UNITASK to SERVICEKIT_UNITASK
-
-## [1.1.0] - Jul 29, 2025
-- Added UniTask support
-
-## [1.0.9] - Jul 28, 2025
-- Added support for service tags
-
-## [1.0.8] - Jul 28, 2025
-- Updated ServiceKitServicesTab locator selection logic
-
-## [1.0.7] - Jul 28, 2025
-- Enhanced ServiceKitLocatorDrawer auto-assignment
-
-## [1.0.6] - Jul 28, 2025
-- Enhanced circular dependency detection
-
-## [1.0.5] - Jul 28, 2025
-- Circular dependency visualization in ServiceKit Window
-
-## [1.0.4] - Jul 28, 2025
-- Added circular dependency icons to ServiceKit Window
-
-## [1.0.3] - Jul 27, 2025
-- Added ServiceKitPlayModeHandler to cleanup state on exiting play mode
-
-## [1.0.2] - Jul 27, 2025
-- ServiceKit Window now shows registration status
-
-## [1.0.1] - Jul 27, 2025
-- Fix for icon pathing when loaded via package manager
-
-## [1.0.0] - Jul 26, 2025
-- Added circular dependency detection
-- Simplified ServiceKitBehaviour
-- Switched to 2-phase injection process
-
-## [0.3.0] - Jul 13, 2025
-- ServiceInjectionBuilder now walks inheritance hierarchy for field injection
-
-## [0.2.0] - Jul 10, 2025
-- Added ServiceKitTimeoutManager with timescale-aware timeouts
-
-## [0.1.5] - Jul 07, 2025
-- ServiceKitBehaviour calls OnRegister in OnDestroy
-
-## [0.1.4] - Jun 26, 2025
-- Made OnServicesInjected abstract
-
-## [0.1.3] - Jun 26, 2025
-- Moved ServiceKitProjectSettings to Editor folder
-
-## [0.1.2] - Jun 26, 2025
-- Removed ScriptableSingleton usage (Editor-only class)
+- **`ServiceKitBehaviour<T>`** generic base class for MonoBehaviour services
+- **Two-phase lifecycle**: Register → Ready with async dependency injection
+- **`[InjectService]`** attribute for field-based dependency injection
+- **Intelligent 3-state optional dependencies**: Ready → inject, registered → wait, absent → skip
+- **Circular dependency detection** with path reporting and exemption support
+- **Service tags** for runtime organization and filtering
+- **UniTask integration** for zero-allocation async when available
+- **Fluent injection builder**: `.WithTimeout().WithCancellation().ExecuteAsync()`
+- **`UseLocator()`** for unit testing with mock locators
+- **ServiceKit Debug Window** with scene-based grouping, search, and service inspection
+- **Addressables support** for loading ServiceKitLocator assets on demand
+- **Memory-optimized** object pooling for allocations
+- **Comprehensive test suite** for race conditions and edge cases
