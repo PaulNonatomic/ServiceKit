@@ -1,13 +1,30 @@
-## [2.5.0] - 2026-04-17
+## [2.0.0] - 2026-04-17
 
 ### Breaking Changes
-- **InjectServicesAsync deprecated**: Renamed to `Inject()`. The old name still works but produces a compiler warning with migration guidance.
+- **Attribute-Based Registration**: Replaced `ServiceKitBehaviour<T>` with non-generic `ServiceKitBehaviour` and `[Service]` attribute
+  - Services now use `[Service(typeof(IFoo))]` attribute instead of generic inheritance
+  - Enables multi-type registration: `[Service(typeof(IFoo), typeof(IBar))]`
+  - Concrete type fallback when no attribute provided
+  - Eliminates generic type parameter noise from class declarations and inheritance chains
+
+- **`InjectServicesAsync` deprecated**: Renamed to `Inject()`. The old name still works but produces a compiler warning.
+
+- **API Renames** (from v1.x):
+  - `Registered` → `IsServiceRegistered`
+  - `Ready` → `IsServiceReady`
+  - `RegisterService()` → `RegisterServiceWithLocator()`
+  - `UnregisterService()` → `UnregisterServiceFromLocator()`
+  - `MarkServiceReady()` → `MarkServiceAsReady()`
+  - `OnServiceInjectionFailed()` → `HandleDependencyInjectionFailure()`
 
 ### Added
-- **`InjectAsync` extension method**: One-liner for the most common injection pattern
+- **Fluent Registration API**: Chainable API for service registration
+  - `Register(service).As<IFoo>().As<IBar>().WithTags("core").Ready()`
+  - Supports multi-type registration, tags, and circular dependency exemption
+
+- **`InjectAsync` extension method**: One-liner for dependency injection
   - `await locator.InjectAsync(this, destroyCancellationToken);`
   - Applies default timeout, cancellation, and error handling automatically
-  - Replaces the verbose `.Inject(this).WithErrorHandling().WithTimeout().ExecuteWithCancellationAsync(token)` chain
 
 - **`Inject()` builder alias**: Shorter entry point for the fluent injection builder
   - `await locator.Inject(this).WithTimeout(10f).ExecuteAsync();`
@@ -16,416 +33,169 @@
   - Returns `ServiceResolutionStatus` enum: `Ready`, `RegisteredNotReady`, or `NotRegistered`
   - Single lock operation replaces the two-call `TryGetService` + `IsServiceRegistered` pattern
 
-- **Roslyn Analyzers V0.3.0**:
-  - **SK003** (Error): `[Service(typeof(IFoo))]` on a class that doesn't implement `IFoo`
-  - **SK005** (Error): `ServiceKitBehaviour` subclass overrides `Awake()` without calling `base.Awake()`
-
-- **22 new tests**: Tag operations (12), service attribute reflection (7), multi-interface registration (3)
-
-### Fixed
-- **GetServiceAsync race condition**: Task forwarding now set up inside lock, preventing shared TCS from completing before forwarding is established
-- **Optional dependency race condition**: Replaced non-atomic two-call check with single `TryResolveService` call
-- **UseLocator double-registration**: `Interlocked.CompareExchange` guard prevents concurrent registration from `Awake` and `UseLocator`
-- **Circular dependency string matching**: `CancelCircularChain` and `MarkAllInPathAsError` now use `Type` references instead of string name comparison
-- **DontDestroyOnLoad detection**: Strengthened to require both scene name match and `buildIndex == -1`
-- **Stack trace parsing**: Scans by namespace instead of hardcoded frame index; uses `IsAssignableFrom` instead of string check
-- **ObjectPool locking**: Removed redundant double-lock in StringBuilder pool
-
-### Changed
-- **Sample 1**: Updated to use fluent registration API
-- **Sample 7**: Fixed UniTask compatibility in samples asmdef; cancellation demo now demonstrates actual cancellation
-- **Sample 9**: Removed redundant singleton pattern, letting ServiceKit manage lifecycle exclusively
-
-## [2.4.0] - 2025-12-19
-### Breaking Changes
-- **Attribute-Based Registration**: Replaced `ServiceKitBehaviour<T>` with `ServiceKitBehaviour` and `[Service]` attribute
-  - Services now use `[Service(typeof(IFoo))]` attribute instead of generic inheritance
-  - Enables multi-type registration: `[Service(typeof(IFoo), typeof(IBar))]`
-  - Concrete type fallback when no attribute provided
-  - Removes confusing generic inheritance chains when extending services
-
-### Added
-- **Fluent Registration API**: New chainable API for service registration
-  - `Register(service).As<IFoo>().As<IBar>().WithTags("core").Ready()`
-  - Cleaner, more discoverable than separate method calls
-  - Supports multi-type registration, tags, and circular dependency exemption
-  - Matches the existing `InjectServicesAsync().WithTimeout().ExecuteAsync()` pattern
-
-- **IServiceRegistrationBuilder**: New fluent builder interface
-  - `.As<T>()` - Register under additional interface types
-  - `.WithTags(...)` - Add tags for filtering and organization
-  - `.WithCircularExemption()` - Exempt from circular dependency detection
-  - `.Register()` - Complete registration without marking ready
-  - `.Ready()` - Complete registration and mark as ready
-
-- **ServiceAttribute**: New attribute for declaring service types
+- **`[Service]` attribute**: Declarative service type registration
   - Supports multiple interface types per service
-  - `CircularDependencyExempt` property replaces `RegisterServiceWithCircularExemption` pattern
+  - `CircularDependencyExempt` property for opting out of circular detection
   - Example: `[Service(typeof(IFoo), typeof(IBar), CircularDependencyExempt = true)]`
 
-- **ServiceKitBehaviour**: New non-generic base class for MonoBehaviour services
+- **`ServiceKitBehaviour` non-generic base class**: For MonoBehaviour services
   - Reads `[Service]` attribute via reflection (cached for performance)
   - Registers instance under all declared types
-  - Unregisters from all types on destroy
-  - Full lifecycle support: Awake → Register → Inject → Init → Ready
+  - Full lifecycle: Awake → Register → Inject → Init → Ready
+  - `UseLocator()` method for unit testing with mocks
 
 - **Non-Generic Registration Methods**: Added to `IServiceKitLocator`
   - `RegisterService(Type serviceType, object service, ...)`
   - `RegisterServiceWithCircularExemption(Type serviceType, object service, ...)`
-  - Enables runtime type registration for advanced scenarios
 
-### Removed
-- **ServiceKitBehaviour<T>**: Removed in favor of attribute-based `ServiceKitBehaviour`
+- **Intelligent 3-State Optional Dependencies**: `[InjectService(Required = false)]`
+  - Service ready → inject immediately
+  - Service registered but not ready → wait for it
+  - Service not registered → skip injection (field remains null)
 
-### Migration Guide
-```csharp
-// Before (v2.3.x) - Manual registration
-_serviceKit.RegisterService<IAudioService>(audioService);
-_serviceKit.ReadyService<IAudioService>();
+- **Service Tags**: Organize and filter services at runtime
+  - `AddTagsToService`, `RemoveTagsFromService`, `GetServiceTags`
+  - `GetServicesWithTag`, `GetServicesWithAnyTag`, `GetServicesWithAllTags`
+  - Tags survive register-to-ready transitions
 
-// After (v2.4.0) - Fluent API
-_serviceKit.Register(audioService).As<IAudioService>().Ready();
+- **UniTask Integration**: Automatic optimization when UniTask is available
+  - Zero-allocation async operations
+  - Conditional compilation via `SERVICEKIT_UNITASK` define
 
-// Before (v2.3.x) - ServiceKitBehaviour
-public class AudioManager : ServiceKitBehaviour<IAudioService>, IAudioService { }
-
-// After (v2.4.0) - ServiceKitBehaviour with attribute
-[Service(typeof(IAudioService))]
-public class AudioManager : ServiceKitBehaviour, IAudioService { }
-
-// Multi-type registration (new capability)
-_serviceKit.Register(audioManager)
-    .As<IAudioService>()
-    .As<IMusicService>()
-    .WithTags("audio")
-    .Ready();
-```
-
-### Documentation
-- Updated README with new Quick Start section for ServiceKitBehaviour
-- Added Fluent Registration API section with comprehensive examples
-- Added migration guide from v2.3.x to v2.4.0
-- Updated all examples to use fluent API and attribute-based registration
-
-## [2.3.1] - 2025-12-06
-### Fixed
-- **UseLocator Auto-Registration**: `UseLocator()` now triggers registration if `Awake()` was skipped
-  - Fixes issue where `AddComponent<T>()` calls `Awake()` before `UseLocator()` can be called
-  - Registration is automatically triggered when `UseLocator()` is called with a valid locator
-  - `RegisterServiceWithLocator()` is now idempotent - safe to call multiple times
-
-### Changed
-- **Missing Locator Logging**: Downgraded from error to warning when ServiceKitLocator is missing
-  - Less alarming for `UseLocator` test pattern where locator is assigned after `Awake()`
-
-### Documentation
-- Updated unit testing guide with examples showing automatic registration behavior
-
-## [2.3.0] - 2025-12-06
-### Added
-- **Unit Testing Support**: Added `UseLocator(IServiceKitLocator)` method to `ServiceKitBehaviour<T>`
-  - Enables injection of mock or test locators without serialized field assignment
-  - Internal references now use `Locator` property which returns override or serialized field
-  - Supports both mock-based unit tests and real `ServiceKitLocator` integration tests
-
-### Documentation
-- **Unit Testing Guide**: Added comprehensive documentation for testing ServiceKitBehaviours
-  - Examples for mock-based testing with NSubstitute
-  - Examples for integration testing with real ServiceKitLocator
-  - Pattern for creating testable ServiceKitBehaviours with `TestAwake` method
-
-## [2.2.0] - 2025-11-17
-### Improved
-- **Editor Menu Cleanup**: Streamlined Tools > ServiceKit menu from 10 to 6 essential items
-  - Removed duplicate "Auto-Assign All ServiceKit Locators" wrapper
-  - Removed duplicate "Project Settings" entry
-  - Removed testing utility "Clear ServiceKit Window Selection"
-  - Removed debug utility "Debug ServiceKitLocator Discovery"
-
-- **Enhanced User Experience**: Added informative confirmation dialogs to menu items
-  - "Auto-Assign ServiceKit Locators" now shows asset count and default locator before proceeding
-  - "Process All Auto-Assignments" explains when to use and common scenarios
-  - "Validate Configuration" describes what will be checked and shows completion summary
-
-### Documentation
-- **Addressables Integration Guide**: Added comprehensive documentation for using ServiceKit with Unity Addressables
-  - Explains how to make ServiceKitLocator addressable
-  - Documents critical ScriptableObject instance behavior in addressable scenes
-  - Provides recommendations for when to use addressable vs non-addressable ServiceKitLocators
-  - Includes practical code examples for bootstrapping with addressable locators
-  - Added service lifecycle section explaining automatic cleanup and persistence options (DontDestroyOnLoad, additive loading)
-
-## [2.1.11] - 2025-11-17
-### Fixed
-- **Service Injection During Cancellation**: Fixed bug where resolved services were not injected when cancellation occurred
-  - Previously, TryInjectResolvedServices was only called when ShouldIgnoreCancellation returned true
-  - Now always attempts to inject successfully resolved services before returning or throwing
-  - Ensures dependencies are injected even when explicit cancellation tokens are cancelled during resolution
-
-### Changed
-- **ServiceKitLocator Visibility**: Changed ServiceKitLocator field from protected to public in ServiceKitBehaviour
-  - Enables better test scenarios and external access when needed
-  - Non-breaking change that maintains backward compatibility
-
-## [2.1.10] - 2025-10-11
-- Fix for maintaining foldout state in ServiceKitWindow
-
-## [2.1.9] - 2025-10-11
-- Fix for services registered in addressable scenes being listed under DoNotDestroy in the ServiceKit Window
-
-## [2.1.8] - 2025-10-06
-## [2.1.7] - 2025-10-06
-- Added an early return to ServiceKitBehaviour.IsServiceLocatorMissing when the application is quitting
-
-## [2.1.6] - 2025-09-15
-- Deleted a test with an invalid meta file
-
-## [2.1.5] - 2025-09-10
-### Fixed
-- **TOCTOU Race Condition in Optional Dependencies**: Fixed critical race condition in optional dependency resolution
-  - Previously used separate IsServiceReady() and GetService() calls which weren't atomic
-  - Service could be unregistered between the check and get operations (e.g., during scene unload)
-  - This caused InitializeService to be called with null optional dependencies despite services being ready
-  - Fixed by using atomic TryGetService() operation that checks and gets under a single lock
-  - Eliminates race condition where ServiceB's InitializeService could be called with null ServiceA
-
-- **Services Not Injected on Ignored Cancellation**: Fixed critical bug where resolved services were not injected when cancellation was ignored
-  - When application quits or ShouldIgnoreCancellation returns true, ExecuteAsync would return early without injecting already-resolved services
-  - This caused InitializeService to be called with null dependencies even though services were successfully resolved
-  - Fixed by ensuring resolved services are always injected before returning, even when cancellation is ignored
-
-- **Awake Order Race Condition for Optional Dependencies**: Fixed race condition where optional dependencies were incorrectly treated as absent
-  - When ServiceA with optional dependency on ServiceB had its Awake() called before ServiceB's Awake(), ServiceB would be null
-  - This occurred because Unity's Awake order is non-deterministic within a scene
-  - ServiceA would check for ServiceB before ServiceB had a chance to register itself
-  - Fixed by adding a one-frame delay when optional dependencies are not registered, allowing all services in the scene to complete their Awake phase
-  - Now correctly distinguishes between "not registered yet" and "truly absent" optional dependencies
-
-### Improved
-- **Code Quality**: Enhanced code standards and self-documentation
-  - Renamed methods for clarity (e.g., WaitForAwakePhaseCompletion)
-  - Removed redundant comments and debug logging
-  - Extracted complex logic into well-named helper methods
-  - Improved overall code maintainability and readability
-
-## [2.1.3] - 2025-09-09
-### Fixed
-- **Optional Dependency Race Condition**: Fixed critical bug in optional dependency resolution
-  - Optional dependencies marked with `Required = false` that were registered but not ready now correctly wait for the service
-  - Previously, multiple waiters for the same service could interfere with each other's cancellation tokens
-  - Fixed by implementing per-caller TaskCompletionSource to isolate cancellation behavior
-  - This ensures the documented 3-state intelligent resolution works correctly:
-    - Service ready → inject immediately
-    - Service registered but not ready → wait for it (treat as temporarily required)
-    - Service not registered → skip injection (field remains null)
-
-### Improved
-- **Code Quality**: Enhanced ServiceInjectionBuilder for better maintainability
-  - Extracted timeout exception building into well-named helper methods
-  - Improved self-documentation with clear method names
-  - Added explicit comments explaining optional dependency behavior
-  - Removed debug logging and simplified async service resolution
-
-## [2.1.2] - 2025-09-02
-## [2.1.1] - 2025-09-02
-- Removed performance tests as they had corrupted meta files
-
-## [2.1.0] - 2025-09-02
-### Added
-- **Memory Performance Optimizations**: Comprehensive memory allocation improvements
-  - Added `ServiceKitObjectPool` for object pooling of Lists and StringBuilders
-  - Eliminated LINQ allocations in hot paths (GetAllServices, GetServicesWithTag, etc.)
-  - Replaced string concatenation with pooled StringBuilder usage
-  - Added pre-allocated lists for batch operations in TimeoutManager
+- **Memory Performance Optimizations**:
+  - `ServiceKitObjectPool` for object pooling of Lists and StringBuilders
   - Zero-allocation service resolution for cached services
+  - Eliminated LINQ allocations in hot paths
 
-- **Memory Performance Tests**: New comprehensive test suite for memory profiling
-  - `MemoryAllocationTracker` utility for precise allocation measurement
-  - `ServiceKitMemoryPerformanceTests` for core operation allocation testing
-  - `LinqVsOptimizedComparisonTests` comparing LINQ vs optimized implementations
-  - `ServiceKitMemoryBenchmarkRunner` for automated benchmark execution with CSV export
+- **Roslyn Analyzers** (separate package):
+  - SK001: `[InjectService]` field should be an interface type
+  - SK002: `[InjectService]` field should be private, non-static, non-readonly
+  - SK003: `[Service(typeof(IFoo))]` on a class that doesn't implement `IFoo`
+  - SK004: Injection chain must include cancellation token
+  - SK005: `ServiceKitBehaviour` subclass overrides `Awake()` without calling `base.Awake()`
+  - SK010: Prefer `ExecuteWithCancellationAsync` over `WithCancellation().ExecuteAsync()`
+
+- **Comprehensive Test Suite**: 35+ tests covering race conditions, optional dependencies, tags, attribute reflection, multi-interface registration, and stress testing
+
+- **ServiceKit Debug Window**: Enhanced editor window
+  - Real-time service monitoring with readiness status
+  - Scene-based grouping with DontDestroyOnLoad separation
+  - Tag visualization and search/filtering
+  - Script navigation and GameObject pinging
 
 ### Fixed
-- **Runtime Exit Errors**: Fixed ServiceKitTimeoutManager cleanup issues
-  - Resolved "objects were not cleaned up" warning when exiting Play Mode
-  - Fixed timeout exceptions being thrown during application quit
-  - Added proper cleanup in OnDestroy, OnApplicationQuit, and editor mode transitions
-  - Enhanced ServiceKitPlayModeHandler to properly clean up on exit
-
-### Improved
-- **Code Standards**: Enhanced self-documenting code throughout
-  - Refactored ServiceKitTimeoutManager with descriptive method names
-  - Improved ServiceKitBehaviour with better encapsulation
-  - Enhanced ServiceKitObjectPool with generic helper methods
-  - Consistent preprocessor directive formatting (no indentation)
-  - Better separation of concerns with extracted helper methods
-
-- **Performance**: Significant reduction in runtime allocations
-  - GetService<T>: Now allocation-free for cached services
-  - IsServiceReady<T>: Zero allocations
-  - GetAllServices: Reduced allocations by ~70% through pooling
-  - String operations: 90% reduction through StringBuilder pooling
-
-## [2.0.0] - 2025-09-01
-### Breaking Changes
-- **ServiceKitBehaviour API Changes**: Renamed methods and fields for improved self-documenting code
-  - Protected Fields:
-    - `Registered` → `IsServiceRegistered`
-    - `Ready` → `IsServiceReady`
-  - Protected Methods:
-    - `RegisterService()` → `RegisterServiceWithLocator()`
-    - `UnregisterService()` → `UnregisterServiceFromLocator()`
-    - `InjectServicesAsync()` → `InjectDependenciesAsync()`
-    - `MarkServiceReady()` → `MarkServiceAsReady()`
-    - `OnServiceInjectionFailed()` → `HandleDependencyInjectionFailure()`
-
-### Improved
-- **Code Quality**: Major refactoring for self-documenting code
-  - All method names now clearly express their intent
-  - Improved variable naming throughout the codebase
-  - Extracted helper methods for better separation of concerns
-  - Enhanced readability following Microsoft C# coding guidelines
-  - Simplified cancellation token handling using Unity's built-in `destroyCancellationToken`
+- **GetServiceAsync race condition**: Task forwarding now set up inside lock
+- **Optional dependency race condition**: Atomic `TryResolveService` replaces non-atomic two-call check
+- **UseLocator double-registration**: `Interlocked.CompareExchange` guard prevents concurrent registration
+- **Circular dependency string matching**: Uses `Type` references instead of string name comparison
+- **DontDestroyOnLoad detection**: Requires both scene name match and `buildIndex == -1`
+- **Stack trace parsing**: Scans by namespace instead of hardcoded frame index
+- **ObjectPool locking**: Consistent locking across all pool types
+- **ServiceKitTimeoutManager**: Proper cleanup on Play Mode exit and application quit
+- **TOCTOU race condition**: Atomic `TryGetService` replaces separate check-then-get
+- **Awake order race condition**: One-frame delay for optional dependencies allows all services to register
 
 ### Migration Guide
-See the README.md for detailed migration instructions from v1.x to v2.0
+See the README.md for detailed migration instructions from v1.x to v2.0.
+
+---
 
 ## [1.4.3] - Aug 29, 2025
 ### Fixed
 - **Edit Mode Test Compatibility**: Fixed DontDestroyOnLoad error in ServiceKitTimeoutManager during Edit Mode tests
-  - Added conditional compilation to only call DontDestroyOnLoad in Play Mode
-  - Ensures ServiceKitTimeoutManager works correctly in Edit Mode tests, Play Mode, and built applications
 
 ### Added
-- **Test Coverage**: Added comprehensive test for InitializeService timing with optional dependencies
-  - Verifies that InitializeService waits for all registered dependencies (even optional ones) to become ready
-  - Confirms 3-state dependency resolution behavior is working as designed
+- **Test Coverage**: Comprehensive test for InitializeService timing with optional dependencies
 
 ## [1.4.2] - Aug 29, 2025
 ### Fixed
 - **Compilation Error**: Fixed CS0246 error in ServiceKitThreading.cs when SERVICEKIT_UNITASK is not defined
-  - Added conditional using statements to properly import System.Threading.Tasks namespace
-  - Ensures Task type is available in both UniTask and standard .NET Task scenarios
 
 ## [1.4.1] - Aug 29, 2025
 ### Improved
 - **Code Quality**: Comprehensive coding standards review and refactoring
-  - Applied "never nesting" principle - eliminated all nested if statements with early returns and guard clauses
-  - Enhanced self-documenting code with clear, action-oriented method names
-  - Applied SOLID principles with improved Single Responsibility adherence
-  - Better separation of concerns in ServiceInjectionBuilder, ServiceKitLocator, and ServiceKitBehaviour
-  - Improved method names and variable naming for better code readability
-  - No functional changes - purely internal code quality improvements
 
 ## [1.4.0] - Aug 29, 2025
 ### Added
 - **Intelligent 3-State Dependency Resolution**: Enhanced `InjectService` attribute with smart behavior when `Required = false`
-  - **Service is ready** → Inject immediately
-  - **Service is registered but not ready** → Wait for it (treat as required temporarily)
-  - **Service is not registered** → Skip injection (field remains null)
-- Comprehensive test coverage for all three dependency resolution states
-- Mixed scenario testing for complex dependency graphs
 
 ### Changed
 - **BREAKING CHANGE**: Enhanced `Required = false` behavior - now uses intelligent resolution instead of simple ready-check
-- Updated `InjectServiceAttribute` documentation to reflect new 3-state behavior
-- Updated README.md with detailed explanation of intelligent dependency resolution
-
-### Improved
-- Eliminates guesswork in optional dependency management
-- More predictable behavior for developers
-- Better handling of services that are "coming soon" vs "never coming"
-- Maintains backward compatibility for `Required = true` (default behavior unchanged)
 
 ## [1.3.3] - Aug 12, 2025
 - Improved error handling for service registration failures
-- Enhanced null service detection to identify missing interface implementations
-- Added detailed error messages showing which interfaces a ServiceKitBehaviour failed to implement
-- ServiceKitBehaviour now provides proactive error checking before attempting registration
 
 ## [1.3.2] - Aug 12, 2025
-- Hotfix added the ExecuteWithCancellationAsync method to the IServiceInjectionBuilder
+- Hotfix: Added ExecuteWithCancellationAsync method to IServiceInjectionBuilder
 
 ## [1.3.1] - Aug 12, 2025
-- hotfix to remove the hidden tools directory. The content has been moved to it's own repo for ServiceKit Roslyn Analyzers
-- updated the path to retrieve the Roslyn Analyzers dll to always pull the latest.
+- Moved Roslyn Analyzers to separate repository
 
 ## [1.3.0] - Aug 12, 2025
-- Abstracted some functionality out of the ServiceInjectionBuilder as it was bloated
-- Added a convieniance method to execute and cancel a services injection request.
+- Abstracted functionality out of ServiceInjectionBuilder
+- Added convenience method for execute and cancel
 
 ## [1.2.2] - Aug 10, 2025
 - Updated package path in README
 
 ## [1.2.1] - Aug 04, 2025
 - Hotfix for race condition in ServiceKitTimeoutManager
-- Added tests for race condition
 
 ## [1.2.0] - Aug 04, 2025
-- Added performance tests
-- Added documentation on performance
+- Added performance tests and documentation
 
 ## [1.1.1] - Jul 29, 2025
-- Changed the define for Unitask inclusion from INCLUDE_UNITASK to SERVICEKIT_UNITASK
+- Changed UniTask define from INCLUDE_UNITASK to SERVICEKIT_UNITASK
 
 ## [1.1.0] - Jul 29, 2025
-- Added UniTask support for performance gains out of the box
+- Added UniTask support
 
 ## [1.0.9] - Jul 28, 2025
 - Added support for service tags
 
 ## [1.0.8] - Jul 28, 2025
-- Updated the ServiceKitServicesTab to use the same logic as ServiceKitLocatorDrawer to select the ServiceKitLocator.
+- Updated ServiceKitServicesTab locator selection logic
 
 ## [1.0.7] - Jul 28, 2025
-- Enhanced the ServiceKitLocatorDrawer to assign the ServiceKitLocator without having to look at the component in the inspector.
-- Also improved how the instance of ServiceKitLocator is selected. By default it will now select the instance in
-  the package unless ServiceKitSettings provide an alternative.
+- Enhanced ServiceKitLocatorDrawer auto-assignment
 
 ## [1.0.6] - Jul 28, 2025
-- Enhanced circular dependency detection to detect circular dependencies created later in the registration process.
+- Enhanced circular dependency detection
 
 ## [1.0.5] - Jul 28, 2025
-- Services that encounter circular dependencies will be highlighted red in the ServiceKit Window with 
-  a warning icon and tooltip explaining the issue.
+- Circular dependency visualization in ServiceKit Window
 
 ## [1.0.4] - Jul 28, 2025
-- Added an infinite icon to the ServiceItems displayed in the ServiceKit Window. The icon is coloured when circular 
-  dependency detection is enabled for the service and greyed out when detection is disabled.
-- Added tooltip to the infinite icon to explain the meaning.
+- Added circular dependency icons to ServiceKit Window
 
 ## [1.0.3] - Jul 27, 2025
-- As the ServiceKitLocator is a ScriptableObject it is capable of persisting state in Editor.
-  I've added the ServiceKitPlayModeHandler to cleanup the state of the ServiceKitLocator when exiting play mode in editor.
+- Added ServiceKitPlayModeHandler to cleanup state on exiting play mode
 
 ## [1.0.2] - Jul 27, 2025
-- ServiceKit Windowe now shows the registration status of each service
+- ServiceKit Window now shows registration status
 
 ## [1.0.1] - Jul 27, 2025
-- Fix for icon pathing issues when package loaded via package manager
+- Fix for icon pathing when loaded via package manager
 
 ## [1.0.0] - Jul 26, 2025
 - Added circular dependency detection
-- Simplified the use of ServiceKitBehaviour
-- Switched to a 2 phase injection process
+- Simplified ServiceKitBehaviour
+- Switched to 2-phase injection process
 
 ## [0.3.0] - Jul 13, 2025
-- Updated the ServiceInjectionBuilders GetFieldsToInject method which only looks at the specific type passed to it
-  but will now walk up the inheritance hierarchy and inject parents
-- Added additional tests for this scenario
+- ServiceInjectionBuilder now walks inheritance hierarchy for field injection
 
 ## [0.2.0] - Jul 10, 2025
-- Updated the ServiceInjectionBuilder to introduce the ServiceKitTimeoutManager which provides a revised timeout system
-  that respects timescale and provides more insightful error messages.
+- Added ServiceKitTimeoutManager with timescale-aware timeouts
 
 ## [0.1.5] - Jul 07, 2025
-- ServiceKitBehaviour now calls OnRegister in OnDestroy 
+- ServiceKitBehaviour calls OnRegister in OnDestroy
 
 ## [0.1.4] - Jun 26, 2025
-- Made the OnServicesInjected method abstract 
+- Made OnServicesInjected abstract
 
 ## [0.1.3] - Jun 26, 2025
-- Moved the ServiceKitProjectSettings into the Editor folder to prevent it being included in builds
+- Moved ServiceKitProjectSettings to Editor folder
 
 ## [0.1.2] - Jun 26, 2025
-- Removed use of ScriptableSingleton in Settings because it's an Editor only class
+- Removed ScriptableSingleton usage (Editor-only class)
