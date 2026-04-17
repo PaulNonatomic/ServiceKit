@@ -1,11 +1,10 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nonatomic.ServiceKit;
 using UnityEngine;
 
 #if SERVICEKIT_UNITASK
 using Cysharp.Threading.Tasks;
-#else
-using System.Threading.Tasks;
 #endif
 
 namespace ServiceKitSamples.AsyncResolutionExample
