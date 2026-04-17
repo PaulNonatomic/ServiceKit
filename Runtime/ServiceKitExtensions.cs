@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Threading;
+using System.Threading.Tasks;
 
 #if SERVICEKIT_UNITASK
 using Cysharp.Threading.Tasks;
-#else
-using System.Threading.Tasks;
 #endif
 
 namespace Nonatomic.ServiceKit
