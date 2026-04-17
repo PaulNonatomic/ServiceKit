@@ -716,14 +716,19 @@ await Addressables.LoadSceneAsync("AdditiveScene", LoadSceneMode.Additive).Task;
 
 ## ServiceKit Debug Window
 
-Access the powerful debugging interface via `Tools > ServiceKit > ServiceKit Window`:
+Access the debugging interface via `Tools > ServiceKit > ServiceKit Window`:
+
+<p align="center">
+  <img src="Readme~\servicekit-window.png" width="500">
+</p>
 
 ### Features:
 
 * **Real-time Service Monitoring**: View all registered services across all ServiceKit locators.
 * **Readiness Status**: See at a glance whether a service is just registered or fully ready.
-* **Scene-based Grouping**: Services organized by the scene that registered them.
-* **Search & Filtering**: Find services quickly with fuzzy search.
+* **Scene-based Grouping**: Services organized by the scene that registered them, with DontDestroyOnLoad services shown separately.
+* **Tag Visualization**: Service tags displayed inline for quick identification.
+* **Search & Filtering**: Find services quickly by name or tag.
 * **Script Navigation**: Click to open service implementation files.
 * **GameObject Pinging**: Click MonoBehaviour services to highlight them in the scene.
 
