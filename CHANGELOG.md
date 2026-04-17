@@ -1,3 +1,41 @@
+## [2.5.0] - 2026-04-17
+
+### Breaking Changes
+- **InjectServicesAsync deprecated**: Renamed to `Inject()`. The old name still works but produces a compiler warning with migration guidance.
+
+### Added
+- **`InjectAsync` extension method**: One-liner for the most common injection pattern
+  - `await locator.InjectAsync(this, destroyCancellationToken);`
+  - Applies default timeout, cancellation, and error handling automatically
+  - Replaces the verbose `.Inject(this).WithErrorHandling().WithTimeout().ExecuteWithCancellationAsync(token)` chain
+
+- **`Inject()` builder alias**: Shorter entry point for the fluent injection builder
+  - `await locator.Inject(this).WithTimeout(10f).ExecuteAsync();`
+
+- **`TryResolveService` atomic method**: Race-condition-free 3-state service check
+  - Returns `ServiceResolutionStatus` enum: `Ready`, `RegisteredNotReady`, or `NotRegistered`
+  - Single lock operation replaces the two-call `TryGetService` + `IsServiceRegistered` pattern
+
+- **Roslyn Analyzers V0.3.0**:
+  - **SK003** (Error): `[Service(typeof(IFoo))]` on a class that doesn't implement `IFoo`
+  - **SK005** (Error): `ServiceKitBehaviour` subclass overrides `Awake()` without calling `base.Awake()`
+
+- **22 new tests**: Tag operations (12), service attribute reflection (7), multi-interface registration (3)
+
+### Fixed
+- **GetServiceAsync race condition**: Task forwarding now set up inside lock, preventing shared TCS from completing before forwarding is established
+- **Optional dependency race condition**: Replaced non-atomic two-call check with single `TryResolveService` call
+- **UseLocator double-registration**: `Interlocked.CompareExchange` guard prevents concurrent registration from `Awake` and `UseLocator`
+- **Circular dependency string matching**: `CancelCircularChain` and `MarkAllInPathAsError` now use `Type` references instead of string name comparison
+- **DontDestroyOnLoad detection**: Strengthened to require both scene name match and `buildIndex == -1`
+- **Stack trace parsing**: Scans by namespace instead of hardcoded frame index; uses `IsAssignableFrom` instead of string check
+- **ObjectPool locking**: Removed redundant double-lock in StringBuilder pool
+
+### Changed
+- **Sample 1**: Updated to use fluent registration API
+- **Sample 7**: Fixed UniTask compatibility in samples asmdef; cancellation demo now demonstrates actual cancellation
+- **Sample 9**: Removed redundant singleton pattern, letting ServiceKit manage lifecycle exclusively
+
 ## [2.4.0] - 2025-12-19
 ### Breaking Changes
 - **Attribute-Based Registration**: Replaced `ServiceKitBehaviour<T>` with `ServiceKitBehaviour` and `[Service]` attribute
