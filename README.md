@@ -43,13 +43,13 @@ https://www.pkglnk.dev/servicekit.git
 -   **Performance Optimized**: Efficient service lookup with minimal overhead, enhanced further with UniTask.
 -   **Thread-Safe**: Lock-guarded async resolution, atomic registration guards, and race-condition-hardened service awaiting.
 
-## What's New in V2.5
+## What's New in V2
 
 ### Simpler Service Declarations
 
-V2.5 replaces the generic `ServiceKitBehaviour<T>` base class with a non-generic `ServiceKitBehaviour` plus a `[Service]` attribute. This eliminates generic type parameter noise from class declarations, inheritance chains, and constraint clauses.
+V2 replaces the generic `ServiceKitBehaviour<T>` base class with a non-generic `ServiceKitBehaviour` plus a `[Service]` attribute. This eliminates generic type parameter noise from class declarations, inheritance chains, and constraint clauses.
 
-**Before (V2.4):**
+**Before (V1):**
 ```csharp
 // Generic parameter threaded through every level of the hierarchy
 public abstract class BaseGameController<TInterface> : ServiceKitBehaviour<TInterface>, IGame
@@ -58,7 +58,7 @@ public abstract class BaseGameController<TInterface> : ServiceKitBehaviour<TInte
 public class BowlingController : BaseGameController<IBowlingController>, IBowlingController
 ```
 
-**After (V2.5):**
+**After (V2):**
 ```csharp
 // Clean inheritance, registration intent is explicit
 public abstract class BaseGameController : ServiceKitBehaviour, IGame
@@ -139,7 +139,7 @@ Both checks happen under a single lock, eliminating the race window where a serv
 - **Circular Dependency Detection** — Uses `Type` references instead of string name matching, preventing false matches between types with similar names
 - **DontDestroyOnLoad detection** — Strengthened to require both scene name and `buildIndex == -1`
 
-### New Roslyn Analyzers (V0.3.0)
+### Roslyn Analyzers
 
 | Rule | Severity | Description |
 |------|----------|-------------|
@@ -1048,130 +1048,23 @@ The framework's sub-millisecond core operations ensure that dependency injection
 
 ## Migration Guide
 
-### Migrating from v2.4.x to v2.5.0
+### Migrating from v1.x to v2.0
 
-Version 2.5.0 focuses on race condition fixes, atomic service resolution, and new Roslyn analyzers. Most changes are internal — the public API is additive with one rename.
+V2.0 is a major release that replaces the generic `ServiceKitBehaviour<T>` pattern with attribute-based registration, adds a fluent API, and introduces one-liner dependency injection.
 
-#### Breaking Change: ServiceBehaviour renamed to ServiceKitBehaviour
+#### 1. Replace `ServiceKitBehaviour<T>` with `ServiceKitBehaviour` + `[Service]`
 
-The base class has been renamed back to `ServiceKitBehaviour` for consistency with the package naming:
-
+**Before:**
 ```csharp
-// Before (v2.4.x)
-[Service(typeof(IPlayerController))]
-public class PlayerController : ServiceBehaviour, IPlayerController { }
-
-// After (v2.5.0)
-[Service(typeof(IPlayerController))]
-public class PlayerController : ServiceKitBehaviour, IPlayerController { }
-```
-
-**Find-and-replace** `: ServiceBehaviour` with `: ServiceKitBehaviour` across your codebase.
-
-#### New API: Atomic Service Resolution
-
-`TryResolveService` provides a race-condition-free way to check service state:
-
-```csharp
-var status = locator.TryResolveService(typeof(IMyService), out var service);
-
-switch (status)
-{
-    case ServiceResolutionStatus.Ready:
-        // service is populated and ready to use
-        break;
-    case ServiceResolutionStatus.RegisteredNotReady:
-        // service is registered but still initializing — wait for it
-        break;
-    case ServiceResolutionStatus.NotRegistered:
-        // service does not exist
-        break;
-}
-```
-
-This replaces the pattern of calling `TryGetService` followed by `IsServiceRegistered`, which had a race window between the two checks.
-
-#### New Roslyn Analyzers
-
-Update your ServiceKit Analyzers to v0.3.0 for two new rules:
-
-| Rule | Severity | Description |
-|------|----------|-------------|
-| **SK003** | Error | `[Service(typeof(IFoo))]` on a class that doesn't implement `IFoo` |
-| **SK005** | Error | `ServiceKitBehaviour` subclass overrides `Awake()` without calling `base.Awake()` |
-
-#### Internal Improvements (No Action Required)
-
-These fixes are internal and require no code changes:
-- `GetServiceAsync` race condition between lock release and task forwarding
-- Optional dependency resolution now uses atomic 3-state checks
-- `Interlocked` registration guard prevents double-registration
-- Circular dependency detection uses `Type` references instead of string matching
-- `DontDestroyOnLoad` detection strengthened with `buildIndex` check
-
-### Migrating from v2.3.x to v2.4.0 (Attribute-Based Registration)
-
-Version 2.4.0 introduces a major API change: the generic `ServiceKitBehaviour<T>` base class has been replaced with attribute-based registration using `ServiceKitBehaviour` and the `[Service]` attribute.
-
-#### Key Changes
-
-**Before (v2.3.x):**
-```csharp
-public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerController
-{
-    // ...
-}
-```
-
-**After (v2.4.0):**
-```csharp
-[Service(typeof(IPlayerController))]
-public class PlayerController : ServiceKitBehaviour, IPlayerController
-{
-    // ...
-}
-```
-
-#### Benefits of the New Approach
-
-1. **Multi-type registration**: Register a single service under multiple interfaces
-```csharp
-[Service(typeof(IAudioService), typeof(IMusicService))]
-public class AudioManager : ServiceKitBehaviour, IAudioService, IMusicService { }
-```
-
-2. **Simpler inheritance**: No more confusing generic chains when extending services
-
-3. **Concrete type fallback**: If no attribute is provided, the service registers against its concrete type
-```csharp
-public class GameSettings : ServiceKitBehaviour { } // Registers as GameSettings
-```
-
-4. **Circular dependency exemption via attribute**:
-```csharp
-[Service(typeof(IEventBus), CircularDependencyExempt = true)]
-public class EventBus : ServiceKitBehaviour, IEventBus { }
-```
-
-#### Quick Migration Steps
-
-1. Replace `ServiceKitBehaviour<T>` with `ServiceKitBehaviour`
-2. Add `[Service(typeof(T))]` attribute with your interface type(s)
-3. Remove the generic type parameter
-4. Ensure the class still implements the interface(s)
-5. Update test mocks to use non-generic `RegisterService(Type, object, ...)` assertions
-
-#### Example Migration
-
-```csharp
-// Old (v2.3.x)
 public class AudioManager : ServiceKitBehaviour<IAudioService>, IAudioService
 {
     [InjectService] private IConfigService _config;
     public void PlaySound(string id) { /* ... */ }
 }
+```
 
-// New (v2.4.0)
+**After:**
+```csharp
 [Service(typeof(IAudioService))]
 public class AudioManager : ServiceKitBehaviour, IAudioService
 {
@@ -1180,29 +1073,74 @@ public class AudioManager : ServiceKitBehaviour, IAudioService
 }
 ```
 
-### Migrating from v1.x to v2.0
+For abstract base classes with multiple generic parameters, remove only the ServiceKit type parameter:
 
-Version 2.0 includes breaking changes to improve code readability and self-documentation:
-
-#### Field Renames
 ```csharp
-// Old (v1.x)
-if (Registered) { /* ... */ }
-if (Ready) { /* ... */ }
+// Before: two generics — TService was just for ServiceKit
+public abstract class ScoreService<TService, TScore> : ServiceKitBehaviour<TService>
+    where TService : class
+    where TScore : struct
 
-// New (v2.0+)
-if (IsServiceRegistered) { /* ... */ }
-if (IsServiceReady) { /* ... */ }
+// After: keep the functional generic, drop the ServiceKit one
+public abstract class ScoreService<TScore> : ServiceKitBehaviour
+    where TScore : struct
+
+// Concrete class adds [Service]
+[Service(typeof(IMyScoreService))]
+public class MyScoreService : ScoreService<int>, IMyScoreService { }
 ```
 
-#### Method Renames
-| v1.x Method | v2.0+ Method |
-|------------|-------------|
-| `RegisterService()` | `RegisterServiceWithLocator()` |
-| `UnregisterService()` | `UnregisterServiceFromLocator()` |
-| `InjectServicesAsync()` | `InjectDependenciesAsync()` |
-| `MarkServiceReady()` | `MarkServiceAsReady()` |
-| `OnServiceInjectionFailed()` | `HandleDependencyInjectionFailure()` |
+#### 2. Simplify Dependency Injection Calls
+
+**Before:**
+```csharp
+await _serviceKitLocator.InjectServicesAsync(this)
+    .WithErrorHandling()
+    .WithTimeout()
+    .ExecuteWithCancellationAsync(destroyCancellationToken);
+```
+
+**After (one-liner):**
+```csharp
+await _serviceKitLocator.InjectAsync(this, destroyCancellationToken);
+```
+
+The builder is still available for custom configuration:
+```csharp
+await _serviceKitLocator.Inject(this)
+    .WithTimeout(10f)
+    .WithErrorHandling(ex => HandleMyError(ex))
+    .ExecuteWithCancellationAsync(destroyCancellationToken);
+```
+
+#### 3. Use Fluent Registration API
+
+**Before:**
+```csharp
+_serviceKit.RegisterService<IAudioService>(audioService);
+_serviceKit.ReadyService<IAudioService>();
+```
+
+**After:**
+```csharp
+_serviceKit.Register(audioService).As<IAudioService>().Ready();
+```
+
+#### Quick Migration Checklist
+
+1. Find-and-replace `: ServiceKitBehaviour<` — remove the generic, keep the base class
+2. Add `[Service(typeof(T))]` attribute above each concrete class with the interface type
+3. Find-and-replace `.InjectServicesAsync(` with `.InjectAsync(` for one-liner calls, or `.Inject(` for builder calls
+4. Replace `RegisterService<T>()` / `ReadyService<T>()` pairs with `.Register().As<T>().Ready()`
+5. Ensure each class still implements its declared interface
+
+#### What You Gain
+
+- **Cleaner declarations** — No generic type parameter noise in class signatures or inheritance chains
+- **Multi-type registration** — `[Service(typeof(IFoo), typeof(IBar))]` on a single class
+- **One-liner injection** — `InjectAsync(this, token)` replaces 4-line builder chains
+- **Fluent registration** — Chainable API with tags, circular exemption, and deferred readiness
+- **Compile-time safety** — Roslyn analyzer SK003 catches `[Service]` type mismatches; SK005 catches missing `base.Awake()` calls
 
 ## Unit Testing
 
