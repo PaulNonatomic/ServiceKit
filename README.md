@@ -45,33 +45,108 @@ https://www.pkglnk.dev/servicekit.git
 
 ## What's New in V2.5
 
-### Race Condition Fixes
-- **GetServiceAsync** — Caller task forwarding is now set up inside the lock, preventing a race where the shared `TaskCompletionSource` could complete before forwarding was established.
-- **Optional Dependency Resolution** — The two-step check (`TryGetService` + `IsServiceRegistered`) has been replaced with a single atomic `TryResolveService` call that returns a `ServiceResolutionStatus` enum (`Ready`, `RegisteredNotReady`, `NotRegistered`), eliminating a race window between the two checks.
-- **ServiceKitBehaviour.UseLocator** — An `Interlocked.CompareExchange` registration guard prevents double-registration when `UseLocator` is called concurrently with `Awake`.
-- **Circular Dependency Detection** — `CancelCircularChain` and `MarkAllInPathAsError` now use `Type` references instead of string name matching, preventing false matches between types with similar names.
+### Simpler Service Declarations
 
-### New Public API
+V2.5 replaces the generic `ServiceKitBehaviour<T>` base class with a non-generic `ServiceKitBehaviour` plus a `[Service]` attribute. This eliminates generic type parameter noise from class declarations, inheritance chains, and constraint clauses.
+
+**Before (V2.4):**
 ```csharp
-// Atomic 3-state service resolution
-ServiceResolutionStatus status = locator.TryResolveService(typeof(IMyService), out object service);
-// Returns: Ready (with service), RegisteredNotReady (service is null), or NotRegistered (service is null)
+// Generic parameter threaded through every level of the hierarchy
+public abstract class BaseGameController<TInterface> : ServiceKitBehaviour<TInterface>, IGame
+    where TInterface : class, IGame
+
+public class BowlingController : BaseGameController<IBowlingController>, IBowlingController
 ```
 
-### Improved Reliability
-- **DontDestroyOnLoad detection** now requires both `scene.name == "DontDestroyOnLoad"` and `scene.buildIndex == -1`, reducing false positives from user-named scenes.
-- **Stack trace parsing** scans by namespace instead of using a hardcoded frame index, and uses `IsAssignableFrom` for type checks instead of string matching.
-- **Timeout manager** index removal is documented and defensively guarded.
-- **Object pool** locking is now consistent across all pool types.
+**After (V2.5):**
+```csharp
+// Clean inheritance, registration intent is explicit
+public abstract class BaseGameController : ServiceKitBehaviour, IGame
 
-### Test Coverage
-- **Tag operations** — 12 new tests covering `GetServicesWithTag`, `GetServicesWithAnyTag`, `GetServicesWithAllTags`, `AddTagsToService`, `RemoveTagsFromService`, and tag survival across register-to-ready transitions.
-- **Service attribute reflection** — 7 tests validating `[Service]` attribute metadata, concrete type fallback, and `ServiceKitBehaviour.ServiceTypes` property behavior.
-- **Multi-interface ServiceKitBehaviour** — 3 tests verifying `[Service(typeof(IA), typeof(IB))]` registration, retrieval via both types, and per-type unregistration.
+[Service(typeof(IBowlingController))]
+public class BowlingController : BaseGameController, IBowlingController
+```
 
-### Sample Improvements
-- **Sample 9** (Complete Game) — Removed redundant singleton pattern from `GameStateService`, letting ServiceKit manage the lifecycle exclusively.
-- **Sample 7** (Async Resolution) — Cancellation demo now actually demonstrates cancellation.
+For abstract base classes with multiple generic parameters (e.g., a service type *and* a data type), only the ServiceKit type parameter is removed — functional generics are preserved:
+
+```csharp
+// Before: two generics, one was just for ServiceKit
+public abstract class ScoreService<TService, TScore> : ServiceKitBehaviour<TService>, IScoreService<TScore>
+    where TService : class, IScoreService<TScore>
+    where TScore : struct
+
+// After: one generic remains — the one that actually matters
+public abstract class ScoreService<TScore> : ServiceKitBehaviour, IScoreService<TScore>
+    where TScore : struct
+
+[Service(typeof(IMyScoreService))]
+public class MyScoreService : ScoreService<int>, IMyScoreService
+```
+
+In real-world migrations this reduces hundreds of lines of generic boilerplate while making each class declaration immediately readable.
+
+### One-Line Dependency Injection
+
+The new `InjectAsync` extension method replaces the common 4-method builder chain with a single call:
+
+**Before:**
+```csharp
+await _serviceKitLocator.Inject(this)
+    .WithErrorHandling()
+    .WithTimeout()
+    .ExecuteWithCancellationAsync(destroyCancellationToken);
+```
+
+**After:**
+```csharp
+await _serviceKitLocator.InjectAsync(this, destroyCancellationToken);
+```
+
+This applies default timeout (from ServiceKit Settings), the provided cancellation token, and default error handling — the configuration that 90%+ of injection call sites need. The full builder is still available when you need custom timeout values or error handlers:
+
+```csharp
+// Custom configuration when defaults aren't enough
+await _serviceKitLocator.Inject(this)
+    .WithTimeout(10f)
+    .WithErrorHandling(ex => HandleMyError(ex))
+    .ExecuteWithCancellationAsync(destroyCancellationToken);
+```
+
+### Atomic Service Resolution
+
+The new `TryResolveService` method replaces the error-prone two-call pattern of `TryGetService` followed by `IsServiceRegistered` with a single atomic check:
+
+```csharp
+var status = locator.TryResolveService(typeof(IMyService), out var service);
+
+switch (status)
+{
+    case ServiceResolutionStatus.Ready:           // service is populated
+        break;
+    case ServiceResolutionStatus.RegisteredNotReady: // registered, still initializing
+        break;
+    case ServiceResolutionStatus.NotRegistered:      // does not exist
+        break;
+}
+```
+
+Both checks happen under a single lock, eliminating the race window where a service could register between the two calls.
+
+### Race Condition Hardening
+
+- **GetServiceAsync** — Task forwarding is now set up inside the lock, preventing a race where the shared `TaskCompletionSource` could complete before forwarding was established
+- **UseLocator** — `Interlocked.CompareExchange` registration guard prevents double-registration when `UseLocator` is called concurrently with `Awake`
+- **Circular Dependency Detection** — Uses `Type` references instead of string name matching, preventing false matches between types with similar names
+- **DontDestroyOnLoad detection** — Strengthened to require both scene name and `buildIndex == -1`
+
+### New Roslyn Analyzers (V0.3.0)
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| **SK003** | Error | `[Service(typeof(IFoo))]` on a class that doesn't implement `IFoo` |
+| **SK005** | Error | `ServiceKitBehaviour` subclass overrides `Awake()` without calling `base.Awake()` |
+
+These catch at compile time what would otherwise be silent runtime failures. SK003 restores the type safety that the old generic pattern provided, while SK005 prevents the most common lifecycle mistake.
 
 ## Quick Start
 
