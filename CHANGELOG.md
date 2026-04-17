@@ -1,6 +1,6 @@
 ## [2.4.0] - 2025-12-19
 ### Breaking Changes
-- **Attribute-Based Registration**: Replaced `ServiceKitBehaviour<T>` with `ServiceBehaviour` and `[Service]` attribute
+- **Attribute-Based Registration**: Replaced `ServiceKitBehaviour<T>` with `ServiceKitBehaviour` and `[Service]` attribute
   - Services now use `[Service(typeof(IFoo))]` attribute instead of generic inheritance
   - Enables multi-type registration: `[Service(typeof(IFoo), typeof(IBar))]`
   - Concrete type fallback when no attribute provided
@@ -25,7 +25,7 @@
   - `CircularDependencyExempt` property replaces `RegisterServiceWithCircularExemption` pattern
   - Example: `[Service(typeof(IFoo), typeof(IBar), CircularDependencyExempt = true)]`
 
-- **ServiceBehaviour**: New non-generic base class for MonoBehaviour services
+- **ServiceKitBehaviour**: New non-generic base class for MonoBehaviour services
   - Reads `[Service]` attribute via reflection (cached for performance)
   - Registers instance under all declared types
   - Unregisters from all types on destroy
@@ -37,7 +37,7 @@
   - Enables runtime type registration for advanced scenarios
 
 ### Removed
-- **ServiceKitBehaviour<T>**: Removed in favor of attribute-based `ServiceBehaviour`
+- **ServiceKitBehaviour<T>**: Removed in favor of attribute-based `ServiceKitBehaviour`
 
 ### Migration Guide
 ```csharp
@@ -51,9 +51,9 @@ _serviceKit.Register(audioService).As<IAudioService>().Ready();
 // Before (v2.3.x) - ServiceKitBehaviour
 public class AudioManager : ServiceKitBehaviour<IAudioService>, IAudioService { }
 
-// After (v2.4.0) - ServiceBehaviour with attribute
+// After (v2.4.0) - ServiceKitBehaviour with attribute
 [Service(typeof(IAudioService))]
-public class AudioManager : ServiceBehaviour, IAudioService { }
+public class AudioManager : ServiceKitBehaviour, IAudioService { }
 
 // Multi-type registration (new capability)
 _serviceKit.Register(audioManager)
@@ -64,7 +64,7 @@ _serviceKit.Register(audioManager)
 ```
 
 ### Documentation
-- Updated README with new Quick Start section for ServiceBehaviour
+- Updated README with new Quick Start section for ServiceKitBehaviour
 - Added Fluent Registration API section with comprehensive examples
 - Added migration guide from v2.3.x to v2.4.0
 - Updated all examples to use fluent API and attribute-based registration

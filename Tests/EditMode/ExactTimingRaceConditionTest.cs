@@ -94,11 +94,11 @@ namespace Tests.EditMode
 			using (var cts1 = new CancellationTokenSource())
 			using (var cts2 = new CancellationTokenSource())
 			{
-				var task1 = _serviceLocator.InjectServicesAsync(consumer1)
+				var task1 = _serviceLocator.Inject(consumer1)
 					.WithCancellation(cts1.Token)
 					.ExecuteAsync();
 				
-				var task2 = _serviceLocator.InjectServicesAsync(consumer2)
+				var task2 = _serviceLocator.Inject(consumer2)
 					.WithCancellation(cts2.Token)
 					.ExecuteAsync();
 				
@@ -177,7 +177,7 @@ namespace Tests.EditMode
 				try
 				{
 					// Use timeout like ServiceKitBehaviour does
-					await _serviceLocator.InjectServicesAsync(serviceB)
+					await _serviceLocator.Inject(serviceB)
 						.WithTimeout(30f)
 						.ExecuteAsync();
 				}
@@ -221,7 +221,7 @@ namespace Tests.EditMode
 			
 			// This should be instant since service is ready
 			var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-			await _serviceLocator.InjectServicesAsync(serviceB).ExecuteAsync();
+			await _serviceLocator.Inject(serviceB).ExecuteAsync();
 			stopwatch.Stop();
 			
 			Assert.IsNotNull(serviceB.ServiceA, "Service should be injected");

@@ -1,6 +1,6 @@
-# Sample 2: ServiceBehaviour
+# Sample 2: ServiceKitBehaviour
 
-This sample demonstrates the `ServiceBehaviour` base class for creating MonoBehaviour-based services with automatic lifecycle management.
+This sample demonstrates the `ServiceKitBehaviour` base class for creating MonoBehaviour-based services with automatic lifecycle management.
 
 ## What You'll Learn
 
@@ -22,7 +22,7 @@ This sample demonstrates the `ServiceBehaviour` base class for creating MonoBeha
    └── GameManager (with GameManager component)
    ```
 
-3. **Assign the ServiceKitLocator** to each ServiceBehaviour component's `Service Kit Locator` field
+3. **Assign the ServiceKitLocator** to each ServiceKitBehaviour component's `Service Kit Locator` field
 
 4. **Play the scene** and call `GameManager.SimulateGameplay()` from the Inspector or another script
 
@@ -32,21 +32,21 @@ This sample demonstrates the `ServiceBehaviour` base class for creating MonoBeha
 ```csharp
 // Single interface registration
 [Service(typeof(IPlayerService))]
-public class PlayerService : ServiceBehaviour, IPlayerService { }
+public class PlayerService : ServiceKitBehaviour, IPlayerService { }
 
 // Multiple interfaces (covered in Sample 4)
 [Service(typeof(IAudio), typeof(IMusic))]
-public class AudioManager : ServiceBehaviour, IAudio, IMusic { }
+public class AudioManager : ServiceKitBehaviour, IAudio, IMusic { }
 
 // Concrete type (no interface)
 [Service(typeof(GameManager))]
-public class GameManager : ServiceBehaviour { }
+public class GameManager : ServiceKitBehaviour { }
 ```
 
 ### Dependency Injection
 ```csharp
 [Service(typeof(IScoreService))]
-public class ScoreService : ServiceBehaviour, IScoreService
+public class ScoreService : ServiceKitBehaviour, IScoreService
 {
     // Automatically injected before InitializeService() is called
     [InjectService] private IPlayerService _playerService;
@@ -61,7 +61,7 @@ public class ScoreService : ServiceBehaviour, IScoreService
 
 ### Service Lifecycle
 
-1. **Awake** - ServiceBehaviour registers itself (not ready yet)
+1. **Awake** - ServiceKitBehaviour registers itself (not ready yet)
 2. **Dependency Injection** - Waits for all `[InjectService]` fields
 3. **InitializeServiceAsync()** - Your async initialization (optional)
 4. **InitializeService()** - Your sync initialization (optional)
@@ -89,7 +89,7 @@ protected override void HandleDependencyInjectionFailure(Exception exception)
 |--------|---------|
 | `IPlayerService.cs` | Player service interface |
 | `IScoreService.cs` | Score service interface |
-| `PlayerService.cs` | Player service implementation (ServiceBehaviour) |
+| `PlayerService.cs` | Player service implementation (ServiceKitBehaviour) |
 | `ScoreService.cs` | Score service with dependency on IPlayerService |
 | `GameManager.cs` | Consumes both services, demonstrates interactions |
 

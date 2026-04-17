@@ -59,9 +59,9 @@ catch (OperationCanceledException)
 }
 ```
 
-### InjectServicesAsync Configuration
+### Inject Configuration
 ```csharp
-await _serviceKitLocator.InjectServicesAsync(target)
+await _serviceKitLocator.Inject(target)
     .WithTimeout(5f)                                    // 5 second timeout
     .WithCancellation(destroyCancellationToken)         // Cancel on destroy
     .WithErrorHandling(ex => Debug.LogError(ex))        // Handle errors
@@ -71,7 +71,7 @@ await _serviceKitLocator.InjectServicesAsync(target)
 ### Async Service Initialization
 ```csharp
 [Service(typeof(INetworkService))]
-public class NetworkService : ServiceBehaviour, INetworkService
+public class NetworkService : ServiceKitBehaviour, INetworkService
 {
     // Called BEFORE service is marked ready
     protected override async Task InitializeServiceAsync()
@@ -138,8 +138,8 @@ protected override void HandleDependencyInjectionFailure(Exception exception)
 
 | Scenario | Approach |
 |----------|----------|
-| ServiceBehaviour dependency | Use `[InjectService]` (automatic) |
-| Non-ServiceBehaviour needing services | Use `InjectServicesAsync()` |
+| ServiceKitBehaviour dependency | Use `[InjectService]` (automatic) |
+| Non-ServiceKitBehaviour needing services | Use `Inject()` |
 | Manual service access after init | Use `GetService<T>()` (sync) |
 | Waiting for slow services | Use `GetServiceAsync<T>()` |
 | UI loading screens | Use `GetServiceAsync<T>()` with progress |

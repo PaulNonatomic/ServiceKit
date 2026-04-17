@@ -65,7 +65,7 @@ namespace Tests.EditMode
 				// to avoid potential issues with ServiceKitTimeoutManager in tests
 				using (var cts = new CancellationTokenSource(100)) // 100ms timeout
 				{
-					await _serviceLocator.InjectServicesAsync(consumer)
+					await _serviceLocator.Inject(consumer)
 						.WithCancellation(cts.Token)
 						.WithErrorHandling(ex =>
 						{
@@ -108,7 +108,7 @@ namespace Tests.EditMode
 			// Execute() method doesn't exist on IServiceInjectionBuilder
 			// This test was demonstrating the difference, but Execute() is not part of the API
 			// The error handler is only used internally by ExecuteWithCancellation
-			var builder = _serviceLocator.InjectServicesAsync(consumer)
+			var builder = _serviceLocator.Inject(consumer)
 				.WithTimeout(0.1f) // Short timeout
 				.WithErrorHandling(ex =>
 				{
@@ -145,7 +145,7 @@ namespace Tests.EditMode
 				// Use CancellationTokenSource for more reliable timeout in tests
 				using (var cts = new CancellationTokenSource(100)) // 100ms timeout
 				{
-					await _serviceLocator.InjectServicesAsync(consumer)
+					await _serviceLocator.Inject(consumer)
 						.WithCancellation(cts.Token)
 						.WithErrorHandling(ex =>
 						{
@@ -195,7 +195,7 @@ namespace Tests.EditMode
 				{
 					using (var cts = new CancellationTokenSource(100)) // 100ms timeout
 					{
-						await _serviceLocator.InjectServicesAsync(consumer)
+						await _serviceLocator.Inject(consumer)
 							.WithCancellation(cts.Token)
 							.WithErrorHandling(ex =>
 							{

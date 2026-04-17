@@ -36,7 +36,7 @@ namespace Tests.EditMode
 			_mockBuilder.WithTimeout(Arg.Any<float>()).Returns(_mockBuilder);
 			_mockBuilder.WithErrorHandling(Arg.Any<Action<Exception>>()).Returns(_mockBuilder);
 
-			_mockServiceKitLocator.InjectServicesAsync(Arg.Any<object>()).Returns(_mockBuilder);
+			_mockServiceKitLocator.Inject(Arg.Any<object>()).Returns(_mockBuilder);
 		}
 
 		[TearDown]
@@ -128,13 +128,13 @@ namespace Tests.EditMode
 		}
 
 		[Test]
-		public void InjectServicesAsync_ReturnsFluentBuilder()
+		public void Inject_ReturnsFluentBuilder()
 		{
 			// Arrange
 			var target = new TestClass();
 
 			// Act
-			var builder = _mockServiceKitLocator.InjectServicesAsync(target);
+			var builder = _mockServiceKitLocator.Inject(target);
 
 			// Assert
 			Assert.IsNotNull(builder);
@@ -142,7 +142,7 @@ namespace Tests.EditMode
 		}
 
 		[Test]
-		public async Task InjectServicesAsync_InjectsServicesIntoInheritedFields()
+		public async Task Inject_InjectsServicesIntoInheritedFields()
 		{
 			// Arrange
 			var playerService = new PlayerService();
@@ -156,9 +156,9 @@ namespace Tests.EditMode
 
 			// Act
 #if SERVICEKIT_UNITASK
-			await _realServiceKitLocator.InjectServicesAsync(derivedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(derivedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
 #else
-			await _realServiceKitLocator.InjectServicesAsync(derivedInstance).ExecuteAsync().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(derivedInstance).ExecuteAsync().ConfigureAwait(false);
 #endif
 
 			// Assert
@@ -169,7 +169,7 @@ namespace Tests.EditMode
 		}
 
 		[Test]
-		public async Task InjectServicesAsync_InjectsServicesIntoMultipleInheritanceLevels()
+		public async Task Inject_InjectsServicesIntoMultipleInheritanceLevels()
 		{
 			// Arrange
 			var playerService = new PlayerService();
@@ -183,9 +183,9 @@ namespace Tests.EditMode
 
 			// Act
 #if SERVICEKIT_UNITASK
-			await _realServiceKitLocator.InjectServicesAsync(deeplyDerivedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(deeplyDerivedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
 #else
-			await _realServiceKitLocator.InjectServicesAsync(deeplyDerivedInstance).ExecuteAsync().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(deeplyDerivedInstance).ExecuteAsync().ConfigureAwait(false);
 #endif
 
 			// Assert
@@ -196,7 +196,7 @@ namespace Tests.EditMode
 		}
 
 		[Test]
-		public async Task InjectServicesAsync_HandlesMixedRequiredAndOptionalInheritedFields()
+		public async Task Inject_HandlesMixedRequiredAndOptionalInheritedFields()
 		{
 			// Arrange
 			var playerService = new PlayerService();
@@ -208,9 +208,9 @@ namespace Tests.EditMode
 
 			// Act
 #if SERVICEKIT_UNITASK
-			await _realServiceKitLocator.InjectServicesAsync(mixedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(mixedInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
 #else
-			await _realServiceKitLocator.InjectServicesAsync(mixedInstance).ExecuteAsync().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(mixedInstance).ExecuteAsync().ConfigureAwait(false);
 #endif
 
 			// Assert
@@ -220,7 +220,7 @@ namespace Tests.EditMode
 		}
 		
 		[Test]
-		public async Task InjectServicesAsync_ThreeStateDependencyResolution_ServiceReady()
+		public async Task Inject_ThreeStateDependencyResolution_ServiceReady()
 		{
 			// Arrange - Service is ready immediately
 			var inventoryService = new InventoryService();
@@ -230,9 +230,9 @@ namespace Tests.EditMode
 			
 			// Act
 #if SERVICEKIT_UNITASK
-			await _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(testInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
 #else
-			await _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(testInstance).ExecuteAsync().ConfigureAwait(false);
 #endif
 			
 			// Assert - Should inject immediately since service is ready
@@ -241,7 +241,7 @@ namespace Tests.EditMode
 		}
 		
 		[Test]
-		public async Task InjectServicesAsync_ThreeStateDependencyResolution_ServiceRegisteredButNotReady()
+		public async Task Inject_ThreeStateDependencyResolution_ServiceRegisteredButNotReady()
 		{
 			// Arrange - Service is registered but not ready
 			var inventoryService = new InventoryService();
@@ -251,7 +251,7 @@ namespace Tests.EditMode
 			var testInstance = new TestThreeStateClass();
 			
 			// Start injection in background
-			var injectionTask = _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync();
+			var injectionTask = _realServiceKitLocator.Inject(testInstance).ExecuteAsync();
 			
 			// Let injection start waiting
 			await Task.Delay(50);
@@ -272,7 +272,7 @@ namespace Tests.EditMode
 		}
 		
 		[Test]
-		public async Task InjectServicesAsync_ThreeStateDependencyResolution_ServiceNotRegistered()
+		public async Task Inject_ThreeStateDependencyResolution_ServiceNotRegistered()
 		{
 			// Arrange - Service is not registered at all
 			// Note: Not registering IInventoryService anywhere
@@ -281,9 +281,9 @@ namespace Tests.EditMode
 			
 			// Act
 #if SERVICEKIT_UNITASK
-			await _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(testInstance).ExecuteAsync().AsTask().ConfigureAwait(false);
 #else
-			await _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync().ConfigureAwait(false);
+			await _realServiceKitLocator.Inject(testInstance).ExecuteAsync().ConfigureAwait(false);
 #endif
 			
 			// Assert - Should skip injection and leave field null
@@ -291,7 +291,7 @@ namespace Tests.EditMode
 		}
 		
 		[Test]
-		public async Task InjectServicesAsync_ThreeStateDependencyResolution_MixedScenario()
+		public async Task Inject_ThreeStateDependencyResolution_MixedScenario()
 		{
 			// Arrange - Mix of all three states
 			var playerService = new PlayerService();
@@ -308,7 +308,7 @@ namespace Tests.EditMode
 			var testInstance = new TestMixedThreeStateClass();
 			
 			// Start injection
-			var injectionTask = _realServiceKitLocator.InjectServicesAsync(testInstance).ExecuteAsync();
+			var injectionTask = _realServiceKitLocator.Inject(testInstance).ExecuteAsync();
 			
 			// Let injection process the ready service and start waiting for registered service
 			await Task.Delay(50);
@@ -332,7 +332,7 @@ namespace Tests.EditMode
 		}
 
 		[Test]
-		public async Task ServiceBehaviour_InitializeService_WaitsForOptionalRegisteredDependencies()
+		public async Task ServiceKitBehaviour_InitializeService_WaitsForOptionalRegisteredDependencies()
 		{
 			// Arrange - Test that InitializeService waits for optional but registered dependencies
 			var inventoryService = new InventoryService();
@@ -340,7 +340,7 @@ namespace Tests.EditMode
 			// Register but don't ready the service initially
 			_realServiceKitLocator.RegisterService<IInventoryService>(inventoryService);
 
-			var testBehaviour = new TestInitializeServiceBehaviour();
+			var testBehaviour = new TestInitializeServiceKitBehaviour();
 			testBehaviour.UseLocator(_realServiceKitLocator);
 			
 			// Track when InitializeService is called

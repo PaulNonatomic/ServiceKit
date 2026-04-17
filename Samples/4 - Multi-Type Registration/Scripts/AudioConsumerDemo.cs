@@ -8,7 +8,7 @@ namespace ServiceKitSamples.MultiTypeExample
 	/// Each consumer only sees the API relevant to its needs.
 	/// </summary>
 	[Service(typeof(AudioConsumerDemo))]
-	public class AudioConsumerDemo : ServiceBehaviour
+	public class AudioConsumerDemo : ServiceKitBehaviour
 	{
 		// Each field injects the SAME service instance, but through different interfaces
 		[InjectService] private IAudioPlayer _audioPlayer;

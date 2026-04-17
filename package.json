@@ -33,9 +33,9 @@
       "path": "Samples~/1 - Basic Usage"
     },
     {
-      "displayName": "2 - ServiceBehaviour",
-      "description": "Using ServiceBehaviour base class for MonoBehaviour-based services with automatic lifecycle management.",
-      "path": "Samples~/2 - ServiceBehaviour"
+      "displayName": "2 - ServiceKitBehaviour",
+      "description": "Using ServiceKitBehaviour base class for MonoBehaviour-based services with automatic lifecycle management.",
+      "path": "Samples~/2 - ServiceKitBehaviour"
     },
     {
       "displayName": "3 - Fluent Registration",

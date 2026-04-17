@@ -59,7 +59,7 @@ namespace Tests.EditMode
 			{
 				using (var cts = new CancellationTokenSource())
 				{
-					var task = _serviceLocator.InjectServicesAsync(serviceB)
+					var task = _serviceLocator.Inject(serviceB)
 						.WithCancellation(cts.Token)
 						.ExecuteAsync();
 

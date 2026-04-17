@@ -501,7 +501,13 @@ namespace Nonatomic.ServiceKit
 		}
 #endif
 
+		[System.Obsolete("Use Inject(target) or the InjectAsync(target, token) extension method instead.")]
 		public IServiceInjectionBuilder InjectServicesAsync(object target)
+		{
+			return new ServiceInjectionBuilder(this, target);
+		}
+
+		public IServiceInjectionBuilder Inject(object target)
 		{
 			return new ServiceInjectionBuilder(this, target);
 		}
@@ -1001,14 +1007,14 @@ namespace Nonatomic.ServiceKit
 
 					var declaringType = method.DeclaringType;
 
-					// Skip ServiceKit internal types (unless they're a user's ServiceBehaviour subclass)
+					// Skip ServiceKit internal types (unless they're a user's ServiceKitBehaviour subclass)
 					if (declaringType.Namespace?.StartsWith("Nonatomic.ServiceKit") ?? false)
 					{
 						continue;
 					}
 
-					// Check if it's a ServiceBehaviour derived type (user code inheriting from ServiceBehaviour)
-					if (typeof(ServiceBehaviour).IsAssignableFrom(declaringType))
+					// Check if it's a ServiceKitBehaviour derived type (user code inheriting from ServiceKitBehaviour)
+					if (typeof(ServiceKitBehaviour).IsAssignableFrom(declaringType))
 					{
 						return declaringType;
 					}

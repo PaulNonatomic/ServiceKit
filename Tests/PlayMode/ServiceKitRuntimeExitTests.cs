@@ -129,7 +129,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			{
 				try
 				{
-					await _locator.InjectServicesAsync(consumer)
+					await _locator.Inject(consumer)
 						.WithTimeout(5f)
 						.ExecuteAsync();
 				}
@@ -298,7 +298,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 		}
 
 		[UnityTest]
-		public IEnumerator ServiceBehaviour_HandlesDestructionDuringInjection()
+		public IEnumerator ServiceKitBehaviour_HandlesDestructionDuringInjection()
 		{
 			// Arrange
 			var testService = new TestServiceImpl();
@@ -306,7 +306,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 
 			var behaviourObject = new GameObject("TestBehaviour");
 			// Don't add to _createdObjects since we're destroying it manually
-			var behaviour = behaviourObject.AddComponent<TestServiceBehaviourWithDelay>();
+			var behaviour = behaviourObject.AddComponent<TestServiceKitBehaviourWithDelay>();
 			behaviour.SetServiceKitLocator(_locator);
 
 			// Wait for injection to start
@@ -357,7 +357,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 		}
 
 		[Service(typeof(ITestService))]
-		private class TestServiceBehaviourWithDelay : ServiceBehaviour, ITestService
+		private class TestServiceKitBehaviourWithDelay : ServiceKitBehaviour, ITestService
 		{
 			[InjectService(Required = false)]
 			private IDelayedService _delayedService;

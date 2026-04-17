@@ -60,7 +60,9 @@ namespace Nonatomic.ServiceKit
 		Task<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class;
 		Task<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default);
 #endif
+		[System.Obsolete("Use Inject(target) or the InjectAsync(target, token) extension method instead.")]
 		IServiceInjectionBuilder InjectServicesAsync(object target);
+		IServiceInjectionBuilder Inject(object target);
 		void ClearServices();
 
 		// Tooling support

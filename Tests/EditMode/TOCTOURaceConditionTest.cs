@@ -63,7 +63,7 @@ namespace Tests.EditMode
 				{
 					try
 					{
-						await _serviceLocator.InjectServicesAsync(serviceB).ExecuteAsync();
+						await _serviceLocator.Inject(serviceB).ExecuteAsync();
 					}
 					catch (Exception ex)
 					{
@@ -176,7 +176,7 @@ namespace Tests.EditMode
 			// Start injection
 			var injectionTask = Task.Run(async () =>
 			{
-				await _serviceLocator.InjectServicesAsync(serviceB).ExecuteAsync();
+				await _serviceLocator.Inject(serviceB).ExecuteAsync();
 			});
 			
 			// Simulate scene unload by unregistering services

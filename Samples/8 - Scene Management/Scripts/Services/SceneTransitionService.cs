@@ -6,82 +6,82 @@ using UnityEngine.SceneManagement;
 
 namespace ServiceKitSamples.SceneManagementExample
 {
-    /// <summary>
-    /// Manages scene transitions with proper service lifecycle handling.
-    /// This is a global service that persists across scenes.
-    /// </summary>
-    [Service(typeof(ISceneTransitionService))]
-    public class SceneTransitionService : ServiceBehaviour, ISceneTransitionService
-    {
-        private static SceneTransitionService _instance;
+	/// <summary>
+	/// Manages scene transitions with proper service lifecycle handling.
+	/// This is a global service that persists across scenes.
+	/// </summary>
+	[Service(typeof(ISceneTransitionService))]
+	public class SceneTransitionService : ServiceKitBehaviour, ISceneTransitionService
+	{
+		private static SceneTransitionService _instance;
 
-        [InjectService] private IGlobalService _globalService;
+		[InjectService] private IGlobalService _globalService;
 
-        public string CurrentScene { get; private set; }
-        public bool IsTransitioning { get; private set; }
+		public string CurrentScene { get; private set; }
+		public bool IsTransitioning { get; private set; }
 
-        public event Action<string> OnSceneLoadStarted;
-        public event Action<string> OnSceneLoadCompleted;
+		public event Action<string> OnSceneLoadStarted;
+		public event Action<string> OnSceneLoadCompleted;
 
-        protected override void Awake()
-        {
-            if (_instance != null && _instance != this)
-            {
-                Destroy(gameObject);
-                return;
-            }
+		protected override void Awake()
+		{
+			if (_instance != null && _instance != this)
+			{
+				Destroy(gameObject);
+				return;
+			}
 
-            _instance = this;
-            DontDestroyOnLoad(gameObject);
+			_instance = this;
+			DontDestroyOnLoad(gameObject);
 
-            base.Awake();
-        }
+			base.Awake();
+		}
 
-        protected override void InitializeService()
-        {
-            CurrentScene = SceneManager.GetActiveScene().name;
-            Debug.Log($"[SceneTransitionService] Initialized in scene: {CurrentScene}");
-        }
+		protected override void InitializeService()
+		{
+			CurrentScene = SceneManager.GetActiveScene().name;
+			Debug.Log($"[SceneTransitionService] Initialized in scene: {CurrentScene}");
+		}
 
-        public async Task LoadSceneAsync(string sceneName)
-        {
-            if (IsTransitioning)
-            {
-                Debug.LogWarning($"[SceneTransitionService] Already transitioning, ignoring request for: {sceneName}");
-                return;
-            }
+		public async Task LoadSceneAsync(string sceneName)
+		{
+			if (IsTransitioning)
+			{
+				Debug.LogWarning($"[SceneTransitionService] Already transitioning, ignoring request for: {sceneName}");
+				return;
+			}
 
-            Debug.Log($"[SceneTransitionService] Starting transition: {CurrentScene} -> {sceneName}");
+			Debug.Log($"[SceneTransitionService] Starting transition: {CurrentScene} -> {sceneName}");
 
-            IsTransitioning = true;
-            OnSceneLoadStarted?.Invoke(sceneName);
+			IsTransitioning = true;
+			OnSceneLoadStarted?.Invoke(sceneName);
 
-            // Note: Scene-local services in current scene will be destroyed
-            // and unregistered automatically when scene unloads
+			// Note: Scene-local services in current scene will be destroyed
+			// and unregistered automatically when scene unloads
 
-            var asyncOperation = SceneManager.LoadSceneAsync(sceneName);
-            asyncOperation.allowSceneActivation = true;
+			var asyncOperation = SceneManager.LoadSceneAsync(sceneName);
+			asyncOperation.allowSceneActivation = true;
 
-            while (!asyncOperation.isDone)
-            {
-                await Task.Yield();
-            }
+			while (!asyncOperation.isDone)
+			{
+				await Task.Yield();
+			}
 
-            CurrentScene = sceneName;
-            IsTransitioning = false;
+			CurrentScene = sceneName;
+			IsTransitioning = false;
 
-            OnSceneLoadCompleted?.Invoke(sceneName);
+			OnSceneLoadCompleted?.Invoke(sceneName);
 
-            Debug.Log($"[SceneTransitionService] Transition complete: {sceneName}");
-        }
+			Debug.Log($"[SceneTransitionService] Transition complete: {sceneName}");
+		}
 
-        protected override void OnDestroy()
-        {
-            if (_instance == this)
-            {
-                _instance = null;
-            }
-            base.OnDestroy();
-        }
-    }
+		protected override void OnDestroy()
+		{
+			if (_instance == this)
+			{
+				_instance = null;
+			}
+			base.OnDestroy();
+		}
+	}
 }

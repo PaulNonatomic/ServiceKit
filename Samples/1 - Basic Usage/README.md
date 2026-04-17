@@ -6,7 +6,7 @@ This sample introduces the core concepts of ServiceKit - creating a ServiceKitLo
 
 - Creating a ServiceKitLocator asset
 - Defining service interfaces and implementations
-- Registering services with `RegisterService<T>()` and `ReadyService<T>()`
+- Registering services with the fluent API `.Register().As<T>().Ready()`
 - Accessing services with `GetService<T>()` and `TryGetService<T>()`
 - Checking service status with `IsServiceReady<T>()`
 
@@ -53,13 +53,10 @@ public class GreetingService : IGreetingService
 
 ### Registration
 ```csharp
-// Create and register
-var service = new GreetingService();
-_serviceKit.RegisterService<IGreetingService>(service);
-_serviceKit.ReadyService<IGreetingService>();
-
-// Or use the one-liner
-_serviceKit.RegisterAndReadyService<IGreetingService>(service);
+// Fluent API — register and ready in one chain
+_serviceKit.Register(new GreetingService())
+    .As<IGreetingService>()
+    .Ready();
 ```
 
 ### Consumption
@@ -85,5 +82,5 @@ if (_serviceKit.TryGetService<IGreetingService>(out var service))
 
 ## Next Steps
 
-- **Sample 2**: Learn about `ServiceBehaviour` for MonoBehaviour-based services
+- **Sample 2**: Learn about `ServiceKitBehaviour` for MonoBehaviour-based services
 - **Sample 3**: Explore the fluent registration API

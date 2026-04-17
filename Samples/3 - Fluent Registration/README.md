@@ -121,7 +121,7 @@ AnalyticsService
 
 | Use Case | Recommended Approach |
 |----------|---------------------|
-| MonoBehaviour services | `[Service]` attribute + `ServiceBehaviour` |
+| MonoBehaviour services | `[Service]` attribute + `ServiceKitBehaviour` |
 | Plain C# classes | Fluent API |
 | Services needing constructor injection | Fluent API |
 | Simple, self-contained services | Either works well |

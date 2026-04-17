@@ -13,16 +13,16 @@ namespace Nonatomic.ServiceKit.Tests.EditMode
 		private interface IFoo { }
 		private interface IBar { }
 
-		private class NoAttributeBehaviour : ServiceBehaviour, IFoo { }
+		private class NoAttributeBehaviour : ServiceKitBehaviour, IFoo { }
 
 		[Service(typeof(IFoo))]
-		private class SingleTypeBehaviour : ServiceBehaviour, IFoo { }
+		private class SingleTypeBehaviour : ServiceKitBehaviour, IFoo { }
 
 		[Service(typeof(IFoo), typeof(IBar))]
-		private class MultiTypeBehaviour : ServiceBehaviour, IFoo, IBar { }
+		private class MultiTypeBehaviour : ServiceKitBehaviour, IFoo, IBar { }
 
 		[Service]
-		private class ExplicitEmptyBehaviour : ServiceBehaviour { }
+		private class ExplicitEmptyBehaviour : ServiceKitBehaviour { }
 
 		[Test]
 		public void ServiceAttribute_NoArgs_HasEmptyServiceTypes()
@@ -64,13 +64,13 @@ namespace Nonatomic.ServiceKit.Tests.EditMode
 		}
 
 		[Test]
-		public void ServiceBehaviourServiceTypes_NoAttribute_FallsToConcreteType()
+		public void ServiceKitBehaviourServiceTypes_NoAttribute_FallsToConcreteType()
 		{
 			var go = new GameObject("Test");
 			try
 			{
 				var behaviour = go.AddComponent<NoAttributeBehaviour>();
-				var prop = typeof(ServiceBehaviour).GetProperty("ServiceTypes", BindingFlags.Instance | BindingFlags.NonPublic);
+				var prop = typeof(ServiceKitBehaviour).GetProperty("ServiceTypes", BindingFlags.Instance | BindingFlags.NonPublic);
 				var types = (Type[])prop.GetValue(behaviour);
 
 				Assert.AreEqual(1, types.Length);
@@ -83,13 +83,13 @@ namespace Nonatomic.ServiceKit.Tests.EditMode
 		}
 
 		[Test]
-		public void ServiceBehaviourServiceTypes_WithAttribute_UsesAttributeTypes()
+		public void ServiceKitBehaviourServiceTypes_WithAttribute_UsesAttributeTypes()
 		{
 			var go = new GameObject("Test");
 			try
 			{
 				var behaviour = go.AddComponent<SingleTypeBehaviour>();
-				var prop = typeof(ServiceBehaviour).GetProperty("ServiceTypes", BindingFlags.Instance | BindingFlags.NonPublic);
+				var prop = typeof(ServiceKitBehaviour).GetProperty("ServiceTypes", BindingFlags.Instance | BindingFlags.NonPublic);
 				var types = (Type[])prop.GetValue(behaviour);
 
 				Assert.AreEqual(1, types.Length);

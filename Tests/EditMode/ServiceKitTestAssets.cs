@@ -60,7 +60,7 @@ namespace Tests.EditMode
 			_serviceKit.RegisterService<IInventoryService>(new InventoryService());
 
 			// Inject services
-			await _serviceKit.InjectServicesAsync(this)
+			await _serviceKit.Inject(this)
 				.WithCancellation(destroyCancellationToken)
 				.WithTimeout(5f)
 				.WithErrorHandling(HandleServiceKitError)
@@ -87,7 +87,7 @@ namespace Tests.EditMode
 	}
 
 	[Service(typeof(IPlayerController))]
-	public class PlayerController : ServiceBehaviour, IPlayerController
+	public class PlayerController : ServiceKitBehaviour, IPlayerController
 	{
 		public IPlayerService PlayerService => _playerService;
 		public IInventoryService InventoryService => _inventoryService;
@@ -98,7 +98,7 @@ namespace Tests.EditMode
 
 	// Test class that doesn't implement its interface (for testing error scenarios)
 	[Service(typeof(IPlayerController))]
-	public class BrokenPlayerController : ServiceBehaviour
+	public class BrokenPlayerController : ServiceKitBehaviour
 	{
 		// This class intentionally doesn't implement IPlayerController
 		// This should trigger our improved error messages
@@ -110,9 +110,9 @@ namespace Tests.EditMode
 		bool IsInitialized { get; }
 	}
 
-	// Test ServiceBehaviour for testing InitializeService timing with optional dependencies
+	// Test ServiceKitBehaviour for testing InitializeService timing with optional dependencies
 	[Service(typeof(ITestInitializeService))]
-	public class TestInitializeServiceBehaviour : ServiceBehaviour, ITestInitializeService
+	public class TestInitializeServiceKitBehaviour : ServiceKitBehaviour, ITestInitializeService
 	{
 		[InjectService(Required = false)]
 		private IInventoryService _optionalInventoryService;
@@ -138,7 +138,7 @@ namespace Tests.EditMode
 			RegisterServiceWithLocator();
 
 			// Manually inject services without using destroyCancellationToken
-			await Locator.InjectServicesAsync(this)
+			await Locator.Inject(this)
 				.WithCancellation(cancellationToken)
 				.WithTimeout()
 				.WithErrorHandling(HandleDependencyInjectionFailure)

@@ -550,24 +550,24 @@ PluginImporter:
   validateReferences: 0
   platformData:
   - first:
-      Any: 
-    second:
-      enabled: 0
-      settings:
-        RoslynAnalyzer: 1
+	  Any: 
+	second:
+	  enabled: 0
+	  settings:
+		RoslynAnalyzer: 1
   - first:
-      Editor: Editor
-    second:
-      enabled: 0
-      settings:
-        RoslynAnalyzer: 1
-        DefaultValueInitialized: true
+	  Editor: Editor
+	second:
+	  enabled: 0
+	  settings:
+		RoslynAnalyzer: 1
+		DefaultValueInitialized: true
   - first:
-      Windows Store Apps: WindowsStoreApps
-    second:
-      enabled: 0
-      settings:
-        CPU: AnyCPU
+	  Windows Store Apps: WindowsStoreApps
+	second:
+	  enabled: 0
+	  settings:
+		CPU: AnyCPU
   userData: 
   assetBundleName: 
   assetBundleVariant: ";

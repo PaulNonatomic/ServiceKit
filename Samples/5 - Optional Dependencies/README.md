@@ -44,7 +44,7 @@ When `Required = false`, ServiceKit uses intelligent resolution:
 ### Declaration
 ```csharp
 [Service(typeof(MyConsumer))]
-public class MyConsumer : ServiceBehaviour
+public class MyConsumer : ServiceKitBehaviour
 {
     // Required - will fail if not available
     [InjectService]

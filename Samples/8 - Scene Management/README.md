@@ -6,7 +6,7 @@ This sample demonstrates managing service lifecycle across scene transitions.
 
 - Creating global services that persist across scenes
 - Creating scene-local services that clean up automatically
-- Using DontDestroyOnLoad with ServiceBehaviour
+- Using DontDestroyOnLoad with ServiceKitBehaviour
 - Proper scene transition handling
 - Service availability across scenes
 
@@ -42,7 +42,7 @@ Scene
 ### Global Services (Persist Across Scenes)
 ```csharp
 [Service(typeof(IGlobalService))]
-public class GlobalPersistentService : ServiceBehaviour, IGlobalService
+public class GlobalPersistentService : ServiceKitBehaviour, IGlobalService
 {
     private static GlobalPersistentService _instance;
 
@@ -66,10 +66,10 @@ public class GlobalPersistentService : ServiceBehaviour, IGlobalService
 ### Scene-Local Services (Auto-Cleanup)
 ```csharp
 [Service(typeof(ISceneService))]
-public class SceneLocalService : ServiceBehaviour, ISceneService
+public class SceneLocalService : ServiceKitBehaviour, ISceneService
 {
     // No DontDestroyOnLoad = destroyed when scene unloads
-    // ServiceBehaviour.OnDestroy() automatically unregisters
+    // ServiceKitBehaviour.OnDestroy() automatically unregisters
 
     protected override void OnDestroy()
     {
@@ -82,7 +82,7 @@ public class SceneLocalService : ServiceBehaviour, ISceneService
 ### Using Both Service Types
 ```csharp
 [Service(typeof(GameplayController))]
-public class GameplayController : ServiceBehaviour
+public class GameplayController : ServiceKitBehaviour
 {
     // Global - same instance across all scenes
     [InjectService] private IGlobalService _globalService;
@@ -147,7 +147,7 @@ Add scenes in this order:
 ```csharp
 // Level manager - exists only in gameplay scene
 [Service(typeof(ILevelManager))]
-public class LevelManager : ServiceBehaviour, ILevelManager
+public class LevelManager : ServiceKitBehaviour, ILevelManager
 {
     // Automatically unregistered when gameplay scene unloads
 }
@@ -184,7 +184,7 @@ SceneManager.LoadSceneAsync("UIScene", LoadSceneMode.Additive);
 
 2. **Order Matters**: Global services must initialize before scene services that depend on them
 
-3. **Cleanup is Automatic**: ServiceBehaviour.OnDestroy() unregisters services
+3. **Cleanup is Automatic**: ServiceKitBehaviour.OnDestroy() unregisters services
 
 ## Next Steps
 

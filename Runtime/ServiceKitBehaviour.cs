@@ -19,9 +19,9 @@ namespace Nonatomic.ServiceKit
 	/// [Service(typeof(IMyService))]                  // Single interface
 	/// [Service(typeof(IFoo), typeof(IBar))]          // Multiple interfaces
 	/// [Service]                                       // Concrete type (no attribute needed)
-	/// public class MyService : ServiceBehaviour { }
+	/// public class MyService : ServiceKitBehaviour { }
 	/// </summary>
-	public abstract class ServiceBehaviour : MonoBehaviour
+	public abstract class ServiceKitBehaviour : MonoBehaviour
 	{
 		[SerializeField] public ServiceKitLocator ServiceKitLocator;
 
@@ -270,7 +270,7 @@ namespace Nonatomic.ServiceKit
 		private async Task PerformDependencyInjection()
 #endif
 		{
-			await Locator.InjectServicesAsync(this)
+			await Locator.Inject(this)
 				.WithCancellation(CachedDestroyToken)
 				.WithTimeout()
 				.WithErrorHandling(HandleDependencyInjectionFailure)

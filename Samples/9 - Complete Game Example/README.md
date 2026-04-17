@@ -7,7 +7,7 @@ A comprehensive example combining all ServiceKit concepts into a cohesive mini-g
 This sample demonstrates all ServiceKit features in a real-world context:
 - `[Service]` attribute with multi-type registration
 - `[InjectService]` for required and optional dependencies
-- ServiceBehaviour lifecycle management
+- ServiceKitBehaviour lifecycle management
 - DontDestroyOnLoad for persistent services
 - Event-driven service communication
 - Save/load with service tags
@@ -33,7 +33,7 @@ This sample demonstrates all ServiceKit features in a real-world context:
        └── GameDemo
    ```
 
-3. **Assign ServiceKitLocator** to all ServiceBehaviour components and GameBootstrap/GameDemo
+3. **Assign ServiceKitLocator** to all ServiceKitBehaviour components and GameBootstrap/GameDemo
 
 4. **Play the scene** and use the GameDemo context menu to interact
 
@@ -66,7 +66,7 @@ This sample demonstrates all ServiceKit features in a real-world context:
 ### 1. Multi-Type Registration (Sample 4)
 ```csharp
 [Service(typeof(IAudioService), typeof(IMusicService), typeof(ISfxService))]
-public class AudioManager : ServiceBehaviour, IAudioService, IMusicService, ISfxService
+public class AudioManager : ServiceKitBehaviour, IAudioService, IMusicService, ISfxService
 ```
 
 ### 2. Optional Dependencies (Sample 5)

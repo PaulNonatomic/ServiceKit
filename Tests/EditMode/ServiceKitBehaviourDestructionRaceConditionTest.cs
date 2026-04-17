@@ -35,7 +35,7 @@ namespace Tests.EditMode
 		public interface IDependency { }
 
 		[Service(typeof(IDependency))]
-		public class DependencyService : ServiceBehaviour, IDependency
+		public class DependencyService : ServiceKitBehaviour, IDependency
 		{
 		}
 
@@ -43,7 +43,7 @@ namespace Tests.EditMode
 		/// Test service that simulates async initialization delay
 		/// </summary>
 		[Service(typeof(ITestService))]
-		public class TestServiceWithAsyncDelay : ServiceBehaviour, ITestService
+		public class TestServiceWithAsyncDelay : ServiceKitBehaviour, ITestService
 		{
 			public bool IsInitialized { get; private set; }
 			public bool InitializeServiceCalled { get; private set; }
@@ -93,7 +93,7 @@ namespace Tests.EditMode
 		/// Service with dependency to test injection timing
 		/// </summary>
 		[Service(typeof(ITestService))]
-		public class TestServiceWithDependency : ServiceBehaviour, ITestService
+		public class TestServiceWithDependency : ServiceKitBehaviour, ITestService
 		{
 			[InjectService(Required = true)]
 			public IDependency Dependency;

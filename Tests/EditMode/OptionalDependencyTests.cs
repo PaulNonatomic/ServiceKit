@@ -90,7 +90,7 @@ namespace Tests.EditMode
 				_serviceLocator.RegisterService<ITestServiceC>(serviceC);
 
 				// Act - Start injection (services are registered so optional resolution will wait for them)
-				var injectionTask = _serviceLocator.InjectServicesAsync(consumer).ExecuteAsync();
+				var injectionTask = _serviceLocator.Inject(consumer).ExecuteAsync();
 
 				// Ready services at staggered intervals
 				await Task.Delay(1);
@@ -163,7 +163,7 @@ namespace Tests.EditMode
 			var injectionCompleted = false;
 			var injectionTask = Task.Run(async () =>
 			{
-				var builder = _serviceLocator.InjectServicesAsync(consumer);
+				var builder = _serviceLocator.Inject(consumer);
 				
 				// Use a cancellation token with timeout since service will never be ready
 				using (var cts = new CancellationTokenSource(1000)) // 1 second timeout
@@ -204,7 +204,7 @@ namespace Tests.EditMode
 
 			// Act
 			var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-			var builder = _serviceLocator.InjectServicesAsync(consumer);
+			var builder = _serviceLocator.Inject(consumer);
 			await builder.ExecuteAsync();
 			consumer.InjectionCompleted = true; // Mark as completed after ExecuteAsync returns
 			stopwatch.Stop();
@@ -242,7 +242,7 @@ namespace Tests.EditMode
 			// Act
 			var injectionTask = Task.Run(async () =>
 			{
-				var builder = _serviceLocator.InjectServicesAsync(consumer);
+				var builder = _serviceLocator.Inject(consumer);
 
 				// Use timeout since ServiceB will never be ready
 				using (var cts = new CancellationTokenSource(500))

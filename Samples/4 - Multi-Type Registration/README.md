@@ -22,7 +22,7 @@ This sample demonstrates registering a single service instance under multiple in
    └── WeaponSfxController (with WeaponSfxController component)
    ```
 
-3. **Assign the ServiceKitLocator** to each ServiceBehaviour component
+3. **Assign the ServiceKitLocator** to each ServiceKitBehaviour component
 
 4. **Play the scene** to see multi-type registration in action
 
@@ -32,7 +32,7 @@ This sample demonstrates registering a single service instance under multiple in
 ```csharp
 // Single service registered as three different types
 [Service(typeof(IAudioPlayer), typeof(IMusicPlayer), typeof(ISoundEffects))]
-public class UnifiedAudioManager : ServiceBehaviour,
+public class UnifiedAudioManager : ServiceKitBehaviour,
     IAudioPlayer, IMusicPlayer, ISoundEffects
 {
     // Implementation of all interfaces...
@@ -67,14 +67,14 @@ void Demo()
 ### Interface Segregation Benefits
 ```csharp
 // MenuMusicController only knows about music
-public class MenuMusicController : ServiceBehaviour
+public class MenuMusicController : ServiceKitBehaviour
 {
     [InjectService] private IMusicPlayer _musicPlayer;
     // Can only call music methods - clean separation
 }
 
 // WeaponController only knows about SFX
-public class WeaponController : ServiceBehaviour
+public class WeaponController : ServiceKitBehaviour
 {
     [InjectService] private ISoundEffects _soundEffects;
     // Can only call SFX methods - focused dependency
