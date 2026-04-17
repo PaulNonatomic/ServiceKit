@@ -1,6 +1,6 @@
 {
   "name": "com.nonatomic.servicekit",
-  "version": "2.3.1",
+  "version": "2.0.0",
   "displayName": "Service Kit",
   "description": "Service Kit",
   "unity": "2022.3",
@@ -27,6 +27,51 @@
     "url": "git@github.com:PaulNonatomic/ServiceKit.git"
   },
   "samples": [
+    {
+      "displayName": "1 - Basic Usage",
+      "description": "Introduction to ServiceKit - creating locators, registering services, and consuming them.",
+      "path": "Samples~/1 - Basic Usage"
+    },
+    {
+      "displayName": "2 - ServiceKitBehaviour",
+      "description": "Using ServiceKitBehaviour base class for MonoBehaviour-based services with automatic lifecycle management.",
+      "path": "Samples~/2 - ServiceKitBehaviour"
+    },
+    {
+      "displayName": "3 - Fluent Registration",
+      "description": "The fluent API for clean, chainable service registration.",
+      "path": "Samples~/3 - Fluent Registration"
+    },
+    {
+      "displayName": "4 - Multi-Type Registration",
+      "description": "Registering a single service instance under multiple interface types.",
+      "path": "Samples~/4 - Multi-Type Registration"
+    },
+    {
+      "displayName": "5 - Optional Dependencies",
+      "description": "Intelligent 3-state dependency resolution for optional services.",
+      "path": "Samples~/5 - Optional Dependencies"
+    },
+    {
+      "displayName": "6 - Service Tags",
+      "description": "Organizing and filtering services using tags.",
+      "path": "Samples~/6 - Service Tags"
+    },
+    {
+      "displayName": "7 - Async Resolution",
+      "description": "Asynchronous service resolution with timeout and cancellation support.",
+      "path": "Samples~/7 - Async Resolution"
+    },
+    {
+      "displayName": "8 - Scene Management",
+      "description": "Managing service lifecycle across scene transitions.",
+      "path": "Samples~/8 - Scene Management"
+    },
+    {
+      "displayName": "9 - Complete Game Example",
+      "description": "A mini-game demonstrating real-world ServiceKit usage patterns.",
+      "path": "Samples~/9 - Complete Game Example"
+    }
   ]
 }
   

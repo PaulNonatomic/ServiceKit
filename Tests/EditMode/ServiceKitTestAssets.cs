@@ -60,7 +60,7 @@ namespace Tests.EditMode
 			_serviceKit.RegisterService<IInventoryService>(new InventoryService());
 
 			// Inject services
-			await _serviceKit.InjectServicesAsync(this)
+			await _serviceKit.Inject(this)
 				.WithCancellation(destroyCancellationToken)
 				.WithTimeout(5f)
 				.WithErrorHandling(HandleServiceKitError)
@@ -80,23 +80,25 @@ namespace Tests.EditMode
 		}
 	}
 
-    public interface IPlayerController
-    {
-        IPlayerService PlayerService { get; }
-        IInventoryService InventoryService { get; }
-    }
-    
-	public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerController
+	public interface IPlayerController
+	{
+		IPlayerService PlayerService { get; }
+		IInventoryService InventoryService { get; }
+	}
+
+	[Service(typeof(IPlayerController))]
+	public class PlayerController : ServiceKitBehaviour, IPlayerController
 	{
 		public IPlayerService PlayerService => _playerService;
 		public IInventoryService InventoryService => _inventoryService;
-		
+
 		[InjectService] private IPlayerService _playerService;
 		[InjectService] private IInventoryService _inventoryService;
 	}
 
 	// Test class that doesn't implement its interface (for testing error scenarios)
-	public class BrokenPlayerController : ServiceKitBehaviour<IPlayerController>
+	[Service(typeof(IPlayerController))]
+	public class BrokenPlayerController : ServiceKitBehaviour
 	{
 		// This class intentionally doesn't implement IPlayerController
 		// This should trigger our improved error messages
@@ -109,7 +111,8 @@ namespace Tests.EditMode
 	}
 
 	// Test ServiceKitBehaviour for testing InitializeService timing with optional dependencies
-	public class TestInitializeServiceBehaviour : ServiceKitBehaviour<ITestInitializeService>, ITestInitializeService
+	[Service(typeof(ITestInitializeService))]
+	public class TestInitializeServiceKitBehaviour : ServiceKitBehaviour, ITestInitializeService
 	{
 		[InjectService(Required = false)]
 		private IInventoryService _optionalInventoryService;
@@ -135,7 +138,7 @@ namespace Tests.EditMode
 			RegisterServiceWithLocator();
 
 			// Manually inject services without using destroyCancellationToken
-			await Locator.InjectServicesAsync(this)
+			await Locator.Inject(this)
 				.WithCancellation(cancellationToken)
 				.WithTimeout()
 				.WithErrorHandling(HandleDependencyInjectionFailure)

@@ -1,10 +1,33 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
+
+#if SERVICEKIT_UNITASK
+using Cysharp.Threading.Tasks;
+#endif
 
 namespace Nonatomic.ServiceKit
 {
 	public static class ServiceKitExtensions
 	{
+		/// <summary>
+		/// Inject all [InjectService] fields on the target using default timeout,
+		/// cancellation, and error handling. This is the recommended one-liner for
+		/// most injection scenarios.
+		/// </summary>
+#if SERVICEKIT_UNITASK
+		public static UniTask InjectAsync(this IServiceKitLocator locator, object target, CancellationToken cancellationToken)
+#else
+		public static Task InjectAsync(this IServiceKitLocator locator, object target, CancellationToken cancellationToken)
+#endif
+		{
+			return locator.Inject(target)
+				.WithTimeout()
+				.WithCancellation(cancellationToken)
+				.WithErrorHandling()
+				.ExecuteAsync();
+		}
+
 		/// <summary>
 		/// Register a service with a factory function
 		/// </summary>

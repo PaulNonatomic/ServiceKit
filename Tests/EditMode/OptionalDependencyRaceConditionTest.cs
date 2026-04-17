@@ -91,7 +91,7 @@ namespace Tests.EditMode
 				var consumer = new ServiceConsumer();
 				
 				// Act - Inject dependencies
-				await _serviceLocator.InjectServicesAsync(consumer).ExecuteAsync();
+				await _serviceLocator.Inject(consumer).ExecuteAsync();
 				
 				// Assert - Service should be injected since it was ready
 				if (consumer.OptionalServiceA == null)
@@ -129,7 +129,7 @@ namespace Tests.EditMode
 				// Act - Start injection and ready service concurrently
 				var injectionTask = Task.Run(async () =>
 				{
-					await _serviceLocator.InjectServicesAsync(consumer).ExecuteAsync();
+					await _serviceLocator.Inject(consumer).ExecuteAsync();
 				});
 				
 				var readyTask = Task.Run(async () =>
@@ -177,7 +177,7 @@ namespace Tests.EditMode
 			{
 				using (var cts = new CancellationTokenSource(100)) // 100ms timeout
 				{
-					await _serviceLocator.InjectServicesAsync(consumer)
+					await _serviceLocator.Inject(consumer)
 						.WithCancellation(cts.Token)
 						.ExecuteAsync();
 				}
@@ -225,7 +225,7 @@ namespace Tests.EditMode
 						// Use CancellationTokenSource for reliable timeout in tests
 						using (var cts = new CancellationTokenSource(500)) // 500ms timeout
 						{
-							await _serviceLocator.InjectServicesAsync(consumer)
+							await _serviceLocator.Inject(consumer)
 								.WithCancellation(cts.Token)
 								.ExecuteAsync();
 						}
@@ -275,11 +275,11 @@ namespace Tests.EditMode
 			using (var cts1 = new CancellationTokenSource())
 			using (var cts2 = new CancellationTokenSource(1000)) // Give second injection 1 second timeout
 			{
-				var injection1 = _serviceLocator.InjectServicesAsync(consumer1)
+				var injection1 = _serviceLocator.Inject(consumer1)
 					.WithCancellation(cts1.Token)
 					.ExecuteAsync();
 				
-				var injection2 = _serviceLocator.InjectServicesAsync(consumer2)
+				var injection2 = _serviceLocator.Inject(consumer2)
 					.WithCancellation(cts2.Token)
 					.ExecuteAsync();
 				
@@ -353,7 +353,7 @@ namespace Tests.EditMode
 				using (var cts = new CancellationTokenSource(50)) // 50ms timeout
 				{
 					// Simulate what ServiceKitBehaviour does
-					await _serviceLocator.InjectServicesAsync(consumer)
+					await _serviceLocator.Inject(consumer)
 						.WithCancellation(cts.Token)
 						.WithErrorHandling(ex =>
 						{

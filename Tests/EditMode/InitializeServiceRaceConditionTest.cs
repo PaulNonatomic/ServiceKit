@@ -65,7 +65,7 @@ namespace Tests.EditMode
 					// Use CancellationTokenSource for reliable timeout in tests
 					using (var cts = new CancellationTokenSource(500)) // 500ms timeout
 					{
-						await locator.InjectServicesAsync(this)
+						await locator.Inject(this)
 							.WithCancellation(cts.Token)
 							.WithErrorHandling(HandleDependencyInjectionFailure)
 							.ExecuteAsync();

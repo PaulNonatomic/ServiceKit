@@ -22,6 +22,7 @@ namespace Nonatomic.ServiceKit
 		internal sealed class CircularDependencyInfo
 		{
 			public string Path { get; set; }
+			public IReadOnlyList<Type> TypesInPath { get; set; }
 			public Type FromType { get; set; }
 			public Type ToType { get; set; }
 			public string FieldName { get; set; }
@@ -57,15 +58,15 @@ namespace Nonatomic.ServiceKit
 				{
 					return null;
 				}
+				info.TypesInPath = new List<Type>(path);
 				info.Path = string.Join(" → ", path.Select(t => t.Name));
 				return info;
 			}
 		}
 
-		public static string DetectCircularDependencyAtRegistration(Type serviceType)
+		public static CircularDependencyInfo DetectCircularDependencyAtRegistration(Type serviceType)
 		{
-			var info = DetectCircularDependency(serviceType);
-			return info?.Path;
+			return DetectCircularDependency(serviceType);
 		}
 
 		public static void RegisterResolving(Type serviceType, CancellationTokenSource cts)
@@ -93,15 +94,13 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void CancelCircularChain(string circularPath)
+		public static void CancelCircularChain(IReadOnlyList<Type> typesInPath)
 		{
-			var firstLine = circularPath.Split('\n')[0];
-			var typeNames = firstLine.Split(new[] { " → " }, StringSplitOptions.None);
 			lock (_graphLock)
 			{
 				foreach (var kvp in _resolvingCancellations.ToList())
 				{
-					if (!typeNames.Contains(kvp.Key.Name))
+					if (!typesInPath.Contains(kvp.Key))
 					{
 						continue;
 					}
@@ -110,17 +109,13 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void MarkAllInPathAsError(string circularPath)
+		public static void MarkAllInPathAsError(IReadOnlyList<Type> typesInPath)
 		{
-			var names = circularPath.Split(new[] { " → " }, StringSplitOptions.None).Select(n => n.Trim()).ToList();
 			lock (_graphLock)
 			{
-				foreach (var type in _dependencyGraph.Keys)
+				foreach (var type in typesInPath)
 				{
-					if (names.Contains(type.Name))
-					{
-						_servicesWithCircularErrors.Add(type);
-					}
+					_servicesWithCircularErrors.Add(type);
 				}
 			}
 		}

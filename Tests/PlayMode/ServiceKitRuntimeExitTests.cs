@@ -129,7 +129,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			{
 				try
 				{
-					await _locator.InjectServicesAsync(consumer)
+					await _locator.Inject(consumer)
 						.WithTimeout(5f)
 						.ExecuteAsync();
 				}
@@ -322,7 +322,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 
 			// Assert - Wait to ensure no additional exceptions occur
 			yield return new WaitForSeconds(0.1f);
-			
+
 			// Verify cleanup completed without timeout exceptions
 			Assert.Pass("Cleanup completed and handled destruction gracefully");
 		}
@@ -356,7 +356,8 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			public ServiceKitLocator ServiceKitLocator { get; set; }
 		}
 
-		private class TestServiceKitBehaviourWithDelay : ServiceKitBehaviour<ITestService>, ITestService
+		[Service(typeof(ITestService))]
+		private class TestServiceKitBehaviourWithDelay : ServiceKitBehaviour, ITestService
 		{
 			[InjectService(Required = false)]
 			private IDelayedService _delayedService;
@@ -369,7 +370,7 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			}
 
 			public void DoSomething() { }
-			
+
 			public void SetServiceKitLocator(ServiceKitLocator locator)
 			{
 				ServiceKitLocator = locator;

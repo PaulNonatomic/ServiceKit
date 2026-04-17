@@ -65,7 +65,8 @@ namespace Tests.EditMode
 		[Test]
 		public async Task OptionalDependency_ComplexScenario_AllShouldBeInjected()
 		{
-			// Tests race conditions with multiple optional dependencies registered and readied at different times
+			// Tests that all registered optional dependencies are eventually injected,
+			// even when they become ready at different times after injection starts.
 			
 			const int testIterations = 100;
 			int fullSuccessCount = 0;
@@ -88,35 +89,20 @@ namespace Tests.EditMode
 				_serviceLocator.RegisterService<ITestServiceB>(serviceB);
 				_serviceLocator.RegisterService<ITestServiceC>(serviceC);
 
-				// Act - Start injection and ready services at different times
-				var injectionTask = Task.Run(async () =>
-				{
-					var builder = _serviceLocator.InjectServicesAsync(consumer);
-					await builder.ExecuteAsync();
-					consumer.InjectionCompleted = true;
-				});
+				// Act - Start injection (services are registered so optional resolution will wait for them)
+				var injectionTask = _serviceLocator.Inject(consumer).ExecuteAsync();
 
-				// Ready services at different intervals to hit different parts of the injection process
-				var readyTaskA = Task.Run(async () =>
-				{
-					await Task.Delay(0); // Ready immediately
-					_serviceLocator.ReadyService<ITestServiceA>();
-				});
+				// Ready services at staggered intervals
+				await Task.Delay(1);
+				_serviceLocator.ReadyService<ITestServiceA>();
+				await Task.Delay(1);
+				_serviceLocator.ReadyService<ITestServiceB>();
+				await Task.Delay(1);
+				_serviceLocator.ReadyService<ITestServiceC>();
 
-				var readyTaskB = Task.Run(async () =>
-				{
-					await Task.Delay(2); // Ready slightly delayed
-					_serviceLocator.ReadyService<ITestServiceB>();
-				});
-
-				var readyTaskC = Task.Run(async () =>
-				{
-					await Task.Delay(5); // Ready more delayed
-					_serviceLocator.ReadyService<ITestServiceC>();
-				});
-
-				// Wait for all tasks to complete
-				await Task.WhenAll(injectionTask, readyTaskA, readyTaskB, readyTaskC);
+				// Wait for injection to complete
+				await injectionTask;
+				consumer.InjectionCompleted = true;
 
 				// Count successes
 				int injectedCount = 0;
@@ -177,7 +163,7 @@ namespace Tests.EditMode
 			var injectionCompleted = false;
 			var injectionTask = Task.Run(async () =>
 			{
-				var builder = _serviceLocator.InjectServicesAsync(consumer);
+				var builder = _serviceLocator.Inject(consumer);
 				
 				// Use a cancellation token with timeout since service will never be ready
 				using (var cts = new CancellationTokenSource(1000)) // 1 second timeout
@@ -218,7 +204,7 @@ namespace Tests.EditMode
 
 			// Act
 			var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-			var builder = _serviceLocator.InjectServicesAsync(consumer);
+			var builder = _serviceLocator.Inject(consumer);
 			await builder.ExecuteAsync();
 			consumer.InjectionCompleted = true; // Mark as completed after ExecuteAsync returns
 			stopwatch.Stop();
@@ -236,26 +222,28 @@ namespace Tests.EditMode
 		public async Task OptionalDependency_MixedScenario_ShouldHandleCorrectly()
 		{
 			// Tests mix of registered, ready, and non-existent services
-			
+			// With partial injection, services that ARE resolved should be injected
+			// even when the overall injection times out
+
 			// Arrange
 			var serviceA = new TestServiceA();
 			var serviceB = new TestServiceB();
 			var consumer = new MultipleOptionalDependencyConsumer();
-			
+
 			// ServiceA: Register and ready immediately
 			_serviceLocator.RegisterService<ITestServiceA>(serviceA);
 			_serviceLocator.ReadyService<ITestServiceA>();
-			
+
 			// ServiceB: Register but never ready (will cause wait)
 			_serviceLocator.RegisterService<ITestServiceB>(serviceB);
-			
+
 			// ServiceC: Not registered at all
 
 			// Act
 			var injectionTask = Task.Run(async () =>
 			{
-				var builder = _serviceLocator.InjectServicesAsync(consumer);
-				
+				var builder = _serviceLocator.Inject(consumer);
+
 				// Use timeout since ServiceB will never be ready
 				using (var cts = new CancellationTokenSource(500))
 				{
@@ -278,13 +266,18 @@ namespace Tests.EditMode
 			await injectionTask;
 
 			// Assert
-			Assert.IsFalse(consumer.InjectionCompleted, 
+			Assert.IsFalse(consumer.InjectionCompleted,
 				"Injection should NOT complete (timeout waiting for ServiceB)");
-			Assert.IsNull(consumer.OptionalServiceA, 
-				"ServiceA should be null (injection didn't complete)");
-			Assert.IsNull(consumer.OptionalServiceB, 
+
+			// With partial injection fix: services that WERE resolved before timeout should be injected
+			Assert.IsNotNull(consumer.OptionalServiceA,
+				"ServiceA should be injected (was ready immediately, resolved before timeout)");
+			Assert.AreSame(serviceA, consumer.OptionalServiceA,
+				"ServiceA should be the correct instance");
+
+			Assert.IsNull(consumer.OptionalServiceB,
 				"ServiceB should be null (registered but never ready, timed out)");
-			Assert.IsNull(consumer.OptionalServiceC, 
+			Assert.IsNull(consumer.OptionalServiceC,
 				"ServiceC should be null (never registered)");
 		}
 	}

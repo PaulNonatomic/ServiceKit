@@ -1,0 +1,23 @@
+{
+    "name": "ServiceKitSamples",
+    "rootNamespace": "ServiceKitSamples",
+    "references": [
+        "GUID:1b0144b25b4099e45a5beb8f8f7bee63",
+        "GUID:f51ebe6a0ceec4240a699833d6309b23"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.cysharp.unitask",
+            "expression": "2.5.10",
+            "define": "SERVICEKIT_UNITASK"
+        }
+    ],
+    "noEngineReferences": false
+}

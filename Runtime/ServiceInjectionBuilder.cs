@@ -85,6 +85,7 @@ namespace Nonatomic.ServiceKit
 			return WithCancellation(destroyCancellationToken).ExecuteAsync();
 		}
 
+
 		public async void ExecuteWithCancellation(CancellationToken destroyCancellationToken)
 		{
 			try
@@ -116,7 +117,9 @@ namespace Nonatomic.ServiceKit
 			CancellationTokenSource timeoutCts = null;
 			IDisposable timeoutReg = null;
 			SynchronizationContext unityContext = null;
-			(FieldInfo field, object service, bool required)[] results = null;
+
+			// Pre-allocate results array so partial results are captured even if WhenAll throws
+			var results = new (FieldInfo field, object service, bool required)[fieldsToInject.Count];
 
 			try
 			{
@@ -142,7 +145,7 @@ namespace Nonatomic.ServiceKit
 					var finalToken = linked.Token;
 					unityContext = SynchronizationContext.Current;
 
-					results = await ResolveAllServicesInParallel(fieldsToInject, finalToken, resolutionCts);
+					await ResolveAllServicesInParallel(fieldsToInject, finalToken, resolutionCts, timeoutCts, results);
 
 					ThrowIfRequiredServicesAreMissing(results);
 
@@ -176,18 +179,16 @@ namespace Nonatomic.ServiceKit
 		private static Type DetermineServiceType(object target)
 		{
 			var targetType = target.GetType();
-			var baseType = targetType.BaseType;
 
-			while (baseType != null)
+			// Check for [Service] attribute first
+			var serviceAttribute = targetType.GetCustomAttribute<ServiceAttribute>();
+			if (serviceAttribute != null && serviceAttribute.ServiceTypes.Length > 0)
 			{
-				if (baseType.IsGenericType &&
-					baseType.GetGenericTypeDefinition().Name.StartsWith("ServiceKitBehaviour", StringComparison.Ordinal))
-				{
-					return baseType.GetGenericArguments()[0];
-				}
-				baseType = baseType.BaseType;
+				// Return the first registered type as the "primary" type for dependency graph
+				return serviceAttribute.ServiceTypes[0];
 			}
 
+			// Fallback to concrete type
 			return targetType;
 		}
 
@@ -217,48 +218,92 @@ namespace Nonatomic.ServiceKit
 
 #if SERVICEKIT_UNITASK
 		private async UniTask<(FieldInfo field, object service, bool required)[]> ResolveAllServicesInParallel(
-			List<FieldInfo> fieldsToInject, 
-			CancellationToken cancellationToken, 
-			CancellationTokenSource resolutionCts)
+			List<FieldInfo> fieldsToInject,
+			CancellationToken cancellationToken,
+			CancellationTokenSource resolutionCts,
+			CancellationTokenSource timeoutCts,
+			(FieldInfo field, object service, bool required)[] sharedResults)
 		{
 			var taskCount = fieldsToInject.Count;
-			var tasks = new UniTask<(FieldInfo field, object service, bool required)>[taskCount];
-			
+			var tasks = new UniTask[taskCount];
+
 			for (int i = 0; i < taskCount; i++)
 			{
-				tasks[i] = ResolveServiceForField(fieldsToInject[i], cancellationToken, resolutionCts);
+				var index = i;
+				tasks[i] = ResolveAndStoreResult(fieldsToInject[i], cancellationToken, resolutionCts, sharedResults, index);
 			}
-			
-			return await UniTask.WhenAll(tasks);
+
+			await UniTask.WhenAll(tasks);
+			return sharedResults;
 		}
 #else
 		private async Task<(FieldInfo field, object service, bool required)[]> ResolveAllServicesInParallel(
-			List<FieldInfo> fieldsToInject, 
-			CancellationToken cancellationToken, 
-			CancellationTokenSource resolutionCts)
+			List<FieldInfo> fieldsToInject,
+			CancellationToken cancellationToken,
+			CancellationTokenSource resolutionCts,
+			CancellationTokenSource timeoutCts,
+			(FieldInfo field, object service, bool required)[] sharedResults)
 		{
 			var taskCount = fieldsToInject.Count;
-			var tasks = new Task<(FieldInfo field, object service, bool required)>[taskCount];
-			
+			var tasks = new Task[taskCount];
+
 			for (int i = 0; i < taskCount; i++)
 			{
-				tasks[i] = ResolveServiceForField(fieldsToInject[i], cancellationToken, resolutionCts);
+				var index = i;
+				tasks[i] = ResolveAndStoreResult(fieldsToInject[i], cancellationToken, resolutionCts, sharedResults, index);
 			}
-			
-			return await Task.WhenAll(tasks);
+
+			await Task.WhenAll(tasks);
+			return sharedResults;
 		}
 #endif
+
+#if SERVICEKIT_UNITASK
+		private async UniTask ResolveAndStoreResult(
+			FieldInfo field,
+			CancellationToken cancellationToken,
+			CancellationTokenSource resolutionCts,
+			(FieldInfo field, object service, bool required)[] results,
+			int index)
+#else
+		private async Task ResolveAndStoreResult(
+			FieldInfo field,
+			CancellationToken cancellationToken,
+			CancellationTokenSource resolutionCts,
+			(FieldInfo field, object service, bool required)[] results,
+			int index)
+#endif
+		{
+			var attr = field.GetCustomAttribute<InjectServiceAttribute>();
+			try
+			{
+				var result = await ResolveServiceForField(field, cancellationToken, resolutionCts);
+				results[index] = result;
+			}
+			catch (OperationCanceledException)
+			{
+				// Store null result before re-throwing - this captures partial results
+				results[index] = (field, null, attr?.Required ?? true);
+				throw;
+			}
+			catch (ServiceInjectionException)
+			{
+				// Store null result for circular dependency errors
+				results[index] = (field, null, attr?.Required ?? true);
+				throw;
+			}
+		}
 
 		private void ThrowIfRequiredServicesAreMissing((FieldInfo field, object service, bool required)[] results)
 		{
 			var missingRequiredServices = results
-				.Where(r => r.service == null && r.required)
+				.Where(r => r.field != null && r.service == null && r.required)
 				.Select(r => r.field.FieldType.Name)
 				.ToArray();
-			
-			if (missingRequiredServices.Length == 0) 
+
+			if (missingRequiredServices.Length == 0)
 				return;
-			
+
 			var sb = ServiceKitObjectPool.RentStringBuilder();
 			try
 			{
@@ -277,8 +322,8 @@ namespace Nonatomic.ServiceKit
 			var circularDependency = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
 			if (circularDependency == null) return;
 
-			ServiceDependencyGraph.CancelCircularChain(circularDependency.Path);
-			ServiceDependencyGraph.MarkAllInPathAsError(circularDependency.Path);
+			ServiceDependencyGraph.CancelCircularChain(circularDependency.TypesInPath);
+			ServiceDependencyGraph.MarkAllInPathAsError(circularDependency.TypesInPath);
 			throw new ServiceInjectionException($"Circular dependency detected: {circularDependency.Path}");
 		}
 
@@ -310,21 +355,34 @@ namespace Nonatomic.ServiceKit
 			var locator = _serviceKitLocator as ServiceKitLocator;
 			if (locator == null) return (field, null, serviceAttribute.Required);
 
-			if (locator.TryGetService(serviceType, out var readyService))
+			// Atomic check: determines if the service is ready, registered-but-not-ready, or absent
+			var status = locator.TryResolveService(serviceType, out var readyService);
+
+			if (status == ServiceResolutionStatus.Ready)
 			{
 				return (field, readyService, serviceAttribute.Required);
 			}
 
-			if (!locator.IsServiceRegistered(serviceType))
+			if (status == ServiceResolutionStatus.NotRegistered)
 			{
+				// Give one frame for late-registering services (e.g., other Awake calls)
 				await WaitForAwakePhaseCompletion();
-				
-				if (!locator.IsServiceRegistered(serviceType))
+
+				// Re-check atomically after the yield
+				status = locator.TryResolveService(serviceType, out readyService);
+
+				if (status == ServiceResolutionStatus.Ready)
+				{
+					return (field, readyService, serviceAttribute.Required);
+				}
+
+				if (status == ServiceResolutionStatus.NotRegistered)
 				{
 					return (field, null, serviceAttribute.Required);
 				}
 			}
 
+			// Service is registered but not yet ready — wait for it
 			try
 			{
 				var pendingService = await _serviceKitLocator.GetServiceAsync(serviceType, cancellationToken);
@@ -368,12 +426,15 @@ namespace Nonatomic.ServiceKit
 #if SERVICEKIT_UNITASK
 		private async UniTask WaitForAwakePhaseCompletion()
 		{
-			await UniTask.Yield();
+			// Yield to allow other Awake calls to complete registration
+			await UniTask.NextFrame();
 		}
 #else
 		private async Task WaitForAwakePhaseCompletion()
 		{
-			// Task.Yield doesn't properly defer in Unity Edit Mode
+			// Yield to allow other Awake calls to complete registration.
+			// Task.Yield doesn't properly defer in Unity Edit Mode, so we use Task.Delay
+			// as a fallback. This is imprecise but sufficient since we re-check atomically after.
 			await Task.Delay(1);
 		}
 #endif
@@ -507,6 +568,10 @@ namespace Nonatomic.ServiceKit
 
 			foreach (var (field, service, _) in results)
 			{
+				// Skip entries that weren't populated (can happen with pre-allocated array)
+				if (field == null)
+					continue;
+
 				field.SetValue(_target, service);
 			}
 		}

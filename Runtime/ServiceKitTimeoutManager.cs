@@ -184,19 +184,16 @@ namespace Nonatomic.ServiceKit
 		
 		private void RemoveProcessedTimeouts()
 		{
+			// _pendingRemovalIndices are in descending order (from reverse iteration in IdentifyExpiredTimeouts),
+			// so forward iteration removes highest indices first, preventing index shifting issues.
 			for (var i = 0; i < _pendingRemovalIndices.Count; i++)
 			{
 				var removalIndex = _pendingRemovalIndices[i];
-				if (IsIndexWithinBounds(removalIndex))
+				if (removalIndex >= 0 && removalIndex < _activeTimeouts.Count)
 				{
 					_activeTimeouts.RemoveAt(removalIndex);
 				}
 			}
-		}
-		
-		private bool IsIndexWithinBounds(int index)
-		{
-			return index < _activeTimeouts.Count;
 		}
 
 

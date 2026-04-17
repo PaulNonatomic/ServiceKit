@@ -39,7 +39,7 @@ namespace Tests.EditMode
 #else
 			_mockBuilder.ExecuteAsync().Returns(Task.CompletedTask);
 #endif
-			_mockLocator.InjectServicesAsync(Arg.Any<object>()).Returns(_mockBuilder);
+			_mockLocator.Inject(Arg.Any<object>()).Returns(_mockBuilder);
 		}
 
 		[TearDown]
@@ -97,8 +97,8 @@ namespace Tests.EditMode
 			// Act
 			await behaviour.TestAwake(CancellationToken.None);
 
-			// Assert
-			_mockLocator.Received(1).RegisterService(Arg.Any<ITestService>(), Arg.Any<string>());
+			// Assert - ServiceKitBehaviour uses non-generic RegisterService
+			_mockLocator.Received(1).RegisterService(typeof(ITestService), Arg.Any<object>(), Arg.Any<string>());
 		}
 
 		[Test]
@@ -111,12 +111,12 @@ namespace Tests.EditMode
 			// Act
 			await behaviour.TestAwake(CancellationToken.None);
 
-			// Assert
-			_mockLocator.Received(1).ReadyService<ITestService>();
+			// Assert - ServiceKitBehaviour uses non-generic ReadyService
+			_mockLocator.Received(1).ReadyService(typeof(ITestService));
 		}
 
 		[Test]
-		public async Task UseLocator_WithMock_InjectServicesAsyncIsCalled()
+		public async Task UseLocator_WithMock_InjectIsCalled()
 		{
 			// Arrange
 			var behaviour = CreateTestBehaviour();
@@ -126,7 +126,7 @@ namespace Tests.EditMode
 			await behaviour.TestAwake(CancellationToken.None);
 
 			// Assert
-			_mockLocator.Received(1).InjectServicesAsync(behaviour);
+			_mockLocator.Received(1).Inject(behaviour);
 		}
 
 		[Test]
@@ -214,7 +214,7 @@ namespace Tests.EditMode
 		{
 			// Arrange - AddComponent triggers Awake, but registration is skipped (no locator)
 			_testGameObject = new GameObject("TestBehaviour");
-			var behaviour = _testGameObject.AddComponent<TestServiceBehaviour>();
+			var behaviour = _testGameObject.AddComponent<TestServiceKitBehaviour>();
 
 			// At this point, Awake has run but registration was skipped
 			Assert.IsFalse(_realLocator.IsServiceRegistered<ITestService>());
@@ -231,13 +231,13 @@ namespace Tests.EditMode
 		{
 			// Arrange - AddComponent triggers Awake, but registration is skipped (no locator)
 			_testGameObject = new GameObject("TestBehaviour");
-			var behaviour = _testGameObject.AddComponent<TestServiceBehaviour>();
+			var behaviour = _testGameObject.AddComponent<TestServiceKitBehaviour>();
 
 			// Act - UseLocator should trigger registration automatically
 			behaviour.UseLocator(_mockLocator);
 
-			// Assert - RegisterService should have been called
-			_mockLocator.Received(1).RegisterService(Arg.Any<ITestService>(), Arg.Any<string>());
+			// Assert - ServiceKitBehaviour uses non-generic RegisterService
+			_mockLocator.Received(1).RegisterService(typeof(ITestService), Arg.Any<object>(), Arg.Any<string>());
 		}
 
 		[Test]
@@ -245,7 +245,7 @@ namespace Tests.EditMode
 		{
 			// Arrange
 			_testGameObject = new GameObject("TestBehaviour");
-			var behaviour = _testGameObject.AddComponent<TestServiceBehaviour>();
+			var behaviour = _testGameObject.AddComponent<TestServiceKitBehaviour>();
 
 			// Act
 			behaviour.UseLocator(_realLocator);
@@ -259,14 +259,14 @@ namespace Tests.EditMode
 		{
 			// Arrange
 			_testGameObject = new GameObject("TestBehaviour");
-			var behaviour = _testGameObject.AddComponent<TestServiceBehaviour>();
+			var behaviour = _testGameObject.AddComponent<TestServiceKitBehaviour>();
 
 			// Act - Call UseLocator twice
 			behaviour.UseLocator(_mockLocator);
 			behaviour.UseLocator(_mockLocator);
 
-			// Assert - RegisterService should only be called once
-			_mockLocator.Received(1).RegisterService(Arg.Any<ITestService>(), Arg.Any<string>());
+			// Assert - ServiceKitBehaviour uses non-generic RegisterService, should only be called once
+			_mockLocator.Received(1).RegisterService(typeof(ITestService), Arg.Any<object>(), Arg.Any<string>());
 		}
 
 		[Test]
@@ -274,7 +274,7 @@ namespace Tests.EditMode
 		{
 			// Arrange - Simulates real usage: AddComponent -> UseLocator -> manual init
 			_testGameObject = new GameObject("TestBehaviour");
-			var behaviour = _testGameObject.AddComponent<TestServiceBehaviourWithDependency>();
+			var behaviour = _testGameObject.AddComponent<TestServiceKitBehaviourWithDependency>();
 
 			var playerService = new PlayerService();
 			_realLocator.RegisterAndReadyService<IPlayerService>(playerService);
@@ -283,7 +283,7 @@ namespace Tests.EditMode
 			behaviour.UseLocator(_realLocator);
 
 			// Complete injection and ready the service
-			await _realLocator.InjectServicesAsync(behaviour)
+			await _realLocator.Inject(behaviour)
 				.WithCancellation(CancellationToken.None)
 				.WithTimeout()
 				.ExecuteAsync();
@@ -296,16 +296,16 @@ namespace Tests.EditMode
 			Assert.AreSame(playerService, behaviour.InjectedPlayerService);
 		}
 
-		private TestServiceBehaviour CreateTestBehaviour()
+		private TestServiceKitBehaviour CreateTestBehaviour()
 		{
 			_testGameObject = new GameObject("TestBehaviour");
-			return _testGameObject.AddComponent<TestServiceBehaviour>();
+			return _testGameObject.AddComponent<TestServiceKitBehaviour>();
 		}
 
-		private TestServiceBehaviourWithDependency CreateTestBehaviourWithDependency()
+		private TestServiceKitBehaviourWithDependency CreateTestBehaviourWithDependency()
 		{
 			_testGameObject = new GameObject("TestBehaviourWithDependency");
-			return _testGameObject.AddComponent<TestServiceBehaviourWithDependency>();
+			return _testGameObject.AddComponent<TestServiceKitBehaviourWithDependency>();
 		}
 	}
 
@@ -314,7 +314,8 @@ namespace Tests.EditMode
 		void DoSomething();
 	}
 
-	public class TestServiceBehaviour : ServiceKitBehaviour<ITestService>, ITestService
+	[Service(typeof(ITestService))]
+	public class TestServiceKitBehaviour : ServiceKitBehaviour, ITestService
 	{
 		public void DoSomething() { }
 
@@ -326,7 +327,7 @@ namespace Tests.EditMode
 		{
 			RegisterServiceWithLocator();
 
-			await Locator.InjectServicesAsync(this)
+			await Locator.Inject(this)
 				.WithCancellation(cancellationToken)
 				.WithTimeout()
 				.WithErrorHandling(HandleDependencyInjectionFailure)
@@ -344,7 +345,8 @@ namespace Tests.EditMode
 		IPlayerService InjectedPlayerService { get; }
 	}
 
-	public class TestServiceBehaviourWithDependency : ServiceKitBehaviour<ITestServiceWithDependency>, ITestServiceWithDependency
+	[Service(typeof(ITestServiceWithDependency))]
+	public class TestServiceKitBehaviourWithDependency : ServiceKitBehaviour, ITestServiceWithDependency
 	{
 		[InjectService] private IPlayerService _playerService;
 
@@ -358,7 +360,7 @@ namespace Tests.EditMode
 		{
 			RegisterServiceWithLocator();
 
-			await Locator.InjectServicesAsync(this)
+			await Locator.Inject(this)
 				.WithCancellation(cancellationToken)
 				.WithTimeout()
 				.WithErrorHandling(HandleDependencyInjectionFailure)
@@ -368,6 +370,113 @@ namespace Tests.EditMode
 			InitializeService();
 
 			MarkServiceAsReady();
+		}
+	}
+
+	// Multi-interface test types
+	public interface IMultiA { }
+	public interface IMultiB { }
+
+	[Service(typeof(IMultiA), typeof(IMultiB))]
+	public class MultiInterfaceServiceKitBehaviour : ServiceKitBehaviour, IMultiA, IMultiB
+	{
+#if SERVICEKIT_UNITASK
+		public async UniTask TestAwake(CancellationToken cancellationToken)
+#else
+		public async Task TestAwake(CancellationToken cancellationToken)
+#endif
+		{
+			RegisterServiceWithLocator();
+
+			await Locator.Inject(this)
+				.WithCancellation(cancellationToken)
+				.WithTimeout()
+				.WithErrorHandling(HandleDependencyInjectionFailure)
+				.ExecuteAsync();
+
+			await InitializeServiceAsync();
+			InitializeService();
+
+			MarkServiceAsReady();
+		}
+	}
+
+	[TestFixture]
+	public class MultiInterfaceServiceKitBehaviourTests
+	{
+		private ServiceKitLocator _locator;
+		private GameObject _testGameObject;
+
+		[SetUp]
+		public void Setup()
+		{
+			_locator = ScriptableObject.CreateInstance<ServiceKitLocator>();
+		}
+
+		[TearDown]
+		public void TearDown()
+		{
+			if (_locator != null)
+			{
+				_locator.ClearServices();
+				Object.DestroyImmediate(_locator);
+				_locator = null;
+			}
+
+			if (_testGameObject != null)
+			{
+				Object.DestroyImmediate(_testGameObject);
+				_testGameObject = null;
+			}
+		}
+
+		[Test]
+		public async Task MultiInterface_RegistersUnderAllTypes()
+		{
+			// Arrange
+			_testGameObject = new GameObject("MultiTest");
+			var behaviour = _testGameObject.AddComponent<MultiInterfaceServiceKitBehaviour>();
+			behaviour.UseLocator(_locator);
+
+			// Act
+			await behaviour.TestAwake(CancellationToken.None);
+
+			// Assert — retrievable via both interfaces
+			Assert.IsTrue(_locator.IsServiceReady<IMultiA>());
+			Assert.IsTrue(_locator.IsServiceReady<IMultiB>());
+			Assert.AreSame(behaviour, _locator.GetService<IMultiA>());
+			Assert.AreSame(behaviour, _locator.GetService<IMultiB>());
+		}
+
+		[Test]
+		public async Task MultiInterface_UnregisterRemovesAllTypes()
+		{
+			// Arrange
+			_testGameObject = new GameObject("MultiTest");
+			var behaviour = _testGameObject.AddComponent<MultiInterfaceServiceKitBehaviour>();
+			behaviour.UseLocator(_locator);
+			await behaviour.TestAwake(CancellationToken.None);
+
+			// Act — unregister one type
+			_locator.UnregisterService<IMultiA>();
+
+			// Assert — only the unregistered type is gone
+			Assert.IsFalse(_locator.IsServiceReady<IMultiA>());
+			Assert.IsTrue(_locator.IsServiceReady<IMultiB>());
+		}
+
+		[Test]
+		public async Task MultiInterface_ReadyServiceFiresForAllTypes()
+		{
+			// Arrange
+			_testGameObject = new GameObject("MultiTest");
+			var behaviour = _testGameObject.AddComponent<MultiInterfaceServiceKitBehaviour>();
+			behaviour.UseLocator(_locator);
+			await behaviour.TestAwake(CancellationToken.None);
+
+			// Assert — both types should be ready (not just registered)
+			Assert.AreEqual("Ready", _locator.GetServiceStatus<IMultiA>());
+			Assert.AreEqual("Ready", _locator.GetServiceStatus<IMultiB>());
 		}
 	}
 }

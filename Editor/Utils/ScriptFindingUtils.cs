@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
@@ -12,7 +12,7 @@ namespace Nonatomic.ServiceKit.Editor.Utils
 		{
 			var asset = ScriptableObject.CreateInstance<T>();
 			var path = AssetDatabase.GetAssetPath(Selection.activeObject);
-            
+			
 			if (string.IsNullOrEmpty(path))
 			{
 				path = "Assets";

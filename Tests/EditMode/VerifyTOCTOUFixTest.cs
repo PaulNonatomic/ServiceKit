@@ -64,7 +64,7 @@ namespace Tests.EditMode
 				{
 					try
 					{
-						await _serviceLocator.InjectServicesAsync(serviceB).ExecuteAsync();
+						await _serviceLocator.Inject(serviceB).ExecuteAsync();
 					}
 					catch (Exception)
 					{
@@ -152,7 +152,7 @@ namespace Tests.EditMode
 				var serviceB = new ServiceB();
 				
 				// No concurrent unregistration - service stays ready
-				await _serviceLocator.InjectServicesAsync(serviceB).ExecuteAsync();
+				await _serviceLocator.Inject(serviceB).ExecuteAsync();
 				
 				if (serviceB.ServiceA != null)
 				{

@@ -10,38 +10,143 @@ A powerful, ScriptableObject-based service locator pattern implementation for Un
 
 </div>
 
+## Support
+If you like my work then please consider showing your support for ServiceKit by giving the repo a star or buying me a brew
+<br><br>
+<a href="https://www.buymeacoffee.com/nonatomic" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
+## Installation
+
+Add **Service Kit** to your Unity project via Package Manager:
+[sw.js](../../../../beer-tilt/sw.js)
+1. Open **Window > Package Manager**
+2. Click **+** > **Add package from git URL**
+3. Enter:
+```
+https://www.pkglnk.dev/servicekit.git
+```
+
+[![pkglnk](https://www.pkglnk.dev/card/servicekit.svg)](https://www.pkglnk.dev/pkg/servicekit)
+
 ## Features
 
+-   **Attribute-Based Registration**: Use `[Service(typeof(IFoo))]` to declare service types - supports multiple interfaces per service.
 -   **ScriptableObject-Based**: Clean, asset-based architecture that integrates seamlessly with Unity's workflow.
 -   **Multi-Phase Initialization**: A robust, automated lifecycle ensures services are registered, injected, and initialized safely.
 -   **Async Service Resolution**: Wait for services to become fully ready with cancellation and timeout support.
+-   **Atomic 3-State Resolution**: Race-condition-free optional dependency resolution distinguishes ready, registered-but-not-ready, and absent services in a single atomic check.
 -   **UniTask Integration**: Automatic performance optimization when [UniTask](https://github.com/Cysharp/UniTask) is available - zero allocations and faster async operations.
 -   **Fluent Dependency Injection**: Elegant builder pattern for configuring service injection.
 -   **Automatic Scene Management**: Services are automatically tracked and cleaned up when scenes unload.
 -   **Comprehensive Debugging**: Built-in editor window with search, filtering, and service inspection.
 -   **Type-Safe**: Full generic support with compile-time type checking.
 -   **Performance Optimized**: Efficient service lookup with minimal overhead, enhanced further with UniTask.
--   **Thread-Safe**: Concurrent access protection for multi-threaded scenarios.
+-   **Thread-Safe**: Lock-guarded async resolution, atomic registration guards, and race-condition-hardened service awaiting.
 
-## Installation
+## What's New in V2
 
-### Via Unity Package Manager
+### Simpler Service Declarations
 
-1.  Open the Package Manager window (`Window > Package Manager`)
-2.  Click the `+` button and select `Add package from git URL`
-3.  Enter: `https://github.com/PaulNonatomic/ServiceKit.git`
+V2 replaces the generic `ServiceKitBehaviour<T>` base class with a non-generic `ServiceKitBehaviour` plus a `[Service]` attribute. This eliminates generic type parameter noise from class declarations, inheritance chains, and constraint clauses.
 
-### Via Package Manager Manifest
+**Before (V1):**
+```csharp
+// Generic parameter threaded through every level of the hierarchy
+public abstract class BaseGameController<TInterface> : ServiceKitBehaviour<TInterface>, IGame
+    where TInterface : class, IGame
 
-Add this line to your `Packages/manifest.json`:
+public class BowlingController : BaseGameController<IBowlingController>, IBowlingController
+```
 
-```json
+**After (V2):**
+```csharp
+// Clean inheritance, registration intent is explicit
+public abstract class BaseGameController : ServiceKitBehaviour, IGame
+
+[Service(typeof(IBowlingController))]
+public class BowlingController : BaseGameController, IBowlingController
+```
+
+For abstract base classes with multiple generic parameters (e.g., a service type *and* a data type), only the ServiceKit type parameter is removed — functional generics are preserved:
+
+```csharp
+// Before: two generics, one was just for ServiceKit
+public abstract class ScoreService<TService, TScore> : ServiceKitBehaviour<TService>, IScoreService<TScore>
+    where TService : class, IScoreService<TScore>
+    where TScore : struct
+
+// After: one generic remains — the one that actually matters
+public abstract class ScoreService<TScore> : ServiceKitBehaviour, IScoreService<TScore>
+    where TScore : struct
+
+[Service(typeof(IMyScoreService))]
+public class MyScoreService : ScoreService<int>, IMyScoreService
+```
+
+In real-world migrations this reduces hundreds of lines of generic boilerplate while making each class declaration immediately readable.
+
+### One-Line Dependency Injection
+
+The new `InjectAsync` extension method replaces the common 4-method builder chain with a single call:
+
+**Before:**
+```csharp
+await _serviceKitLocator.Inject(this)
+    .WithErrorHandling()
+    .WithTimeout()
+    .ExecuteWithCancellationAsync(destroyCancellationToken);
+```
+
+**After:**
+```csharp
+await _serviceKitLocator.InjectAsync(this, destroyCancellationToken);
+```
+
+This applies default timeout (from ServiceKit Settings), the provided cancellation token, and default error handling — the configuration that 90%+ of injection call sites need. The full builder is still available when you need custom timeout values or error handlers:
+
+```csharp
+// Custom configuration when defaults aren't enough
+await _serviceKitLocator.Inject(this)
+    .WithTimeout(10f)
+    .WithErrorHandling(ex => HandleMyError(ex))
+    .ExecuteWithCancellationAsync(destroyCancellationToken);
+```
+
+### Atomic Service Resolution
+
+The new `TryResolveService` method replaces the error-prone two-call pattern of `TryGetService` followed by `IsServiceRegistered` with a single atomic check:
+
+```csharp
+var status = locator.TryResolveService(typeof(IMyService), out var service);
+
+switch (status)
 {
-  "dependencies": {
-    "com.nonatomic.servicekit": "https://github.com/PaulNonatomic/ServiceKit.git"
-  }
+    case ServiceResolutionStatus.Ready:           // service is populated
+        break;
+    case ServiceResolutionStatus.RegisteredNotReady: // registered, still initializing
+        break;
+    case ServiceResolutionStatus.NotRegistered:      // does not exist
+        break;
 }
 ```
+
+Both checks happen under a single lock, eliminating the race window where a service could register between the two calls.
+
+### Race Condition Hardening
+
+- **GetServiceAsync** — Task forwarding is now set up inside the lock, preventing a race where the shared `TaskCompletionSource` could complete before forwarding was established
+- **UseLocator** — `Interlocked.CompareExchange` registration guard prevents double-registration when `UseLocator` is called concurrently with `Awake`
+- **Circular Dependency Detection** — Uses `Type` references instead of string name matching, preventing false matches between types with similar names
+- **DontDestroyOnLoad detection** — Strengthened to require both scene name and `buildIndex == -1`
+
+### Roslyn Analyzers
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| **SK003** | Error | `[Service(typeof(IFoo))]` on a class that doesn't implement `IFoo` |
+| **SK005** | Error | `ServiceKitBehaviour` subclass overrides `Awake()` without calling `base.Awake()` |
+
+These catch at compile time what would otherwise be silent runtime failures. SK003 restores the type safety that the old generic pattern provided, while SK005 prevents the most common lifecycle mistake.
 
 ## Quick Start
 
@@ -72,6 +177,8 @@ public class PlayerService : IPlayerService
 
 ### 3. Register Services
 
+**Plain C# services** — register in a bootstrap:
+
 ```csharp
 public class GameBootstrap : MonoBehaviour
 {
@@ -79,12 +186,33 @@ public class GameBootstrap : MonoBehaviour
 
     private void Awake()
     {
-        // Register services during game startup
-        var playerService = new PlayerService();
-        _serviceKit.RegisterService<IPlayerService>(playerService);
+        // Fluent API - register and ready in one chain
+        _serviceKit.Register(new PlayerService())
+            .As<IPlayerService>()
+            .Ready();
 
-        // A service must be marked as "Ready" before it can be injected
-        _serviceKit.ReadyService<IPlayerService>();
+        // Multi-type registration - one instance, multiple interfaces
+        _serviceKit.Register(new AudioManager())
+            .As<IAudioService>()
+            .As<IMusicService>()
+            .WithTags("audio", "core")
+            .Ready();
+    }
+}
+```
+
+**MonoBehaviour services** — use `ServiceKitBehaviour` and place them in the scene. Registration, injection, and readiness are all handled automatically:
+
+```csharp
+[Service(typeof(IPlayerController))]
+public class PlayerController : ServiceKitBehaviour, IPlayerController
+{
+    [InjectService] private IPlayerService _playerService;
+
+    protected override void InitializeService()
+    {
+        // Called after all dependencies are injected and ready
+        _playerService.LoadPlayer();
     }
 }
 ```
@@ -101,17 +229,53 @@ public class PlayerUI : MonoBehaviour
 
     private async void Awake()
     {
-        // Inject services with fluent configuration
-        await _serviceKit.InjectServicesAsync(this)
-            .WithTimeout(5f)
-            .WithCancellation(destroyCancellationToken)
-            .WithErrorHandling()
-            .ExecuteAsync();
+        // One-liner: default timeout, cancellation, and error handling
+        await _serviceKit.InjectAsync(this, destroyCancellationToken);
 
-        // The service is now injected and ready to use
+        // Or configure each option with the builder
+        // await _serviceKit.Inject(this)
+        //     .WithTimeout(5f)
+        //     .WithCancellation(destroyCancellationToken)
+        //     .WithErrorHandling()
+        //     .ExecuteAsync();
+
         _playerService.LoadPlayer();
-        Debug.Log($"Player Level: {_playerService.GetPlayerLevel()}");
     }
+}
+```
+
+### 5. Create MonoBehaviour Services with ServiceKitBehaviour
+
+For services that need to be MonoBehaviours, use the `ServiceKitBehaviour` base class with the `[Service]` attribute:
+
+```csharp
+// Single interface registration
+[Service(typeof(IPlayerController))]
+public class PlayerController : ServiceKitBehaviour, IPlayerController
+{
+    [InjectService] private IPlayerService _playerService;
+
+    protected override void InitializeService()
+    {
+        // Called after dependencies are injected
+        _playerService.LoadPlayer();
+        Debug.Log("Player controller ready!");
+    }
+}
+
+// Multiple interface registration - register one instance under multiple types
+[Service(typeof(IAudioService), typeof(IMusicService))]
+public class AudioManager : ServiceKitBehaviour, IAudioService, IMusicService
+{
+    public void PlaySound(string id) { /* ... */ }
+    public void PlayMusic(string id) { /* ... */ }
+}
+
+// No attribute = registers as concrete type
+public class GameSettings : ServiceKitBehaviour
+{
+    public int Volume { get; set; }
+    // Accessible via: serviceKit.GetService<GameSettings>()
 }
 ```
 
@@ -130,22 +294,18 @@ await serviceKit.GetServiceAsync<IPlayerService>();
 // With UniTask installed:   → Zero allocations, faster execution
 // Without UniTask:          → Standard Task performance
 ```
+## Installation
 
-### Installation
+Add **UniTask** to your Unity project via Package Manager:
 
-Install UniTask via Unity Package Manager:
-1. Open Package Manager (`Window > Package Manager`)
-2. Click `+` and select `Add package from git URL`
-3. Enter: `https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask`
-
-Or add to your `Packages/manifest.json`:
-```json
-{
-  "dependencies": {
-    "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask"
-  }
-}
+1. Open **Window > Package Manager**
+2. Click **+** > **Add package from git URL**
+3. Enter:
 ```
+https://www.pkglnk.dev/unitask.git?path=src/UniTask/Assets/Plugins/UniTask
+```[sw.js](../../../../beer-tilt/sw.js)
+
+[![pkglnk](https://www.pkglnk.dev/card/unitask.svg?variant=directory)](https://www.pkglnk.dev/pkg/unitask)
 
 ### Performance Benefits
 
@@ -161,7 +321,8 @@ When UniTask is available, ServiceKit automatically provides:
 The same ServiceKit code works with both Task and UniTask - no changes needed:
 
 ```csharp
-public class PlayerController : ServiceKitBehaviour<IPlayerController>
+[Service(typeof(IPlayerController))]
+public class PlayerController : ServiceKitBehaviour, IPlayerController
 {
     [InjectService] private IPlayerService _playerService;
     [InjectService] private IInventoryService _inventoryService;
@@ -247,16 +408,23 @@ The analyzer repository includes documentation on:
 
 ### Using `ServiceKitBehaviour` Base Class
 
-For the most robust and seamless experience, inherit from `ServiceKitBehaviour<T>`. This base class automates a sophisticated multi-phase initialization process within a single `Awake()` call, ensuring that services are registered, injected, and made ready in a safe, deterministic order.
+For the most robust and seamless experience, inherit from `ServiceKitBehaviour` and use the `[Service]` attribute to specify which interface(s) your service implements. This base class automates a sophisticated multi-phase initialization process within a single `Awake()` call, ensuring that services are registered, injected, and made ready in a safe, deterministic order.
+
+**Key Features:**
+- **Attribute-based registration**: Use `[Service(typeof(IFoo), typeof(IBar))]` to register against multiple types
+- **Concrete type fallback**: If no `[Service]` attribute is provided, the service registers against its concrete class type
+- **Simplified generics**: No more confusing generic inheritance chains
 
 It handles the following lifecycle automatically:
-1.  **Registration**: The service immediately registers itself, making it *discoverable*.
+1.  **Registration**: The service immediately registers itself against all declared types, making it *discoverable*.
 2.  **Dependency Injection**: It asynchronously waits for all services marked with `[InjectService]` to become fully *ready*.
 3.  **Custom Initialization**: It provides `InitializeServiceAsync()` and `InitializeService()` for you to override with your own setup logic.
-4.  **Readiness**: After your initialization, it marks the service as *ready*, allowing other services that depend on it to complete their own initialization.
+4.  **Readiness**: After your initialization, it marks the service as *ready* for all registered types, allowing other services that depend on it to complete their own initialization.
 
 ```csharp
-public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerController
+// Single interface registration
+[Service(typeof(IPlayerController))]
+public class PlayerController : ServiceKitBehaviour, IPlayerController
 {
     [InjectService] private IPlayerService _playerService;
     [InjectService] private IInventoryService _inventoryService;
@@ -281,7 +449,7 @@ public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerC
     }
 
     // Optional: Handle injection failures gracefully
-    protected override void OnServiceInjectionFailed(Exception exception)
+    protected override void HandleDependencyInjectionFailure(Exception exception)
     {
         Debug.LogError($"Failed to initialize player controller: {exception.Message}");
 
@@ -296,7 +464,75 @@ public class PlayerController : ServiceKitBehaviour<IPlayerController>, IPlayerC
         }
     }
 }
+
+// Multi-type registration - register under multiple interfaces
+[Service(typeof(IAudioService), typeof(IMusicService), typeof(ISoundEffects))]
+public class UnifiedAudioManager : ServiceKitBehaviour, IAudioService, IMusicService, ISoundEffects
+{
+    public void PlaySound(string id) { /* ... */ }
+    public void PlayMusic(string id) { /* ... */ }
+    public void StopAll() { /* ... */ }
+}
+
+// Concrete type registration (no attribute needed)
+public class GameSettings : ServiceKitBehaviour
+{
+    public int Volume { get; set; }
+    // Registers as typeof(GameSettings)
+}
 ```
+
+### Fluent Registration API
+
+For non-MonoBehaviour services, use the fluent registration API for clean, chainable configuration:
+
+```csharp
+public class GameBootstrap : MonoBehaviour
+{
+    [SerializeField] private ServiceKitLocator _serviceKit;
+
+    private void Awake()
+    {
+        // Simple registration
+        _serviceKit.Register(new PlayerService())
+            .As<IPlayerService>()
+            .Ready();
+
+        // Multi-type registration - one instance accessible via multiple interfaces
+        _serviceKit.Register(new UnifiedAudioManager())
+            .As<IAudioService>()
+            .As<IMusicService>()
+            .As<ISoundEffects>()
+            .Ready();
+
+        // With tags for organization and filtering
+        _serviceKit.Register(new AnalyticsService())
+            .As<IAnalyticsService>()
+            .WithTags("analytics", "third-party")
+            .Ready();
+
+        // Circular dependency exemption
+        _serviceKit.Register(new EventBus())
+            .As<IEventBus>()
+            .WithCircularExemption()
+            .Ready();
+
+        // Register without making ready (for deferred initialization)
+        _serviceKit.Register(new NetworkService())
+            .As<INetworkService>()
+            .Register();  // Not ready yet - call ReadyService<INetworkService>() later
+    }
+}
+```
+
+**Fluent API Methods:**
+| Method | Description |
+|--------|-------------|
+| `.As<T>()` | Register the service under interface type T (can chain multiple) |
+| `.WithTags(...)` | Add string or ServiceTag tags for filtering |
+| `.WithCircularExemption()` | Exempt from circular dependency detection |
+| `.Register()` | Complete registration (not ready, not injectable yet) |
+| `.Ready()` | Complete registration and mark as ready (injectable) |
 
 ### Asynchronous Service Resolution
 
@@ -342,13 +578,13 @@ public class AnalyticsReporter : MonoBehaviour
 }
 ```
 
-**When `Required = false`, ServiceKit uses intelligent 3-state resolution:**
+**When `Required = false`, ServiceKit uses intelligent 3-state resolution via an atomic `TryResolveService` check:**
 
 - **Service is ready** → Inject immediately
 - **Service is registered but not ready** → Wait for it (treat as required temporarily)
 - **Service is not registered** → Skip injection (field remains null)
 
-This eliminates guesswork - you don't need to predict whether a service will be available. The system automatically waits for registered services that are "coming soon" while skipping services that will "never come."
+All three states are determined in a single lock-guarded operation, eliminating race conditions between the check and the resolution. This means you don't need to predict whether a service will be available — the system automatically waits for registered services that are "coming soon" while skipping services that will "never come."
 
 **When `Required = true` (default):**
 - Always wait for the service regardless of registration status
@@ -361,24 +597,17 @@ In advanced scenarios, you might need to bypass the circular dependency check. T
 1.  **Wrapping Third-Party Code**: When you "shim" an external library into ServiceKit, that service has no knowledge of your project's classes. A circular dependency check is unnecessary and can be safely bypassed.
 2.  **Managed Deadlocks**: In rare cases, a "manager" service might need a reference to a "subordinate" that also depends back on the manager. If you can guarantee this cycle is not accessed until after full initialization, an exemption can resolve the deadlock.
 
-To handle this, you can register a service with an exemption. **This should be used with extreme caution**, as it bypasses a critical safety feature.
-
-`RegisterServiceWithCircularExemption` allows a service to be registered without being considered in the dependency graph analysis.
+To handle this, use the `CircularDependencyExempt` property on the `[Service]` attribute. **This should be used with extreme caution**, as it bypasses a critical safety feature.
 
 ```csharp
-// Example of a service that needs to be exempted
-public class SubordinateService : ServiceKitBehaviour<ISubordinateService>
+// Example of a service that needs to be exempted from circular dependency checks
+[Service(typeof(ISubordinateService), CircularDependencyExempt = true)]
+public class SubordinateService : ServiceKitBehaviour, ISubordinateService
 {
     [InjectService] private IManagerService _manager;
 
-    // Override Awake to change the registration method
-    protected override void Awake()
-    {
-        // Instead of the default registration, we call the exemption method.
-        ServiceKitLocator.RegisterServiceWithCircularExemption<ISubordinateService>(this);
-        Registered = true; // Manually set the flag since we overrode the default
-    }
-    //...
+    // The service will be registered without being considered in the dependency graph analysis
+    // This allows it to participate in circular dependencies safely
 }
 ```
 
@@ -462,7 +691,8 @@ To preserve a ServiceKitBehaviour beyond the lifetime of its scene:
 
 **Option 1: Use DontDestroyOnLoad**
 ```csharp
-public class PersistentService : ServiceKitBehaviour<IPersistentService>, IPersistentService
+[Service(typeof(IPersistentService))]
+public class PersistentService : ServiceKitBehaviour, IPersistentService
 {
     protected override void InitializeService()
     {
@@ -486,14 +716,19 @@ await Addressables.LoadSceneAsync("AdditiveScene", LoadSceneMode.Additive).Task;
 
 ## ServiceKit Debug Window
 
-Access the powerful debugging interface via `Tools > ServiceKit > ServiceKit Window`:
+Access the debugging interface via `Tools > ServiceKit > ServiceKit Window`:
+
+<p align="center">
+  <img src="Readme~\servicekit-window.png" width="500">
+</p>
 
 ### Features:
 
 * **Real-time Service Monitoring**: View all registered services across all ServiceKit locators.
 * **Readiness Status**: See at a glance whether a service is just registered or fully ready.
-* **Scene-based Grouping**: Services organized by the scene that registered them.
-* **Search & Filtering**: Find services quickly with fuzzy search.
+* **Scene-based Grouping**: Services organized by the scene that registered them, with DontDestroyOnLoad services shown separately.
+* **Tag Visualization**: Service tags displayed inline for quick identification.
+* **Search & Filtering**: Find services quickly by name or tag.
 * **Script Navigation**: Click to open service implementation files.
 * **GameObject Pinging**: Click MonoBehaviour services to highlight them in the scene.
 
@@ -502,9 +737,14 @@ Access the powerful debugging interface via `Tools > ServiceKit > ServiceKit Win
 ### IServiceKitLocator Interface
 
 ```csharp
-// Registration & Readiness
-void RegisterService<T>(T service, string registeredBy = null) where T : class;
-void RegisterServiceWithCircularExemption<T>(T service, string registeredBy = null) where T : class;
+// Fluent Registration (recommended)
+IServiceRegistrationBuilder Register<T>(T service) where T : class;
+IServiceRegistrationBuilder Register(object service);
+
+// Direct Registration
+void RegisterService<T>(T service) where T : class;
+void RegisterService(Type serviceType, object service);
+void RegisterAndReadyService<T>(T service) where T : class;
 void ReadyService<T>() where T : class;
 void UnregisterService<T>() where T : class;
 
@@ -512,15 +752,36 @@ void UnregisterService<T>() where T : class;
 T GetService<T>() where T : class;
 bool TryGetService<T>(out T service) where T : class;
 
+// Atomic 3-State Resolution
+ServiceResolutionStatus TryResolveService(Type serviceType, out object service);
+// Returns Ready, RegisteredNotReady, or NotRegistered — single lock, no race conditions
+
 // Asynchronous Access (automatically uses UniTask when available)
 Task<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class;
 // Returns UniTask<T> when UniTask package is installed
 
 // Dependency Injection
-IServiceInjectionBuilder InjectServicesAsync(object target);
+IServiceInjectionBuilder Inject(object target);
+
+// Tag Queries
+IReadOnlyList<ServiceInfo> GetServicesWithTag(string tag);
+IReadOnlyList<ServiceInfo> GetServicesWithAnyTag(params string[] tags);
+IReadOnlyList<ServiceInfo> GetServicesWithAllTags(params string[] tags);
 
 // Management
 IReadOnlyList<ServiceInfo> GetAllServices();
+```
+
+### IServiceRegistrationBuilder Interface
+
+```csharp
+IServiceRegistrationBuilder As<T>() where T : class;       // Register as interface type
+IServiceRegistrationBuilder As(Type serviceType);           // Register as runtime type
+IServiceRegistrationBuilder WithTags(params string[] tags); // Add tags
+IServiceRegistrationBuilder WithTags(params ServiceTag[] tags);
+IServiceRegistrationBuilder WithCircularExemption();        // Exempt from circular dependency check
+void Register();  // Complete registration (not ready yet)
+void Ready();     // Complete registration and mark as ready
 ```
 
 ### IServiceInjectionBuilder Interface
@@ -553,6 +814,7 @@ Task ExecuteAsync(); // Awaitable (UniTask when available)
 * **Use timeouts** for service resolution to avoid indefinite waits.
 * **Handle injection failures** gracefully with proper error handling.
 * **Avoid circular dependency exemptions** unless absolutely necessary and the lifecycle is fully understood.
+* **Use `TryResolveService`** when you need to atomically distinguish ready, registered-not-ready, and absent services without race conditions.
 
 ### Performance Optimization
 
@@ -743,7 +1005,8 @@ serviceKit.RegisterService<IPlayerService>(playerService,
 serviceKit.RegisterAndReadyService<IPlayerService>(playerServiceInstance);
 
 // ✅ Use ServiceKitBehaviour for optimal lifecycle management
-public class PlayerController : ServiceKitBehaviour<IPlayerController>
+[Service(typeof(IPlayerController))]
+public class PlayerController : ServiceKitBehaviour, IPlayerController
 {
     // Automatic registration (0.594ms), injection (~5ms), and cleanup (1.880ms)
 }
@@ -787,71 +1050,97 @@ The framework's sub-millisecond core operations ensure that dependency injection
 
 ### Migrating from v1.x to v2.0
 
-Version 2.0 includes breaking changes to improve code readability and self-documentation. If you have custom services that extend `ServiceKitBehaviour<T>`, you'll need to update your code:
+V2.0 is a major release that replaces the generic `ServiceKitBehaviour<T>` pattern with attribute-based registration, adds a fluent API, and introduces one-liner dependency injection.
 
-#### Field Renames
+#### 1. Replace `ServiceKitBehaviour<T>` with `ServiceKitBehaviour` + `[Service]`
+
+**Before:**
 ```csharp
-// Old (v1.x)
-if (Registered) { /* ... */ }
-if (Ready) { /* ... */ }
-
-// New (v2.0)
-if (IsServiceRegistered) { /* ... */ }
-if (IsServiceReady) { /* ... */ }
-```
-
-#### Method Renames
-```csharp
-// Old (v1.x)
-public class MyService : ServiceKitBehaviour<IMyService>
+public class AudioManager : ServiceKitBehaviour<IAudioService>, IAudioService
 {
-    protected override void RegisterService()
-    {
-        base.RegisterService();
-        // Custom logic
-    }
-    
-    protected override void OnServiceInjectionFailed(Exception ex)
-    {
-        base.OnServiceInjectionFailed(ex);
-        // Custom error handling
-    }
-}
-
-// New (v2.0)
-public class MyService : ServiceKitBehaviour<IMyService>
-{
-    protected override void RegisterServiceWithLocator()
-    {
-        base.RegisterServiceWithLocator();
-        // Custom logic
-    }
-    
-    protected override void HandleDependencyInjectionFailure(Exception ex)
-    {
-        base.HandleDependencyInjectionFailure(ex);
-        // Custom error handling
-    }
+    [InjectService] private IConfigService _config;
+    public void PlaySound(string id) { /* ... */ }
 }
 ```
 
-#### Complete Method Mapping
-| v1.x Method | v2.0 Method |
-|------------|-------------|
-| `RegisterService()` | `RegisterServiceWithLocator()` |
-| `UnregisterService()` | `UnregisterServiceFromLocator()` |
-| `InjectServicesAsync()` | `InjectDependenciesAsync()` |
-| `MarkServiceReady()` | `MarkServiceAsReady()` |
-| `OnServiceInjectionFailed()` | `HandleDependencyInjectionFailure()` |
+**After:**
+```csharp
+[Service(typeof(IAudioService))]
+public class AudioManager : ServiceKitBehaviour, IAudioService
+{
+    [InjectService] private IConfigService _config;
+    public void PlaySound(string id) { /* ... */ }
+}
+```
 
-#### Quick Migration Steps
-1. Update your `package.json` to version `2.0.0`
-2. Search your codebase for any overrides of the old method names
-3. Replace with the new method names as shown above
-4. Update any direct field access from `Registered`/`Ready` to `IsServiceRegistered`/`IsServiceReady`
-5. Recompile and test your services
+For abstract base classes with multiple generic parameters, remove only the ServiceKit type parameter:
 
-The core functionality remains unchanged - only the naming has been improved for better clarity and maintainability.
+```csharp
+// Before: two generics — TService was just for ServiceKit
+public abstract class ScoreService<TService, TScore> : ServiceKitBehaviour<TService>
+    where TService : class
+    where TScore : struct
+
+// After: keep the functional generic, drop the ServiceKit one
+public abstract class ScoreService<TScore> : ServiceKitBehaviour
+    where TScore : struct
+
+// Concrete class adds [Service]
+[Service(typeof(IMyScoreService))]
+public class MyScoreService : ScoreService<int>, IMyScoreService { }
+```
+
+#### 2. Simplify Dependency Injection Calls
+
+**Before:**
+```csharp
+await _serviceKitLocator.InjectServicesAsync(this)
+    .WithErrorHandling()
+    .WithTimeout()
+    .ExecuteWithCancellationAsync(destroyCancellationToken);
+```
+
+**After (one-liner):**
+```csharp
+await _serviceKitLocator.InjectAsync(this, destroyCancellationToken);
+```
+
+The builder is still available for custom configuration:
+```csharp
+await _serviceKitLocator.Inject(this)
+    .WithTimeout(10f)
+    .WithErrorHandling(ex => HandleMyError(ex))
+    .ExecuteWithCancellationAsync(destroyCancellationToken);
+```
+
+#### 3. Use Fluent Registration API
+
+**Before:**
+```csharp
+_serviceKit.RegisterService<IAudioService>(audioService);
+_serviceKit.ReadyService<IAudioService>();
+```
+
+**After:**
+```csharp
+_serviceKit.Register(audioService).As<IAudioService>().Ready();
+```
+
+#### Quick Migration Checklist
+
+1. Find-and-replace `: ServiceKitBehaviour<` — remove the generic, keep the base class
+2. Add `[Service(typeof(T))]` attribute above each concrete class with the interface type
+3. Find-and-replace `.InjectServicesAsync(` with `.InjectAsync(` for one-liner calls, or `.Inject(` for builder calls
+4. Replace `RegisterService<T>()` / `ReadyService<T>()` pairs with `.Register().As<T>().Ready()`
+5. Ensure each class still implements its declared interface
+
+#### What You Gain
+
+- **Cleaner declarations** — No generic type parameter noise in class signatures or inheritance chains
+- **Multi-type registration** — `[Service(typeof(IFoo), typeof(IBar))]` on a single class
+- **One-liner injection** — `InjectAsync(this, token)` replaces 4-line builder chains
+- **Fluent registration** — Chainable API with tags, circular exemption, and deferred readiness
+- **Compile-time safety** — Roslyn analyzer SK003 catches `[Service]` type mismatches; SK005 catches missing `base.Awake()` calls
 
 ## Unit Testing
 
@@ -882,7 +1171,7 @@ public class MyServiceTests
         _mockBuilder.WithTimeout().Returns(_mockBuilder);
         _mockBuilder.WithErrorHandling(Arg.Any<Action<Exception>>()).Returns(_mockBuilder);
         _mockBuilder.ExecuteAsync().Returns(Task.CompletedTask);
-        _mockLocator.InjectServicesAsync(Arg.Any<object>()).Returns(_mockBuilder);
+        _mockLocator.Inject(Arg.Any<object>()).Returns(_mockBuilder);
     }
 
     [Test]
@@ -890,14 +1179,14 @@ public class MyServiceTests
     {
         // Arrange
         var go = new GameObject();
-        var behaviour = go.AddComponent<MyServiceBehaviour>();
+        var behaviour = go.AddComponent<MyServiceKitBehaviour>();
         behaviour.UseLocator(_mockLocator);
 
         // Act
         await behaviour.TestAwake(CancellationToken.None);
 
-        // Assert
-        _mockLocator.Received(1).RegisterService(Arg.Any<IMyService>(), Arg.Any<string>());
+        // Assert - ServiceKitBehaviour uses non-generic RegisterService
+        _mockLocator.Received(1).RegisterService(typeof(IMyService), Arg.Any<object>(), Arg.Any<string>());
     }
 }
 ```
@@ -930,7 +1219,7 @@ public class MyServiceIntegrationTests
     {
         // Arrange - AddComponent triggers Awake, but registration is skipped (no locator yet)
         var go = new GameObject();
-        var behaviour = go.AddComponent<MyServiceBehaviour>();
+        var behaviour = go.AddComponent<MyServiceKitBehaviour>();
 
         // Act - UseLocator triggers registration automatically
         behaviour.UseLocator(_locator);
@@ -947,11 +1236,11 @@ public class MyServiceIntegrationTests
         _locator.RegisterAndReadyService<IPlayerService>(playerService);
 
         var go = new GameObject();
-        var behaviour = go.AddComponent<MyServiceBehaviour>();
+        var behaviour = go.AddComponent<MyServiceKitBehaviour>();
         behaviour.UseLocator(_locator);
 
         // Act - Complete injection manually
-        await _locator.InjectServicesAsync(behaviour)
+        await _locator.Inject(behaviour)
             .WithCancellation(CancellationToken.None)
             .WithTimeout()
             .ExecuteAsync();
@@ -970,7 +1259,8 @@ public class MyServiceIntegrationTests
 Expose a `TestAwake` method to manually trigger the initialization sequence in tests:
 
 ```csharp
-public class MyServiceBehaviour : ServiceKitBehaviour<IMyService>, IMyService
+[Service(typeof(IMyService))]
+public class MyServiceKitBehaviour : ServiceKitBehaviour, IMyService
 {
     [InjectService] private IPlayerService _playerService;
 
@@ -980,7 +1270,7 @@ public class MyServiceBehaviour : ServiceKitBehaviour<IMyService>, IMyService
     {
         RegisterServiceWithLocator();
 
-        await Locator.InjectServicesAsync(this)
+        await Locator.Inject(this)
             .WithCancellation(cancellationToken)
             .WithTimeout()
             .WithErrorHandling(HandleDependencyInjectionFailure)

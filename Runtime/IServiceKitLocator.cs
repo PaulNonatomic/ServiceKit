@@ -14,17 +14,17 @@ namespace Nonatomic.ServiceKit
 {
 	public interface IServiceKitLocator
 	{
-		// Phase 1: Registration (service not available yet)
+		// Phase 1: Registration (service not available yet) - Generic
 		void RegisterService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
-		
-		// Phase 1: Registration with tags
 		void RegisterService<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
-		
-		// Phase 1: Registration with circular dependency exemption
 		void RegisterServiceWithCircularExemption<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
-		
-		// Phase 1: Registration with circular dependency exemption and tags
 		void RegisterServiceWithCircularExemption<T>(T service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null) where T : class;
+
+		// Phase 1: Registration (service not available yet) - Non-Generic
+		void RegisterService(Type serviceType, object service, [CallerMemberName] string registeredBy = null);
+		void RegisterService(Type serviceType, object service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null);
+		void RegisterServiceWithCircularExemption(Type serviceType, object service, [CallerMemberName] string registeredBy = null);
+		void RegisterServiceWithCircularExemption(Type serviceType, object service, ServiceTag[] tags, [CallerMemberName] string registeredBy = null);
 		
 		// Phase 3: Ready (service becomes available)
 		void ReadyService<T>() where T : class;
@@ -60,7 +60,9 @@ namespace Nonatomic.ServiceKit
 		Task<T> GetServiceAsync<T>(CancellationToken cancellationToken = default) where T : class;
 		Task<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default);
 #endif
+		[System.Obsolete("Use Inject(target) or the InjectAsync(target, token) extension method instead.")]
 		IServiceInjectionBuilder InjectServicesAsync(object target);
+		IServiceInjectionBuilder Inject(object target);
 		void ClearServices();
 
 		// Tooling support
@@ -80,5 +82,9 @@ namespace Nonatomic.ServiceKit
 		IReadOnlyList<ServiceInfo> GetServicesWithTag(string tag);
 		IReadOnlyList<ServiceInfo> GetServicesWithAnyTag(params string[] tags);
 		IReadOnlyList<ServiceInfo> GetServicesWithAllTags(params string[] tags);
+
+		// Fluent registration API
+		IServiceRegistrationBuilder Register<T>(T service, [CallerMemberName] string registeredBy = null) where T : class;
+		IServiceRegistrationBuilder Register(object service, [CallerMemberName] string registeredBy = null);
 	}
 }
