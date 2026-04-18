@@ -1,3 +1,9 @@
+## [2.0.2] - 2026-04-18
+
+### Changed
+- **SEO improvements**: Updated package description, keywords, GitHub topics, and README front matter for discoverability
+- Added Unity and MIT license badges to README
+
 ## [2.0.1] - 2026-04-18
 
 ### Changed

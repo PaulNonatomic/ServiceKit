@@ -4,9 +4,12 @@
   <img src="Readme~\logo.png" width="500">
 </p>
 
-### A flexible & efficient way to manage and access services in [Unity](https://unity.com/)
+### Dependency Injection & Service Locator for [Unity](https://unity.com/)
 
-A powerful, ScriptableObject-based service locator pattern implementation for Unity that provides robust dependency injection with asynchronous support, automatic scene management, and comprehensive debugging tools.
+A lightweight, ScriptableObject-based dependency injection framework for Unity. Register services with attributes, resolve them asynchronously, inject dependencies with one line of code, and let ServiceKit handle the lifecycle automatically.
+
+[![Unity 2022.3+](https://img.shields.io/badge/Unity-2022.3%2B-blue)](https://unity.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 </div>
 
