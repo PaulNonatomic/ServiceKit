@@ -21,7 +21,7 @@ If you like my work then please consider showing your support for ServiceKit by 
 ## Installation
 
 Add **Service Kit** to your Unity project via Package Manager:
-[sw.js](../../../../beer-tilt/sw.js)
+
 1. Open **Window > Package Manager**
 2. Click **+** > **Add package from git URL**
 3. Enter:
@@ -47,6 +47,8 @@ https://www.pkglnk.dev/servicekit.git
 -   **Thread-Safe**: Lock-guarded async resolution, atomic registration guards, and race-condition-hardened service awaiting.
 
 ## What's New in V2
+
+> For the narrative version of this release (including why ServiceKit leans into being a service locator on purpose), see the launch post: [ServiceKit V2, The Async Service Locator for Unity](https://dev.to/paulnonatomic/servicekit-v2-the-async-service-locator-for-unity-4840).
 
 ### Simpler Service Declarations
 
