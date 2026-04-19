@@ -1,7 +1,7 @@
 <div align=center>   
 
 <p align="center">
-  <img src="Readme~\locator-header.webp" width="500">
+  <img src="Readme~\locator-header-2.webp" width="500">
 </p>
 
 ### Dependency Injection & Service Locator for [Unity](https://unity.com/)
