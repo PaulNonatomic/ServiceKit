@@ -70,7 +70,8 @@ namespace Nonatomic.ServiceKit
 		
 		private void AddTimeoutToActiveList(CancellationTokenSource cancellationSource, float durationInSeconds)
 		{
-			var timeoutEndTime = Time.time + durationInSeconds;
+			// Use unscaled time so injection timeouts still fire when Time.timeScale is 0 (paused game).
+			var timeoutEndTime = Time.unscaledTime + durationInSeconds;
 			lock (_timeoutsSyncLock)
 			{
 				_activeTimeouts.Add((cancellationSource, timeoutEndTime));
@@ -144,7 +145,7 @@ namespace Nonatomic.ServiceKit
 		private void IdentifyExpiredTimeouts()
 		{
 			_pendingRemovalIndices.Clear();
-			var currentTime = Time.time;
+			var currentTime = Time.unscaledTime;
 			
 			for (var i = _activeTimeouts.Count - 1; i >= 0; i--)
 			{
@@ -353,30 +354,45 @@ namespace Nonatomic.ServiceKit
 		
 		private void OnApplicationPause(bool pauseStatus)
 		{
-			if (ShouldHandleEditorShutdown(pauseStatus))
+			if (!IsEditorEditMode()) return;
+
+			if (pauseStatus)
 			{
 				MarkAsShuttingDown();
 				CancelAllPendingTimeouts();
 			}
+			else
+			{
+				// Editor resumed: re-enable the manager so it is not permanently disabled.
+				ClearShuttingDownState();
+			}
 		}
-		
+
 		private void OnApplicationFocus(bool hasFocus)
 		{
-			if (ShouldHandleEditorLostFocus(hasFocus))
+			if (!IsEditorEditMode()) return;
+
+			if (!hasFocus)
 			{
 				MarkAsShuttingDown();
 				CancelAllPendingTimeouts();
 			}
+			else
+			{
+				// Editor regained focus: re-enable the manager so it is not permanently disabled.
+				ClearShuttingDownState();
+			}
 		}
-		
-		private bool ShouldHandleEditorShutdown(bool pauseStatus)
+
+		private static bool IsEditorEditMode()
 		{
-			return pauseStatus && Application.isEditor && !Application.isPlaying;
+			return Application.isEditor && !Application.isPlaying;
 		}
-		
-		private bool ShouldHandleEditorLostFocus(bool hasFocus)
+
+		private static void ClearShuttingDownState()
 		{
-			return !hasFocus && Application.isEditor && !Application.isPlaying;
+			_isCleaningUp = false;
+			_applicationQuitting = false;
 		}
 
 		private void CancelAllPendingTimeouts()
