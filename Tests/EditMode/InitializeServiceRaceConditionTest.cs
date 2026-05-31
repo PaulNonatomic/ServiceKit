@@ -1,9 +1,11 @@
 using System;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nonatomic.ServiceKit;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 #if SERVICEKIT_UNITASK
@@ -144,12 +146,15 @@ namespace Tests.EditMode
 			// ServiceA is registered but never becomes ready
 			
 			// Arrange
+			// The injection failure now genuinely routes through the error handler, which logs.
+			LogAssert.Expect(LogType.Error, new Regex("Failed to inject required services"));
+
 			var serviceA = new ServiceA();
 			_serviceLocator.RegisterService<IServiceA>(serviceA);
 			// NOT calling ReadyService!
-			
+
 			var serviceB = new ServiceBWithOptionalDependency();
-			
+
 			// Act
 			bool exceptionThrown = false;
 			try
@@ -181,6 +186,10 @@ namespace Tests.EditMode
 			// This simulates the race condition where ServiceA becomes ready
 			// while ServiceB is attempting injection
 			
+			// Timed-out iterations now log via the error handler; the count is non-deterministic,
+			// so ignore error logs here. The AreEqual assertion below is the real guard.
+			LogAssert.ignoreFailingMessages = true;
+
 			const int iterations = 20;
 			int successCount = 0;
 			int failureCount = 0;
@@ -255,12 +264,15 @@ namespace Tests.EditMode
 			// before calling InitializeService
 			
 			// Arrange
+			// The injection failure now genuinely routes through the error handler, which logs.
+			LogAssert.Expect(LogType.Error, new Regex("Failed to inject required services"));
+
 			var serviceA = new ServiceA();
 			_serviceLocator.RegisterService<IServiceA>(serviceA);
 			// Don't ready it to cause timeout
-			
+
 			var serviceB = new ServiceBWithOptionalDependency();
-			
+
 			// Act - Modified flow that checks injection success
 			bool shouldCallInitialize = true;
 			try

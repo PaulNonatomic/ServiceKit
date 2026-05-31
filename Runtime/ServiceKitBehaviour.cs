@@ -115,7 +115,19 @@ namespace Nonatomic.ServiceKit
 		private async Task PerformServiceInitializationSequence()
 #endif
 		{
-			await InjectDependenciesAsync();
+			try
+			{
+				await InjectDependenciesAsync();
+			}
+			catch (Exception)
+			{
+				// Dependency injection failed. HandleDependencyInjectionFailure has already
+				// been invoked via the injection builder's error handler. Stop here so the
+				// failure does not surface as an unhandled async-void exception and the
+				// service is not marked ready with unsatisfied dependencies.
+				return;
+			}
+
 			await InitializeServiceAsync();
 
 			InitializeService();

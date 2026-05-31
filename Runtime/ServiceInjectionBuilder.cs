@@ -70,9 +70,10 @@ namespace Nonatomic.ServiceKit
 			{
 				await ExecuteAsync();
 			}
-			catch (Exception ex)
+			catch (Exception)
 			{
-				_errorHandler?.Invoke(ex);
+				// The error handler (if any) is already invoked inside ExecuteAsync.
+				// Swallow here so the fire-and-forget call doesn't raise an unobserved exception.
 			}
 		}
 
@@ -96,9 +97,10 @@ namespace Nonatomic.ServiceKit
 				await ExecuteWithCancellationAsync(destroyCancellationToken);
 #endif
 			}
-			catch (Exception ex)
+			catch (Exception)
 			{
-				_errorHandler?.Invoke(ex);
+				// The error handler (if any) is already invoked inside ExecuteAsync.
+				// Swallow here so the fire-and-forget call doesn't raise an unobserved exception.
 			}
 		}
 
@@ -164,7 +166,18 @@ namespace Nonatomic.ServiceKit
 					return;
 				}
 
-				throw BuildTimeoutException(fieldsToInject, isExplicitTimeout);
+				// Route the failure through the configured handler (if any) before surfacing it.
+				var timeoutException = BuildTimeoutException(fieldsToInject, isExplicitTimeout);
+				_errorHandler?.Invoke(timeoutException);
+				throw timeoutException;
+			}
+			catch (Exception ex)
+			{
+				// Covers required-services-missing and circular-dependency failures.
+				// The handler is invoked here so WithErrorHandling works on the awaited
+				// ExecuteAsync path, not only the fire-and-forget Execute() path.
+				_errorHandler?.Invoke(ex);
+				throw;
 			}
 			finally
 			{
