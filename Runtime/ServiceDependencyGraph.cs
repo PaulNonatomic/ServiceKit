@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -7,9 +7,11 @@ using System.Threading;
 namespace Nonatomic.ServiceKit
 {
 	/// <summary>
-	/// Centralized dependency graph management and circular detection.
+	/// Dependency graph management and circular detection for a single ServiceKitLocator.
+	/// Each locator owns its own instance so graphs, exemptions and circular-error state
+	/// never leak between independent locators.
 	/// </summary>
-	internal static class ServiceDependencyGraph
+	internal sealed class ServiceDependencyGraph
 	{
 		internal sealed class DependencyNode
 		{
@@ -28,7 +30,7 @@ namespace Nonatomic.ServiceKit
 			public string FieldName { get; set; }
 		}
 
-		public static void UpdateForTarget(Type serviceType, List<FieldInfo> fieldsToInject)
+		public void UpdateForTarget(Type serviceType, List<FieldInfo> fieldsToInject)
 		{
 			lock (_graphLock)
 			{
@@ -43,12 +45,12 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void UpdateForRegistration(Type serviceType, List<FieldInfo> fieldsToInject)
+		public void UpdateForRegistration(Type serviceType, List<FieldInfo> fieldsToInject)
 		{
 			UpdateForTarget(serviceType, fieldsToInject);
 		}
 
-		public static CircularDependencyInfo DetectCircularDependency(Type root)
+		public CircularDependencyInfo DetectCircularDependency(Type root)
 		{
 			lock (_graphLock)
 			{
@@ -64,12 +66,12 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static CircularDependencyInfo DetectCircularDependencyAtRegistration(Type serviceType)
+		public CircularDependencyInfo DetectCircularDependencyAtRegistration(Type serviceType)
 		{
 			return DetectCircularDependency(serviceType);
 		}
 
-		public static void RegisterResolving(Type serviceType, CancellationTokenSource cts)
+		public void RegisterResolving(Type serviceType, CancellationTokenSource cts)
 		{
 			lock (_graphLock)
 			{
@@ -77,7 +79,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void UnregisterResolving(Type serviceType)
+		public void UnregisterResolving(Type serviceType)
 		{
 			lock (_graphLock)
 			{
@@ -85,7 +87,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void SetResolving(Type serviceType, bool isResolving)
+		public void SetResolving(Type serviceType, bool isResolving)
 		{
 			lock (_graphLock)
 			{
@@ -94,7 +96,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void CancelCircularChain(IReadOnlyList<Type> typesInPath)
+		public void CancelCircularChain(IReadOnlyList<Type> typesInPath)
 		{
 			lock (_graphLock)
 			{
@@ -109,7 +111,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void MarkAllInPathAsError(IReadOnlyList<Type> typesInPath)
+		public void MarkAllInPathAsError(IReadOnlyList<Type> typesInPath)
 		{
 			lock (_graphLock)
 			{
@@ -120,7 +122,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void AddCircularDependencyError(Type serviceType)
+		public void AddCircularDependencyError(Type serviceType)
 		{
 			lock (_graphLock)
 			{
@@ -128,7 +130,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static bool HasCircularDependencyError(Type serviceType)
+		public bool HasCircularDependencyError(Type serviceType)
 		{
 			lock (_graphLock)
 			{
@@ -136,7 +138,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void AddCircularDependencyExemption(Type serviceType)
+		public void AddCircularDependencyExemption(Type serviceType)
 		{
 			lock (_graphLock)
 			{
@@ -144,7 +146,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void RemoveCircularDependencyExemption(Type serviceType)
+		public void RemoveCircularDependencyExemption(Type serviceType)
 		{
 			lock (_graphLock)
 			{
@@ -152,7 +154,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static bool IsCircularDependencyExempt(Type serviceType)
+		public bool IsCircularDependencyExempt(Type serviceType)
 		{
 			lock (_graphLock)
 			{
@@ -160,7 +162,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static string GetDependencyReport()
+		public string GetDependencyReport()
 		{
 			lock (_graphLock)
 			{
@@ -198,7 +200,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		public static void ClearAll()
+		public void ClearAll()
 		{
 			lock (_graphLock)
 			{
@@ -213,7 +215,7 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		private static bool HasCircular(Type serviceType, List<Type> path, CircularDependencyInfo info)
+		private bool HasCircular(Type serviceType, List<Type> path, CircularDependencyInfo info)
 		{
 			if (_circularExempt.Contains(serviceType))
 			{
@@ -252,7 +254,7 @@ namespace Nonatomic.ServiceKit
 			return false;
 		}
 
-		private static DependencyNode GetOrCreate(Type type)
+		private DependencyNode GetOrCreate(Type type)
 		{
 			if (!_dependencyGraph.TryGetValue(type, out var node))
 			{
@@ -262,10 +264,10 @@ namespace Nonatomic.ServiceKit
 			return node;
 		}
 
-		private static readonly object _graphLock = new object();
-		private static readonly Dictionary<Type, DependencyNode> _dependencyGraph = new Dictionary<Type, DependencyNode>();
-		private static readonly Dictionary<Type, CancellationTokenSource> _resolvingCancellations = new Dictionary<Type, CancellationTokenSource>();
-		private static readonly HashSet<Type> _circularExempt = new HashSet<Type>();
-		private static readonly HashSet<Type> _servicesWithCircularErrors = new HashSet<Type>();
+		private readonly object _graphLock = new object();
+		private readonly Dictionary<Type, DependencyNode> _dependencyGraph = new Dictionary<Type, DependencyNode>();
+		private readonly Dictionary<Type, CancellationTokenSource> _resolvingCancellations = new Dictionary<Type, CancellationTokenSource>();
+		private readonly HashSet<Type> _circularExempt = new HashSet<Type>();
+		private readonly HashSet<Type> _servicesWithCircularErrors = new HashSet<Type>();
 	}
 }
