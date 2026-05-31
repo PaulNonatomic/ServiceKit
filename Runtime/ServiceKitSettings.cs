@@ -22,7 +22,7 @@ namespace Nonatomic.ServiceKit
 
 		[SerializeField]
 		[Tooltip("Enable debug logging for service registration/unregistration")]
-		private bool _debugLogging = true;
+		private bool _debugLogging = false;
 
 		[SerializeField]
 		[Tooltip("Log warnings when services are registered from destroyed objects")]
