@@ -44,7 +44,7 @@ https://www.pkglnk.dev/servicekit.git
 -   **Comprehensive Debugging**: Built-in editor window with search, filtering, and service inspection.
 -   **Type-Safe**: Full generic support with compile-time type checking.
 -   **Performance Optimized**: Efficient service lookup with minimal overhead, enhanced further with UniTask.
--   **Thread-Safe**: Lock-guarded async resolution, atomic registration guards, and race-condition-hardened service awaiting.
+-   **Concurrency-Hardened**: The registry is lock-guarded and the async awaiter path is race-condition-hardened (atomic 3-state resolution, registration guards). Note that ServiceKit assumes the Unity main thread for registration/lifecycle and integrates with Unity's APIs accordingly — it is not a general-purpose thread-safe container for arbitrary cross-thread use.
 
 ## What's New in V2
 

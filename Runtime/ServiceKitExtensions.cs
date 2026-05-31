@@ -39,7 +39,11 @@ namespace Nonatomic.ServiceKit
 		/// <summary>
 		/// Register a service asynchronously
 		/// </summary>
+#if SERVICEKIT_UNITASK
+		public static async UniTask RegisterServiceAsync<T>(this IServiceKitLocator serviceKitLocator, Task<T> serviceTask) where T : class
+#else
 		public static async Task RegisterServiceAsync<T>(this IServiceKitLocator serviceKitLocator, Task<T> serviceTask) where T : class
+#endif
 		{
 			var service = await serviceTask;
 			serviceKitLocator.RegisterService(service);

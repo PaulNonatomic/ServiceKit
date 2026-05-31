@@ -15,6 +15,9 @@ namespace Nonatomic.ServiceKit.Editor
 	[InitializeOnLoad]
 	public static class ServiceKitAutoProcessor
 	{
+		private static bool _projectProcessPending;
+		private static bool _sceneProcessPending;
+
 		static ServiceKitAutoProcessor()
 		{
 			EditorApplication.projectChanged += OnProjectChanged;
@@ -26,9 +29,14 @@ namespace Nonatomic.ServiceKit.Editor
 		/// </summary>
 		private static void OnProjectChanged()
 		{
+			// Coalesce bursts of change events into a single deferred pass.
+			if (_projectProcessPending) return;
+			_projectProcessPending = true;
+
 			// Delay the processing to ensure assets are fully loaded
 			EditorApplication.delayCall += () =>
 			{
+				_projectProcessPending = false;
 				ProcessPendingAutoAssignments();
 			};
 		}
@@ -39,13 +47,17 @@ namespace Nonatomic.ServiceKit.Editor
 		private static void OnHierarchyChanged()
 		{
 			// Only process in edit mode to avoid runtime interference
-			if (!EditorApplication.isPlaying)
+			if (EditorApplication.isPlaying) return;
+
+			// Coalesce bursts of change events into a single deferred pass.
+			if (_sceneProcessPending) return;
+			_sceneProcessPending = true;
+
+			EditorApplication.delayCall += () =>
 			{
-				EditorApplication.delayCall += () =>
-				{
-					ProcessSceneAutoAssignments();
-				};
-			}
+				_sceneProcessPending = false;
+				ProcessSceneAutoAssignments();
+			};
 		}
 
 		/// <summary>

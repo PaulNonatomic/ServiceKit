@@ -226,7 +226,6 @@ namespace Nonatomic.ServiceKit
 			}
 
 			CompleteAwaiters(serviceType, registeredInfo.ServiceInfo.Service);
-			CheckWaitingServices(serviceType);
 		}
 
 		public void RegisterAndReadyService<T>(T service, [CallerMemberName] string registeredBy = null) where T : class
@@ -985,11 +984,6 @@ namespace Nonatomic.ServiceKit
 				}
 			}
 			tcs?.TrySetResult(service);
-		}
-
-		private static void CheckWaitingServices(Type newlyReadyType)
-		{
-			// Placeholder: could track dependent registrations and signal here.
 		}
 
 		private void OnSceneUnloaded(Scene scene)
