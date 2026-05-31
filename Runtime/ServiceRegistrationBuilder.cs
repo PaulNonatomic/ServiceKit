@@ -138,14 +138,22 @@ namespace Nonatomic.ServiceKit
 
 			var tagsArray = _tags.Count > 0 ? _tags.ToArray() : null;
 
+			// Register every type first, then ready them. Otherwise the first type would be
+			// marked ready (firing its awaiters) before the remaining types are even registered,
+			// so a consumer woken by one type could observe the others as not-yet-registered.
 			foreach (var serviceType in _serviceTypes)
 			{
 				RegisterServiceType(serviceType, tagsArray);
+			}
 
-				if (markAsReady)
-				{
-					_locator.ReadyService(serviceType);
-				}
+			if (!markAsReady)
+			{
+				return;
+			}
+
+			foreach (var serviceType in _serviceTypes)
+			{
+				_locator.ReadyService(serviceType);
 			}
 		}
 

@@ -464,7 +464,9 @@ namespace Nonatomic.ServiceKit
 		public async Task<object> GetServiceAsync(Type serviceType, CancellationToken cancellationToken = default)
 		{
 			TaskCompletionSource<object> sharedTcs;
-			var callerTcs = new TaskCompletionSource<object>();
+			// RunContinuationsAsynchronously so awaiter continuations never execute synchronously
+			// on the thread that completes/cancels the TCS (e.g. while the locator holds _lock).
+			var callerTcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
 
 			lock (_lock)
 			{
@@ -475,7 +477,7 @@ namespace Nonatomic.ServiceKit
 
 				if (!_serviceAwaiters.TryGetValue(serviceType, out sharedTcs))
 				{
-					sharedTcs = new TaskCompletionSource<object>();
+					sharedTcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
 					_serviceAwaiters[serviceType] = sharedTcs;
 				}
 
@@ -534,6 +536,12 @@ namespace Nonatomic.ServiceKit
 
 		public void UnregisterService(Type serviceType)
 		{
+#if SERVICEKIT_UNITASK
+			UniTaskCompletionSource<object> awaiterToCancel = null;
+#else
+			TaskCompletionSource<object> awaiterToCancel = null;
+#endif
+
 			lock (_lock)
 			{
 				var removed = _readyServices.Remove(serviceType) || _registeredServices.Remove(serviceType);
@@ -550,9 +558,12 @@ namespace Nonatomic.ServiceKit
 				if (_serviceAwaiters.TryGetValue(serviceType, out var tcs))
 				{
 					_serviceAwaiters.Remove(serviceType);
-					tcs.TrySetCanceled();
+					awaiterToCancel = tcs;
 				}
 			}
+
+			// Cancel outside the lock so awaiter continuations never run while _lock is held.
+			awaiterToCancel?.TrySetCanceled();
 		}
 
 		public string GetServiceStatus<T>() where T : class
@@ -686,6 +697,12 @@ namespace Nonatomic.ServiceKit
 
 		public void UnregisterServicesFromScene(Scene scene)
 		{
+#if SERVICEKIT_UNITASK
+			var awaitersToCancel = new List<UniTaskCompletionSource<object>>();
+#else
+			var awaitersToCancel = new List<TaskCompletionSource<object>>();
+#endif
+
 			lock (_lock)
 			{
 				var servicesToRemove = new List<Type>();
@@ -741,15 +758,20 @@ namespace Nonatomic.ServiceKit
 					_readyServices.Remove(type);
 					_registeredServices.Remove(type);
 
-
 					if (_serviceAwaiters.TryGetValue(type, out var tcs))
 					{
-						tcs.TrySetCanceled();
 						_serviceAwaiters.Remove(type);
+						awaitersToCancel.Add(tcs);
 					}
 				}
 
 				_trackedScenes.Remove(scene);
+			}
+
+			// Cancel outside the lock so awaiter continuations never run while _lock is held.
+			foreach (var tcs in awaitersToCancel)
+			{
+				tcs.TrySetCanceled();
 			}
 		}
 
@@ -786,28 +808,40 @@ namespace Nonatomic.ServiceKit
 
 		public void ClearServices()
 		{
+#if SERVICEKIT_UNITASK
+			var awaitersToCancel = new List<UniTaskCompletionSource<object>>();
+#else
+			var awaitersToCancel = new List<TaskCompletionSource<object>>();
+#endif
+
 			lock (_lock)
 			{
-				// Cancel all pending service awaiters first
+				// Collect pending awaiters; they are cancelled after releasing the lock.
 				foreach (var kvp in _serviceAwaiters)
 				{
-					try
-					{
-						kvp.Value.TrySetCanceled();
-					}
-					catch
-					{
-						// Ignore any exceptions during cleanup
-					}
+					awaitersToCancel.Add(kvp.Value);
 				}
 				_serviceAwaiters.Clear();
-				
+
 				_readyServices.Clear();
 				_registeredServices.Clear();
 				_trackedScenes.Clear();
 
 				// Clear dependency graph and exemptions
 				_dependencyGraph.ClearAll();
+			}
+
+			// Cancel outside the lock so awaiter continuations never run while _lock is held.
+			foreach (var tcs in awaitersToCancel)
+			{
+				try
+				{
+					tcs.TrySetCanceled();
+				}
+				catch
+				{
+					// Ignore any exceptions during cleanup
+				}
 			}
 		}
 
