@@ -21,17 +21,16 @@ namespace Nonatomic.ServiceKit
 	/// </summary>
 	public class ServiceInjectionBuilder : IServiceInjectionBuilder
 	{
-		public static bool IsExemptFromCircularDependencyCheck(Type serviceType)
-			=> ServiceDependencyGraph.IsCircularDependencyExempt(serviceType);
-
-		public static bool HasCircularDependencyError(Type serviceType)
-			=> ServiceDependencyGraph.HasCircularDependencyError(serviceType);
-		
 		public ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target)
 		{
 			_serviceKitLocator = serviceKitLocator;
 			_target = target;
 			_targetServiceType = DetermineServiceType(target);
+
+			// The dependency graph is owned by the concrete locator. When the locator is a
+			// mock/stub (e.g. in unit tests) there is no graph and circular-dependency
+			// bookkeeping is simply skipped.
+			_dependencyGraph = (serviceKitLocator as ServiceKitLocator)?.DependencyGraph;
 		}
 
 		public IServiceInjectionBuilder WithCancellation(CancellationToken cancellationToken)
@@ -114,7 +113,7 @@ namespace Nonatomic.ServiceKit
 			if (fieldsToInject.Count == 0) return;
 
 			var resolutionCts = new CancellationTokenSource();
-			ServiceDependencyGraph.RegisterResolving(_targetServiceType, resolutionCts);
+			_dependencyGraph?.RegisterResolving(_targetServiceType, resolutionCts);
 			
 			CancellationTokenSource timeoutCts = null;
 			IDisposable timeoutReg = null;
@@ -181,8 +180,8 @@ namespace Nonatomic.ServiceKit
 			}
 			finally
 			{
-				ServiceDependencyGraph.SetResolving(_targetServiceType, false);
-				ServiceDependencyGraph.UnregisterResolving(_targetServiceType);
+				_dependencyGraph?.SetResolving(_targetServiceType, false);
+				_dependencyGraph?.UnregisterResolving(_targetServiceType);
 				resolutionCts.Dispose();
 				timeoutCts?.Dispose();
 				timeoutReg?.Dispose();
@@ -225,8 +224,8 @@ namespace Nonatomic.ServiceKit
 
 		private void RegisterDependenciesForCircularDetection(List<FieldInfo> fieldsToInject)
 		{
-			ServiceDependencyGraph.UpdateForTarget(_targetServiceType, fieldsToInject);
-			ServiceDependencyGraph.SetResolving(_targetServiceType, true);
+			_dependencyGraph?.UpdateForTarget(_targetServiceType, fieldsToInject);
+			_dependencyGraph?.SetResolving(_targetServiceType, true);
 		}
 
 #if SERVICEKIT_UNITASK
@@ -332,11 +331,11 @@ namespace Nonatomic.ServiceKit
 
 		private void ThrowIfCircularDependencyDetected()
 		{
-			var circularDependency = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+			var circularDependency = _dependencyGraph?.DetectCircularDependency(_targetServiceType);
 			if (circularDependency == null) return;
 
-			ServiceDependencyGraph.CancelCircularChain(circularDependency.TypesInPath);
-			ServiceDependencyGraph.MarkAllInPathAsError(circularDependency.TypesInPath);
+			_dependencyGraph?.CancelCircularChain(circularDependency.TypesInPath);
+			_dependencyGraph?.MarkAllInPathAsError(circularDependency.TypesInPath);
 			throw new ServiceInjectionException($"Circular dependency detected: {circularDependency.Path}");
 		}
 
@@ -432,8 +431,8 @@ namespace Nonatomic.ServiceKit
 
 		private void HandleCircularDependencyError(Type serviceType)
 		{
-			ServiceDependencyGraph.AddCircularDependencyError(serviceType);
-			ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
+			_dependencyGraph?.AddCircularDependencyError(serviceType);
+			_dependencyGraph?.AddCircularDependencyError(_targetServiceType);
 		}
 
 #if SERVICEKIT_UNITASK
@@ -456,15 +455,15 @@ namespace Nonatomic.ServiceKit
 		{
 			Debug.LogError($"Failed to inject required services: {exception.Message}");
 
-			var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+			var circular = _dependencyGraph?.DetectCircularDependency(_targetServiceType);
 			if (circular == null) return;
 
 			Debug.LogError($"Circular dependency detected: {circular.Path}");
-			ServiceDependencyGraph.AddCircularDependencyError(_targetServiceType);
+			_dependencyGraph?.AddCircularDependencyError(_targetServiceType);
 
 			if (circular.ToType != null)
 			{
-				ServiceDependencyGraph.AddCircularDependencyError(circular.ToType);
+				_dependencyGraph?.AddCircularDependencyError(circular.ToType);
 			}
 		}
 
@@ -560,7 +559,7 @@ namespace Nonatomic.ServiceKit
 
 		private void AppendCircularDependencyInfo(StringBuilder sb)
 		{
-			var circular = ServiceDependencyGraph.DetectCircularDependency(_targetServiceType);
+			var circular = _dependencyGraph?.DetectCircularDependency(_targetServiceType);
 			if (circular != null)
 			{
 				sb.Append("\n\nCircular dependency detected: ");
@@ -612,6 +611,7 @@ namespace Nonatomic.ServiceKit
 		private float _timeout = -1f;
 
 		private readonly IServiceKitLocator _serviceKitLocator;
+		private readonly ServiceDependencyGraph _dependencyGraph;
 		private readonly object _target;
 		private readonly Type _targetServiceType;
 		private CancellationToken _cancellationToken = CancellationToken.None;

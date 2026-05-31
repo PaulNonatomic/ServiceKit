@@ -93,7 +93,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				// Add services for this scene - pass the scene type for color consistency
 				foreach (var serviceInfo in sceneGroup.Services)
 				{
-					var serviceItem = new ServiceItem(serviceInfo.ServiceType, serviceInfo.Service, sceneItem.GetSceneType(), serviceInfo.DebugData.State, serviceInfo.Tags);
+					var serviceItem = new ServiceItem(serviceInfo.ServiceType, serviceInfo.Service, sceneItem.GetSceneType(), serviceInfo.DebugData.State, serviceInfo.Tags, _locator);
 					sceneItem.AddService(serviceItem);
 				}
 			}

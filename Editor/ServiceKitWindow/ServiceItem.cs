@@ -20,7 +20,7 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		private readonly Color _iconColor;
 		private readonly Texture2D _normalIcon;
 
-		public ServiceItem(Type serviceType, object serviceInstance, SceneType sceneType = SceneType.Regular, string state = "Ready", List<ServiceTag> tags = null)
+		public ServiceItem(Type serviceType, object serviceInstance, SceneType sceneType = SceneType.Regular, string state = "Ready", List<ServiceTag> tags = null, ServiceKitLocator locator = null)
 		{
 			// Store the service type name for searching
 			ServiceTypeName = serviceType.Name;
@@ -28,12 +28,13 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 
 			// Add the base service-item class
 			AddToClassList("service-item");
-			
+
 			// Determine if service is ready
 			var isReady = state == "Ready";
-			
-			var isExempt = ServiceInjectionBuilder.IsExemptFromCircularDependencyCheck(serviceType);
-			var hasCircularDependencyError = ServiceInjectionBuilder.HasCircularDependencyError(serviceType);
+
+			// Circular-dependency state is owned by the locator that holds the service.
+			var isExempt = locator != null && locator.IsServiceCircularDependencyExempt(serviceType);
+			var hasCircularDependencyError = locator != null && locator.HasCircularDependencyError(serviceType);
 			
 			// Add state class
 			if (isReady)

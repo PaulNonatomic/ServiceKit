@@ -40,6 +40,11 @@ namespace Nonatomic.ServiceKit
 		private readonly object _lock = new object();
 		private readonly HashSet<Scene> _trackedScenes = new HashSet<Scene>();
 
+		// Per-locator dependency graph. Owned here so circular detection, exemptions and
+		// circular-error state never leak between independent ServiceKitLocator instances.
+		private readonly ServiceDependencyGraph _dependencyGraph = new ServiceDependencyGraph();
+		internal ServiceDependencyGraph DependencyGraph => _dependencyGraph;
+
 		private class RegisteredServiceInfo
 		{
 			public ServiceInfo ServiceInfo { get; set; }
@@ -128,7 +133,7 @@ namespace Nonatomic.ServiceKit
 				// Track circular dependency exemption
 				if (exemptFromCircularDependencyCheck)
 				{
-					ServiceDependencyGraph.AddCircularDependencyExemption(serviceType);
+					_dependencyGraph.AddCircularDependencyExemption(serviceType);
 #if UNITY_EDITOR
 					if (ServiceKitSettings.Instance.DebugLogging)
 					{
@@ -141,13 +146,13 @@ namespace Nonatomic.ServiceKit
 				if (!exemptFromCircularDependencyCheck)
 				{
 					var fieldsToInject = GetInjectableFields(service.GetType());
-					ServiceDependencyGraph.UpdateForRegistration(serviceType, fieldsToInject);
+					_dependencyGraph.UpdateForRegistration(serviceType, fieldsToInject);
 
-					var circularDependency = ServiceDependencyGraph.DetectCircularDependencyAtRegistration(serviceType);
+					var circularDependency = _dependencyGraph.DetectCircularDependencyAtRegistration(serviceType);
 					if (circularDependency != null)
 					{
-						ServiceDependencyGraph.AddCircularDependencyError(serviceType);
-						ServiceDependencyGraph.MarkAllInPathAsError(circularDependency.TypesInPath);
+						_dependencyGraph.AddCircularDependencyError(serviceType);
+						_dependencyGraph.MarkAllInPathAsError(circularDependency.TypesInPath);
 
 #if UNITY_EDITOR
 						if (ServiceKitSettings.Instance.DebugLogging)
@@ -307,7 +312,17 @@ namespace Nonatomic.ServiceKit
 
 		public bool IsServiceCircularDependencyExempt(Type serviceType)
 		{
-			return ServiceDependencyGraph.IsCircularDependencyExempt(serviceType);
+			return _dependencyGraph.IsCircularDependencyExempt(serviceType);
+		}
+
+		public bool HasCircularDependencyError<T>() where T : class
+		{
+			return HasCircularDependencyError(typeof(T));
+		}
+
+		public bool HasCircularDependencyError(Type serviceType)
+		{
+			return _dependencyGraph.HasCircularDependencyError(serviceType);
 		}
 
 		public bool TryGetService<T>(out T service) where T : class
@@ -523,7 +538,7 @@ namespace Nonatomic.ServiceKit
 			{
 				var removed = _readyServices.Remove(serviceType) || _registeredServices.Remove(serviceType);
 
-				ServiceDependencyGraph.RemoveCircularDependencyExemption(serviceType);
+				_dependencyGraph.RemoveCircularDependencyExemption(serviceType);
 
 #if UNITY_EDITOR
 				if (removed && ServiceKitSettings.Instance.DebugLogging)
@@ -792,7 +807,7 @@ namespace Nonatomic.ServiceKit
 				_trackedScenes.Clear();
 
 				// Clear dependency graph and exemptions
-				ServiceDependencyGraph.ClearAll();
+				_dependencyGraph.ClearAll();
 			}
 		}
 
