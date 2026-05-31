@@ -1,6 +1,6 @@
 {
   "name": "com.nonatomic.servicekit",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "displayName": "Service Kit",
   "description": "A lightweight dependency injection and service locator framework for Unity. Attribute-based registration, async resolution, fluent API, optional dependencies, service tags, scene-aware lifecycle, and UniTask support.",
   "unity": "2022.3",
@@ -78,6 +78,16 @@
       "displayName": "9 - Complete Game Example",
       "description": "A mini-game demonstrating real-world ServiceKit usage patterns.",
       "path": "Samples~/9 - Complete Game Example"
+    },
+    {
+      "displayName": "10 - Unit Testing",
+      "description": "Testing ServiceKitBehaviour services with mocks and real locators using UseLocator().",
+      "path": "Samples~/10 - Unit Testing"
+    },
+    {
+      "displayName": "11 - Error Handling",
+      "description": "TryResolveService, timeout recovery, circular dependency exemption, and custom error handlers.",
+      "path": "Samples~/11 - Error Handling"
     }
   ]
 }

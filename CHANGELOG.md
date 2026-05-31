@@ -1,3 +1,14 @@
+## [2.1.0] - 2026-04-19
+
+### Added
+- **Sample 10: Unit Testing** — Demonstrates UseLocator() for mock injection, TestAwake pattern, NSubstitute mock setup, and integration testing with real ServiceKitLocator
+- **Sample 11: Error Handling** — Demonstrates TryResolveService/ServiceResolutionStatus, timeout recovery, custom error handlers, and circular dependency exemption with CircularDependencyExempt attribute
+
+### Changed
+- **Sample 1**: Added comment explaining why plain C# services use fluent API instead of [Service] attribute
+- **Sample 7**: Updated to show InjectAsync one-liner as the primary injection pattern
+- **Sample 9**: SaveService now uses tag-based discovery (`GetServicesWithTag("saveable")`) instead of hardcoded service references. Added ISaveable interface. PlayerService implements ISaveable and registers with "saveable" tag.
+
 ## [2.0.2] - 2026-04-18
 
 ### Changed

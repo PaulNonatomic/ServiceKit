@@ -1,18 +1,17 @@
+using System.Collections.Generic;
 using Nonatomic.ServiceKit;
 using UnityEngine;
 
 namespace ServiceKitSamples.CompleteGameExample
 {
 	/// <summary>
-	/// Save/load service using tags to find saveable services.
-	/// Demonstrates: Service tags for dynamic discovery.
+	/// Save/load service that uses tags to discover saveable services dynamically.
+	/// Demonstrates: GetServicesWithTag for decoupled save/load without hardcoded dependencies.
 	/// </summary>
 	[Service(typeof(ISaveService))]
 	public class SaveService : ServiceKitBehaviour, ISaveService
 	{
 		private static SaveService _instance;
-
-		[InjectService] private IPlayerService _playerService;
 
 		private const string SaveKey = "GameSave";
 
@@ -39,20 +38,32 @@ namespace ServiceKitSamples.CompleteGameExample
 		{
 			Debug.Log("[SaveService] Saving game...");
 
-			// In a real implementation, you'd serialize and save PlayerService data
-			// using the tag-based approach from Sample 6
-			var saveData = new GameSaveData
-			{
-				PlayerName = _playerService.PlayerName,
-				Health = _playerService.Health,
-				Score = _playerService.Score
-			};
+			// Discover all saveable services dynamically via the "saveable" tag
+			var saveableServices = Locator.GetServicesWithTag("saveable");
+			var saveData = new Dictionary<string, string>();
 
-			var json = JsonUtility.ToJson(saveData);
-			PlayerPrefs.SetString(SaveKey, json);
+			foreach (var serviceInfo in saveableServices)
+			{
+				if (serviceInfo.Service is ISaveable saveable)
+				{
+					var json = JsonUtility.ToJson(saveable.GetSaveData());
+					saveData[saveable.SaveKey] = json;
+					Debug.Log($"[SaveService] Saved: {saveable.SaveKey}");
+				}
+			}
+
+			// Serialize the combined save data
+			var wrapper = new SaveDataWrapper { Keys = new List<string>(), Values = new List<string>() };
+			foreach (var kvp in saveData)
+			{
+				wrapper.Keys.Add(kvp.Key);
+				wrapper.Values.Add(kvp.Value);
+			}
+
+			PlayerPrefs.SetString(SaveKey, JsonUtility.ToJson(wrapper));
 			PlayerPrefs.Save();
 
-			Debug.Log($"[SaveService] Game saved! Score: {saveData.Score}");
+			Debug.Log($"[SaveService] Game saved! ({saveData.Count} services)");
 		}
 
 		public bool LoadGame()
@@ -65,21 +76,28 @@ namespace ServiceKitSamples.CompleteGameExample
 
 			Debug.Log("[SaveService] Loading game...");
 
-			var json = PlayerPrefs.GetString(SaveKey);
-			var saveData = JsonUtility.FromJson<GameSaveData>(json);
-
-			// Apply to player service
-			if (_playerService is PlayerService playerService)
+			var wrapper = JsonUtility.FromJson<SaveDataWrapper>(PlayerPrefs.GetString(SaveKey));
+			var saveData = new Dictionary<string, string>();
+			for (int i = 0; i < wrapper.Keys.Count; i++)
 			{
-				playerService.LoadSaveData(new PlayerService.PlayerSaveData
-				{
-					PlayerName = saveData.PlayerName,
-					Health = saveData.Health,
-					Score = saveData.Score
-				});
+				saveData[wrapper.Keys[i]] = wrapper.Values[i];
 			}
 
-			Debug.Log($"[SaveService] Game loaded! Score: {saveData.Score}");
+			// Discover all saveable services and restore their data
+			var saveableServices = Locator.GetServicesWithTag("saveable");
+			var loadedCount = 0;
+
+			foreach (var serviceInfo in saveableServices)
+			{
+				if (serviceInfo.Service is ISaveable saveable && saveData.TryGetValue(saveable.SaveKey, out var json))
+				{
+					saveable.LoadSaveData(JsonUtility.FromJson(json, saveable.GetSaveData().GetType()));
+					Debug.Log($"[SaveService] Loaded: {saveable.SaveKey}");
+					loadedCount++;
+				}
+			}
+
+			Debug.Log($"[SaveService] Game loaded! ({loadedCount} services)");
 			return true;
 		}
 
@@ -100,11 +118,10 @@ namespace ServiceKitSamples.CompleteGameExample
 		}
 
 		[System.Serializable]
-		private class GameSaveData
+		private class SaveDataWrapper
 		{
-			public string PlayerName;
-			public int Health;
-			public int Score;
+			public List<string> Keys;
+			public List<string> Values;
 		}
 	}
 }

@@ -59,6 +59,8 @@ _serviceKit.Register(new GreetingService())
     .Ready();
 ```
 
+> **Fluent API vs `[Service]` attribute:** Plain C# classes (non-MonoBehaviour) must be registered using the fluent API shown above. The `[Service]` attribute is only for MonoBehaviour services that inherit from `ServiceKitBehaviour` -- those are registered automatically in `Awake()`. See Sample 2 for the attribute-based approach.
+
 ### Consumption
 ```csharp
 // Direct access

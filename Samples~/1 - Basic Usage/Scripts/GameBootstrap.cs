@@ -34,7 +34,8 @@ namespace ServiceKitSamples.BasicUsage
 
 		private void RegisterServices()
 		{
-			// Register and ready in one fluent chain
+			// Plain C# services use the fluent registration API.
+			// The [Service] attribute is for MonoBehaviour services that inherit ServiceKitBehaviour.
 			_serviceKit.Register(new GreetingService())
 				.As<IGreetingService>()
 				.Ready();

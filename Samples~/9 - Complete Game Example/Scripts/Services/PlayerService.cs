@@ -9,7 +9,7 @@ namespace ServiceKitSamples.CompleteGameExample
 	/// Demonstrates: ISaveable pattern, events, service tags.
 	/// </summary>
 	[Service(typeof(IPlayerService))]
-	public class PlayerService : ServiceKitBehaviour, IPlayerService
+	public class PlayerService : ServiceKitBehaviour, IPlayerService, ISaveable
 	{
 		private static PlayerService _instance;
 
@@ -17,6 +17,7 @@ namespace ServiceKitSamples.CompleteGameExample
 
 		[SerializeField] private int _startingHealth = 100;
 
+		public string SaveKey => "player";
 		public string PlayerName { get; private set; } = "Player";
 		public int Health { get; private set; }
 		public int MaxHealth => _startingHealth;
@@ -41,6 +42,9 @@ namespace ServiceKitSamples.CompleteGameExample
 
 		protected override void InitializeService()
 		{
+			// Tag this service as "saveable" so SaveService can discover it dynamically
+			Locator.AddTagsToService<IPlayerService>("saveable");
+
 			Debug.Log("[PlayerService] Initialized");
 			Reset();
 		}

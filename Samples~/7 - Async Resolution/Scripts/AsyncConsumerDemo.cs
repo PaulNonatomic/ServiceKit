@@ -110,21 +110,25 @@ namespace ServiceKitSamples.AsyncResolutionExample
 		}
 
 		/// <summary>
-		/// Using Inject with configuration.
+		/// Using InjectAsync — the recommended one-liner for most scenarios.
 		/// </summary>
 		private async Task DemoInjectAsync()
 		{
-			Debug.Log("=== Demo: Inject ===");
+			Debug.Log("=== Demo: InjectAsync ===");
 
 			var consumer = new ServiceConsumer();
 
 			try
 			{
-				await _serviceKitLocator.Inject(consumer)
-					.WithTimeout(_resolutionTimeout)
-					.WithCancellation(destroyCancellationToken)
-					.WithErrorHandling(ex => Debug.LogError($"Injection failed: {ex.Message}"))
-					.ExecuteAsync();
+				// Recommended: one-liner with default timeout and error handling
+				await _serviceKitLocator.InjectAsync(consumer, destroyCancellationToken);
+
+				// Alternative: builder pattern for custom timeout, cancellation, or error handling
+				// await _serviceKitLocator.Inject(consumer)
+				// 	.WithTimeout(_resolutionTimeout)
+				// 	.WithCancellation(destroyCancellationToken)
+				// 	.WithErrorHandling(ex => Debug.LogError($"Injection failed: {ex.Message}"))
+				// 	.ExecuteAsync();
 
 				Debug.Log($"Services injected into consumer");
 				consumer.UseServices();
