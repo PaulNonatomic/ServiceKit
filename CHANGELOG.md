@@ -1,3 +1,20 @@
+## [2.2.0] - 2026-05-31
+
+### Fixed
+- **Injection error handling**: `WithErrorHandling` is now honored on the awaited `ExecuteAsync` path (and the `InjectAsync` extension). Previously the handler was ignored there, so `ServiceKitBehaviour` injection failures surfaced as unhandled async-void exceptions and a service could still be marked ready with unsatisfied dependencies.
+- **Per-locator dependency graph**: circular-dependency detection, exemptions, and errors are tracked per `ServiceKitLocator` instead of in shared static state, so multiple locators no longer cross-contaminate and one locator's `ClearServices` no longer wipes another's graph.
+- **Timeout manager**: injection timeouts use unscaled time, so they still fire when `Time.timeScale` is 0; the editor focus/pause handlers no longer permanently disable the timeout manager after the editor loses focus.
+- **Awaiter cancellation**: pending awaiters are completed and cancelled outside the locator lock (and use `RunContinuationsAsynchronously`), so awaiter continuations no longer run synchronously while the lock is held.
+- **Scene cleanup in player builds**: scene-to-service matching uses runtime metadata instead of editor-only data, so automatic scene cleanup works in builds, not only in the editor.
+- **Multi-type registration**: `Register(...).As<A>().As<B>().Ready()` registers all types before readying any, so a consumer woken by one type no longer observes the others as not-yet-registered.
+
+### Changed
+- `DebugLogging` now defaults to `false` for new settings instances (quieter out of the box).
+- `RegisterServiceAsync` returns `UniTask` when UniTask is enabled.
+- Editor auto-assignment processing is debounced to avoid redundant project scans on bursts of project/hierarchy changes.
+- Removed the unused internal `CheckWaitingServices` placeholder and the editor-only static circular-dependency helpers on `ServiceInjectionBuilder` (use `ServiceKitLocator.IsServiceCircularDependencyExempt` / `HasCircularDependencyError` instead).
+- Tightened the README thread-safety wording to reflect the lock-guarded registry and main-thread assumptions.
+
 ## [2.1.0] - 2026-04-19
 
 ### Added
