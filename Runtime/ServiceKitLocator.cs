@@ -709,22 +709,7 @@ namespace Nonatomic.ServiceKit
 
 				foreach (var kvp in _readyServices)
 				{
-					var serviceInfo = kvp.Value;
-
-					if (!(serviceInfo.Service is MonoBehaviour))
-						continue;
-
-#if UNITY_EDITOR
-					if (serviceInfo.DebugData.IsDontDestroyOnLoad)
-						continue;
-
-					if (serviceInfo.DebugData.SceneHandle == scene.handle)
-					{
-						servicesToRemove.Add(kvp.Key);
-					}
-					else
-#endif
-					if (serviceInfo.Service is MonoBehaviour mb && mb == null)
+					if (ShouldRemoveOnSceneUnload(kvp.Value, scene))
 					{
 						servicesToRemove.Add(kvp.Key);
 					}
@@ -732,22 +717,7 @@ namespace Nonatomic.ServiceKit
 
 				foreach (var kvp in _registeredServices)
 				{
-					var serviceInfo = kvp.Value.ServiceInfo;
-
-					if (!(serviceInfo.Service is MonoBehaviour))
-						continue;
-
-#if UNITY_EDITOR
-					if (serviceInfo.DebugData.IsDontDestroyOnLoad)
-						continue;
-
-					if (serviceInfo.DebugData.SceneHandle == scene.handle)
-					{
-						servicesToRemove.Add(kvp.Key);
-					}
-					else
-#endif
-					if (serviceInfo.Service is MonoBehaviour mb && mb == null)
+					if (ShouldRemoveOnSceneUnload(kvp.Value.ServiceInfo, scene))
 					{
 						servicesToRemove.Add(kvp.Key);
 					}
@@ -773,6 +743,23 @@ namespace Nonatomic.ServiceKit
 			{
 				tcs.TrySetCanceled();
 			}
+		}
+
+		private static bool ShouldRemoveOnSceneUnload(ServiceInfo serviceInfo, Scene scene)
+		{
+			if (!(serviceInfo.Service is MonoBehaviour))
+				return false;
+
+			// Persistent services survive scene unloads.
+			if (serviceInfo.IsDontDestroyOnLoad)
+				return false;
+
+			// Service belongs to the unloading scene...
+			if (serviceInfo.SceneHandle == scene.handle)
+				return true;
+
+			// ...or its backing MonoBehaviour has already been destroyed.
+			return serviceInfo.Service is MonoBehaviour mb && mb == null;
 		}
 
 		public void CleanupDestroyedServices()
@@ -858,6 +845,21 @@ namespace Nonatomic.ServiceKit
 				info.Tags.AddRange(tags);
 			}
 
+			// Runtime scene metadata (populated in all build targets so scene cleanup works in players).
+			if (service is MonoBehaviour sceneBehaviour && sceneBehaviour != null)
+			{
+				var scene = sceneBehaviour.gameObject.scene;
+				info.SceneHandle = scene.handle;
+
+				// Both DontDestroyOnLoad and addressable scenes have buildIndex == -1,
+				// so we check both name and buildIndex to reduce false positives.
+				info.IsDontDestroyOnLoad = scene.name == "DontDestroyOnLoad" && scene.buildIndex == -1;
+			}
+			else
+			{
+				info.SceneHandle = -1;
+			}
+
 #if UNITY_EDITOR
 			info.DebugData.RegisteredAt = DateTime.Now;
 			info.DebugData.RegisteredBy = registeredBy ?? "Unknown";
@@ -867,11 +869,7 @@ namespace Nonatomic.ServiceKit
 				var scene = monoBehaviour.gameObject.scene;
 				info.DebugData.SceneName = scene.name;
 				info.DebugData.SceneHandle = scene.handle;
-
-				// Check if the object is in the DontDestroyOnLoad scene
-				// Both DontDestroyOnLoad and addressable scenes have buildIndex == -1,
-				// so we check both name and buildIndex to reduce false positives
-				info.DebugData.IsDontDestroyOnLoad = scene.name == "DontDestroyOnLoad" && scene.buildIndex == -1;
+				info.DebugData.IsDontDestroyOnLoad = info.IsDontDestroyOnLoad;
 			}
 			else
 			{

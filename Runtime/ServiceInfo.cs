@@ -21,6 +21,19 @@ namespace Nonatomic.ServiceKit
 		/// </summary>
 		public List<ServiceTag> Tags { get; set; } = new ();
 
+		/// <summary>
+		/// Handle of the scene the service's MonoBehaviour belongs to, or -1 for non-MonoBehaviour
+		/// services. Available in all build targets (not just the editor) so scene-based cleanup
+		/// works in player builds.
+		/// </summary>
+		public int SceneHandle { get; set; } = -1;
+
+		/// <summary>
+		/// Whether the service's MonoBehaviour lives in the DontDestroyOnLoad scene.
+		/// Available in all build targets so scene-based cleanup can skip persistent services.
+		/// </summary>
+		public bool IsDontDestroyOnLoad { get; set; }
+
 #if UNITY_EDITOR
 		/// <summary>
 		/// Editor-only debug metadata for ServiceKit Window and debugging
