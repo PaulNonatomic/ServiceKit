@@ -1,9 +1,11 @@
 using System;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nonatomic.ServiceKit;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 namespace Tests.EditMode
@@ -46,6 +48,49 @@ namespace Tests.EditMode
 		}
 		
 		[Test]
+		public async Task ExecuteAsync_WithErrorHandler_InvokesHandlerAndStillThrows()
+		{
+			// Contract: when a handler is supplied via WithErrorHandling, ExecuteAsync must
+			// route the failure through that handler (and still surface the exception to the
+			// awaiter). Previously the handler was silently ignored on the ExecuteAsync path.
+
+			// Arrange
+			var consumer = new ConsumerWithRequiredDependency();
+			bool errorHandlerCalled = false;
+			Exception handlerException = null;
+
+			// Don't register the required service to force a failure.
+
+			// Act
+			Exception caughtException = null;
+			try
+			{
+				using (var cts = new CancellationTokenSource(100))
+				{
+					await _serviceLocator.Inject(consumer)
+						.WithCancellation(cts.Token)
+						.WithErrorHandling(ex =>
+						{
+							errorHandlerCalled = true;
+							handlerException = ex;
+						})
+						.ExecuteAsync();
+				}
+
+				Assert.Fail("ExecuteAsync should have thrown an exception");
+			}
+			catch (Exception ex)
+			{
+				caughtException = ex;
+			}
+
+			// Assert
+			Assert.IsTrue(errorHandlerCalled, "Error handler MUST be invoked on the ExecuteAsync path");
+			Assert.IsNotNull(handlerException, "Handler should receive the failure exception");
+			Assert.IsNotNull(caughtException, "ExecuteAsync should still surface the exception to the awaiter");
+		}
+
+		[Test]
 		public async Task ExecuteAsync_WithErrorHandler_ShouldStillThrow()
 		{
 			// This test verifies that ExecuteAsync throws even when WithErrorHandling is used
@@ -87,9 +132,10 @@ namespace Tests.EditMode
 			Assert.IsTrue(caughtException is ServiceInjectionException || caughtException is TimeoutException || caughtException is OperationCanceledException,
 				$"Expected ServiceInjectionException, TimeoutException, or OperationCanceledException, got {caughtException.GetType().Name}");
 			
-			// The error handler should NOT have been called because ExecuteAsync doesn't use it
-			Assert.IsFalse(errorHandlerCalled, 
-				"Error handler should NOT be called when using ExecuteAsync");
+			// The error handler IS invoked on the ExecuteAsync path, and the exception still surfaces.
+			Assert.IsTrue(errorHandlerCalled,
+				"Error handler should be invoked when using ExecuteAsync");
+			Assert.IsNotNull(handlerException, "Handler should receive the failure exception");
 		}
 		
 		[Test]
@@ -165,8 +211,8 @@ namespace Tests.EditMode
 				"Should throw TimeoutException for registered but not ready optional dependency");
 			Assert.IsTrue(caughtException is TimeoutException,
 				$"Expected TimeoutException, got {caughtException?.GetType().Name}");
-			Assert.IsFalse(errorHandlerCalled,
-				"Error handler should NOT be called with ExecuteAsync");
+			Assert.IsTrue(errorHandlerCalled,
+				"Error handler should be invoked with ExecuteAsync");
 			Assert.IsNull(consumer.OptionalService,
 				"Service should not be injected after timeout");
 		}
@@ -182,10 +228,13 @@ namespace Tests.EditMode
 			bool errorHandlerCalled = false;
 			bool initializeServiceCalled = false;
 			bool dependencyWasNull = false;
-			
+
+			// The handler now genuinely runs and logs an error; expect it so the test passes.
+			LogAssert.Expect(LogType.Error, new Regex("Failed to inject required services"));
+
 			// Register but don't ready the service (simulates registered but not initialized)
 			_serviceLocator.RegisterService<ITestService>(service);
-			
+
 			// Act - Simulate ServiceKitBehaviour's PerformServiceInitializationSequence
 			async Task SimulateServiceKitFlow()
 			{
@@ -240,17 +289,14 @@ namespace Tests.EditMode
 			}
 			
 			// Assert
-			Assert.IsTrue(flowThrewException, 
+			Assert.IsTrue(flowThrewException,
 				"Flow should throw TimeoutException");
-			Assert.IsFalse(errorHandlerCalled,
-				"Error handler should NOT be called with ExecuteAsync (this is a bug in the API design)");
+			Assert.IsTrue(errorHandlerCalled,
+				"Error handler IS invoked on the ExecuteAsync path");
 			Assert.IsFalse(initializeServiceCalled,
 				"InitializeService should NOT be called after injection failure");
 			Assert.IsNull(consumer.OptionalService,
 				"Optional service should remain null after timeout");
-			
-			// The issue is that WithErrorHandling doesn't work with ExecuteAsync!
-			// ServiceKitBehaviour thinks it's handling errors, but it's not.
 		}
 	}
 }

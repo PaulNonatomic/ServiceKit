@@ -376,10 +376,9 @@ namespace Tests.EditMode
 			consumer.InitializeService();
 			
 			// Assert
-			// The error handler is NOT called when using ExecuteAsync (only with Execute())
-			// So an exception should be thrown
-			Assert.IsNotNull(caughtException, "Exception should be thrown (WithErrorHandling doesn't work with ExecuteAsync)");
-			Assert.IsFalse(errorHandlerCalled, "Error handler should NOT be called with ExecuteAsync");
+			// The error handler IS invoked on the ExecuteAsync path, and the exception still surfaces.
+			Assert.IsNotNull(caughtException, "Exception should still be surfaced to the awaiter");
+			Assert.IsTrue(errorHandlerCalled, "Error handler should be invoked with ExecuteAsync");
 			Assert.IsFalse(executionContinuedAfterError, "Execution should not continue after exception");
 		}
 	}
