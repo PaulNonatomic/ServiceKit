@@ -1,3 +1,8 @@
+## [Unreleased]
+
+### Added
+- **Editor hint for concrete-only registration**: in the ServiceKit window, a service registered under its concrete type that implements a user-defined interface (which is not itself registered in the locator) now shows an amber `i` badge. The tooltip suggests registering it as the interface via `[Service(typeof(IFoo))]` — catching the common case of a forgotten attribute, or one placed on an abstract base where it has no effect (the attribute is not inherited).
+
 ## [2.2.0] - 2026-05-31
 
 ### Fixed

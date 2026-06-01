@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nonatomic.ServiceKit.Editor.Utils;
 using UnityEditor;
 using UnityEngine;
@@ -156,6 +157,31 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 				buttonsContainer.Add(tagsContainer);
 			}
 
+			// Hint: this service is registered under its concrete type but implements one or more
+			// user-defined interfaces that are not themselves registered. The author may have meant
+			// to register it as the interface (e.g. forgot [Service(typeof(IFoo))], or placed it on
+			// an abstract base, where it has no effect because [Service] is not inherited).
+			var interfaceHints = GetUnregisteredInterfaceHints(serviceType, locator);
+			if (interfaceHints.Count > 0)
+			{
+				var hintBadge = new Label("i");
+				hintBadge.AddToClassList("service-interface-hint");
+				hintBadge.tooltip = BuildInterfaceHintTooltip(serviceType, interfaceHints);
+				hintBadge.style.width = 14f;
+				hintBadge.style.height = 14f;
+				hintBadge.style.marginRight = 5f;
+				hintBadge.style.fontSize = 10f;
+				hintBadge.style.unityFontStyleAndWeight = FontStyle.Bold;
+				hintBadge.style.unityTextAlign = TextAnchor.MiddleCenter;
+				hintBadge.style.color = new StyleColor(Color.white);
+				hintBadge.style.backgroundColor = new StyleColor(new Color(1.0f, 0.76f, 0.03f)); // #FFC107 amber
+				hintBadge.style.borderTopLeftRadius = 7f;
+				hintBadge.style.borderTopRightRadius = 7f;
+				hintBadge.style.borderBottomLeftRadius = 7f;
+				hintBadge.style.borderBottomRightRadius = 7f;
+				buttonsContainer.Add(hintBadge);
+			}
+
 			// Create the infinite icon image element (positioned before the pencil button)
 			_infiniteIcon = new();
 			_infiniteIcon.AddToClassList("infinite-icon");
@@ -281,6 +307,85 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 		public static void ResetItemCounter()
 		{
 			_itemCounter = 0;
+		}
+
+		/// <summary>
+		///     Returns the user-defined interfaces implemented by a service that is registered under its
+		///     concrete type, excluding any interface that is itself registered in the locator. A non-empty
+		///     result usually means a missing <c>[Service(typeof(IFoo))]</c> (or one placed on an abstract
+		///     base, where it has no effect because the attribute is not inherited).
+		/// </summary>
+		private static List<Type> GetUnregisteredInterfaceHints(Type serviceType, ServiceKitLocator locator)
+		{
+			var result = new List<Type>();
+			if (serviceType == null || serviceType.IsInterface)
+			{
+				return result;
+			}
+
+			var interfaces = serviceType.GetInterfaces();
+			if (interfaces.Length == 0)
+			{
+				return result;
+			}
+
+			// Interfaces already registered (under their own key) in this locator are intentional.
+			var registered = new HashSet<Type>();
+			if (locator != null)
+			{
+				foreach (var info in locator.GetAllServices())
+				{
+					if (info?.ServiceType != null)
+					{
+						registered.Add(info.ServiceType);
+					}
+				}
+			}
+
+			foreach (var iface in interfaces)
+			{
+				if (IsUserInterface(iface) && !registered.Contains(iface))
+				{
+					result.Add(iface);
+				}
+			}
+
+			// Keep only the most-derived interfaces (drop a base that another listed interface extends).
+			return result.Where(i => !result.Any(other => other != i && i.IsAssignableFrom(other))).ToList();
+		}
+
+		/// <summary>
+		///     Heuristic: treat interfaces outside framework namespaces as user code worth hinting about.
+		/// </summary>
+		private static bool IsUserInterface(Type iface)
+		{
+			var ns = iface.Namespace ?? string.Empty;
+			if (ns.Length == 0)
+			{
+				return true; // global namespace — assume user code
+			}
+
+			return !(ns == "System" || ns.StartsWith("System.")
+				|| ns == "UnityEngine" || ns.StartsWith("UnityEngine.")
+				|| ns == "UnityEditor" || ns.StartsWith("UnityEditor.")
+				|| ns.StartsWith("Unity.")
+				|| ns.StartsWith("Cysharp.")
+				|| ns.StartsWith("Mono.")
+				|| ns.StartsWith("Microsoft."));
+		}
+
+		private static string BuildInterfaceHintTooltip(Type serviceType, List<Type> interfaceHints)
+		{
+			if (interfaceHints.Count == 1)
+			{
+				var iface = interfaceHints[0].Name;
+				return $"Registered as concrete type '{serviceType.Name}', which implements '{iface}'.\n" +
+				       $"If consumers inject '{iface}', register it with [Service(typeof({iface}))] on the concrete class.";
+			}
+
+			var names = string.Join(", ", interfaceHints.Select(t => t.Name));
+			return $"Registered as concrete type '{serviceType.Name}', which implements {names}.\n" +
+			       "If consumers inject any of these interfaces, register it with [Service(typeof(...))] on the concrete class.";
 		}
 
 		private static void PingGameObject(MonoBehaviour monoBehaviour)
