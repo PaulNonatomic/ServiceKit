@@ -153,7 +153,7 @@ namespace Nonatomic.ServiceKit
 					await InjectResolvedServices(results, unityContext);
 				}
 			}
-			catch (OperationCanceledException)
+			catch (OperationCanceledException oce)
 			{
 				var isExplicitTimeout = timeoutCts?.IsCancellationRequested ?? false;
 
@@ -166,7 +166,7 @@ namespace Nonatomic.ServiceKit
 				}
 
 				// Route the failure through the configured handler (if any) before surfacing it.
-				var kind = ClassifyCancellation(isExplicitTimeout);
+				var kind = ClassifyCancellation(oce, isExplicitTimeout);
 				var injectionException = BuildInjectionException(fieldsToInject, kind);
 				_errorHandler?.Invoke(injectionException);
 				throw injectionException;
@@ -476,33 +476,40 @@ namespace Nonatomic.ServiceKit
 			return !isExplicitTimeout && !_cancellationToken.IsCancellationRequested && !Application.isPlaying;
 		}
 
-		private ServiceInjectionFailureKind ClassifyCancellation(bool isExplicitTimeout)
+		private ServiceInjectionFailureKind ClassifyCancellation(Exception exception, bool isExplicitTimeout)
 		{
-			if (isExplicitTimeout)
-			{
-				return ServiceInjectionFailureKind.Timeout;
-			}
-
-			// The only reliable "target destroyed" signal is the target being a Unity object
-			// that has already been torn down (Unity's overloaded null check).
+			// A destroyed target takes precedence: the injection is moot regardless of why it ended.
+			// Unity's overloaded null check is the only reliable "target destroyed" signal.
 			var targetIsUnityObject = _target is UnityEngine.Object;
 			if (targetIsUnityObject && (UnityEngine.Object)_target == null)
 			{
 				return ServiceInjectionFailureKind.TargetDestroyed;
 			}
 
+			// Positively signalled by the locator when an awaited service is unregistered
+			// (directly, via scene unload, or on ClearServices) - no inference required.
+			if (exception is ServiceUnregisteredException)
+			{
+				return ServiceInjectionFailureKind.ServiceUnregistered;
+			}
+
+			// Positively signalled: only the timeout manager cancels timeoutCts.
+			if (isExplicitTimeout)
+			{
+				return ServiceInjectionFailureKind.Timeout;
+			}
+
 			if (_cancellationToken.IsCancellationRequested)
 			{
 				// For a Unity target this is its destroyCancellationToken firing (scene change /
-				// teardown), so treat it as a destroyed target. For a plain C# object it is a
-				// deliberate caller cancellation that is worth surfacing.
+				// teardown); for a plain C# object it is a deliberate caller cancellation.
 				return targetIsUnityObject
 					? ServiceInjectionFailureKind.TargetDestroyed
 					: ServiceInjectionFailureKind.CallerCanceled;
 			}
 
-			// Not a timeout, target still alive, no caller cancellation: an awaited service was
-			// unregistered before it became available (e.g. its provider was destroyed).
+			// Residual: a bare cancellation with no token and no typed cause. Nothing positively
+			// indicates a timeout, so treat it as a vanished service (warning) rather than an error.
 			return ServiceInjectionFailureKind.ServiceUnregistered;
 		}
 

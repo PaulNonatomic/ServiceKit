@@ -3,6 +3,7 @@
 ### Changed
 - **Injection failure messages and routing**: failed injections now log with the target object as the Unity log context, so clicking the console entry selects the offending GameObject instead of jumping into ServiceKit's source. Messages name the cause accurately (genuine timeout vs. an awaited service being unregistered vs. the target being destroyed) and include the GameObject's hierarchy path and scene.
 - **Quieter scene transitions**: when an injection is cancelled because the target was destroyed (e.g. skipping scenes) the failure is no longer logged at all; when only an awaited service is unregistered while the target survives it is logged as a warning rather than an error. Genuine timeouts, missing required services, and circular dependencies remain errors. Cancellation/timeout failures now throw `ServiceInjectionTimeoutException` (a `TimeoutException` subclass carrying a `ServiceInjectionFailureKind`), so existing `catch (TimeoutException)` continues to work.
+- **Unregistration is now distinguishable from a timeout**: unregistering a service (directly, via scene unload, or `ClearServices`) faults pending awaiters with a typed `ServiceUnregisteredException` (a subclass of `OperationCanceledException`) instead of a bare cancellation. Injection identifies this case positively rather than inferring it from the absence of a timeout, so "a service was unregistered" and "the wait timed out" are never conflated.
 
 ## [2.2.0] - 2026-05-31
 

@@ -34,6 +34,24 @@ namespace Nonatomic.ServiceKit
 	}
 
 	/// <summary>
+	/// Faults a pending service awaiter when its service is unregistered (directly, via scene
+	/// unload, or on <c>ClearServices</c>) before it became available. Subclasses
+	/// <see cref="OperationCanceledException"/> so existing <c>catch</c> clauses keep working, while
+	/// letting the injection builder positively identify "service unregistered" rather than infer it
+	/// from the absence of a timeout.
+	/// </summary>
+	public class ServiceUnregisteredException : OperationCanceledException
+	{
+		public ServiceUnregisteredException(Type serviceType)
+			: base($"Service '{serviceType?.Name ?? "unknown"}' was unregistered before injection completed.")
+		{
+			ServiceType = serviceType;
+		}
+
+		public Type ServiceType { get; }
+	}
+
+	/// <summary>
 	/// Thrown when injection is cancelled or times out. Subclasses <see cref="TimeoutException"/>
 	/// for backwards compatibility (existing <c>catch (TimeoutException)</c> still works) while
 	/// carrying a <see cref="Kind"/> so handlers can route severity correctly.
