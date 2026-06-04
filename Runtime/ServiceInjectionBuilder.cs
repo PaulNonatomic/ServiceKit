@@ -166,9 +166,10 @@ namespace Nonatomic.ServiceKit
 				}
 
 				// Route the failure through the configured handler (if any) before surfacing it.
-				var timeoutException = BuildTimeoutException(fieldsToInject, isExplicitTimeout);
-				_errorHandler?.Invoke(timeoutException);
-				throw timeoutException;
+				var kind = ClassifyCancellation(isExplicitTimeout);
+				var injectionException = BuildInjectionException(fieldsToInject, kind);
+				_errorHandler?.Invoke(injectionException);
+				throw injectionException;
 			}
 			catch (Exception ex)
 			{
@@ -453,12 +454,12 @@ namespace Nonatomic.ServiceKit
 
 		private void DefaultErrorHandler(Exception exception)
 		{
-			Debug.LogError($"Failed to inject required services: {exception.Message}");
+			ServiceInjectionLog.Report(exception, _target as UnityEngine.Object);
 
 			var circular = _dependencyGraph?.DetectCircularDependency(_targetServiceType);
 			if (circular == null) return;
 
-			Debug.LogError($"Circular dependency detected: {circular.Path}");
+			Debug.LogError($"Circular dependency detected: {circular.Path}", _target as UnityEngine.Object);
 			_dependencyGraph?.AddCircularDependencyError(_targetServiceType);
 
 			if (circular.ToType != null)
@@ -475,16 +476,46 @@ namespace Nonatomic.ServiceKit
 			return !isExplicitTimeout && !_cancellationToken.IsCancellationRequested && !Application.isPlaying;
 		}
 
-		private TimeoutException BuildTimeoutException(List<FieldInfo> fieldsToInject, bool isExplicitTimeout)
+		private ServiceInjectionFailureKind ClassifyCancellation(bool isExplicitTimeout)
+		{
+			if (isExplicitTimeout)
+			{
+				return ServiceInjectionFailureKind.Timeout;
+			}
+
+			// The only reliable "target destroyed" signal is the target being a Unity object
+			// that has already been torn down (Unity's overloaded null check).
+			var targetIsUnityObject = _target is UnityEngine.Object;
+			if (targetIsUnityObject && (UnityEngine.Object)_target == null)
+			{
+				return ServiceInjectionFailureKind.TargetDestroyed;
+			}
+
+			if (_cancellationToken.IsCancellationRequested)
+			{
+				// For a Unity target this is its destroyCancellationToken firing (scene change /
+				// teardown), so treat it as a destroyed target. For a plain C# object it is a
+				// deliberate caller cancellation that is worth surfacing.
+				return targetIsUnityObject
+					? ServiceInjectionFailureKind.TargetDestroyed
+					: ServiceInjectionFailureKind.CallerCanceled;
+			}
+
+			// Not a timeout, target still alive, no caller cancellation: an awaited service was
+			// unregistered before it became available (e.g. its provider was destroyed).
+			return ServiceInjectionFailureKind.ServiceUnregistered;
+		}
+
+		private ServiceInjectionTimeoutException BuildInjectionException(List<FieldInfo> fieldsToInject, ServiceInjectionFailureKind kind)
 		{
 			var sb = ServiceKitObjectPool.RentStringBuilder();
 			try
 			{
-				AppendTimeoutMessage(sb, isExplicitTimeout);
+				AppendFailureMessage(sb, kind);
 				AppendWaitingServices(sb, fieldsToInject);
 				AppendCircularDependencyInfo(sb);
-				
-				return new TimeoutException(sb.ToString());
+
+				return new ServiceInjectionTimeoutException(sb.ToString(), kind);
 			}
 			finally
 			{
@@ -492,24 +523,74 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		private void AppendTimeoutMessage(StringBuilder sb, bool isExplicitTimeout)
+		private void AppendFailureMessage(StringBuilder sb, ServiceInjectionFailureKind kind)
 		{
-			sb.Append("Service injection timed out");
-			
-			if (isExplicitTimeout && _timeout > 0f)
+			switch (kind)
 			{
-				sb.Append(" after ");
-				sb.Append(_timeout);
-				sb.Append(" seconds");
+				case ServiceInjectionFailureKind.Timeout:
+					sb.Append("Service injection timed out");
+					if (_timeout > 0f)
+					{
+						sb.Append(" after ");
+						sb.Append(_timeout);
+						sb.Append(" seconds");
+					}
+					sb.Append(" for ");
+					sb.Append(DescribeTarget());
+					sb.Append('.');
+					break;
+
+				case ServiceInjectionFailureKind.ServiceUnregistered:
+					sb.Append("Service injection for ");
+					sb.Append(DescribeTarget());
+					sb.Append(" was interrupted because a required service was unregistered before it became available (e.g. a scene change).");
+					break;
+
+				case ServiceInjectionFailureKind.TargetDestroyed:
+					sb.Append("Service injection for ");
+					sb.Append(DescribeTarget());
+					sb.Append(" was canceled because the target was destroyed (e.g. a scene change).");
+					break;
+
+				default: // CallerCanceled
+					sb.Append("Service injection for ");
+					sb.Append(DescribeTarget());
+					sb.Append(" was canceled via its cancellation token.");
+					break;
 			}
-			else if (_cancellationToken.IsCancellationRequested)
+		}
+
+		/// <summary>
+		/// Describes the injection target for error messages. For a live Component this includes
+		/// the GameObject's hierarchy path and scene, so the offending object is easy to locate.
+		/// Guarded against Unity fake-null in case the target is mid-destruction.
+		/// </summary>
+		private string DescribeTarget()
+		{
+			var typeName = _target.GetType().Name;
+
+			if (_target is Component component && component != null)
 			{
-				sb.Append(" (via cancellation token)");
+				var path = GetHierarchyPath(component.transform);
+				var scene = component.gameObject.scene;
+				return scene.IsValid()
+					? $"'{typeName}' on '{path}' (scene '{scene.name}')"
+					: $"'{typeName}' on '{path}'";
 			}
-			
-			sb.Append(" for target '");
-			sb.Append(_target.GetType().Name);
-			sb.Append("'.");
+
+			return $"'{typeName}'";
+		}
+
+		private static string GetHierarchyPath(Transform transform)
+		{
+			// Error path — a plain StringBuilder is fine and avoids nesting the shared pool.
+			var sb = new StringBuilder(transform.name);
+			for (var parent = transform.parent; parent != null; parent = parent.parent)
+			{
+				sb.Insert(0, '/');
+				sb.Insert(0, parent.name);
+			}
+			return sb.ToString();
 		}
 
 		private void AppendWaitingServices(StringBuilder sb, List<FieldInfo> fieldsToInject)
