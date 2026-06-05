@@ -1,9 +1,11 @@
-## [Unreleased]
+## [2.3.0] - 2026-06-05
 
 ### Changed
-- **Injection failure messages and routing**: failed injections now log with the target object as the Unity log context, so clicking the console entry selects the offending GameObject instead of jumping into ServiceKit's source. Messages name the cause accurately (genuine timeout vs. an awaited service being unregistered vs. the target being destroyed) and include the GameObject's hierarchy path and scene.
-- **Quieter scene transitions**: when an injection is cancelled because the target was destroyed (e.g. skipping scenes) the failure is no longer logged at all; when only an awaited service is unregistered while the target survives it is logged as a warning rather than an error. Genuine timeouts, missing required services, and circular dependencies remain errors. Cancellation/timeout failures now throw `ServiceInjectionTimeoutException` (a `TimeoutException` subclass carrying a `ServiceInjectionFailureKind`), so existing `catch (TimeoutException)` continues to work.
-- **Unregistration is now distinguishable from a timeout**: unregistering a service (directly, via scene unload, or `ClearServices`) faults pending awaiters with a typed `ServiceUnregisteredException` (a subclass of `OperationCanceledException`) instead of a bare cancellation. Injection identifies this case positively rather than inferring it from the absence of a timeout, so "a service was unregistered" and "the wait timed out" are never conflated.
+- Injection failures now log with the target as the Unity log context — click the console entry to select the offending GameObject — and name the cause (timeout, service unregistered, or target destroyed) with the GameObject's hierarchy path and scene.
+- Quieter scene transitions: a destroyed target is silent and an unregistered service (while the target survives) is a warning; timeouts, missing required services, and circular dependencies stay errors.
+
+### Added
+- `ServiceUnregisteredException` (`OperationCanceledException` subclass) and `ServiceInjectionTimeoutException` (`TimeoutException` subclass) so an unregistered service is distinguished from a timeout positively rather than inferred. Both subclass their existing base, so existing `catch` clauses keep working.
 
 ## [2.2.0] - 2026-05-31
 
