@@ -43,6 +43,9 @@ namespace Nonatomic.ServiceKit
 		bool IsServiceReady(Type serviceType);
 		bool IsServiceCircularDependencyExempt<T>() where T : class;
 		bool IsServiceCircularDependencyExempt(Type serviceType);
+		bool HasCircularDependencyError<T>() where T : class;
+		bool HasCircularDependencyError(Type serviceType);
+		ServiceResolutionStatus TryResolveService(Type serviceType, out object service);
 		string GetServiceStatus<T>() where T : class;
 		string GetServiceStatus(Type serviceType);
 		

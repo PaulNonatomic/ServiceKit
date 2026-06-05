@@ -33,7 +33,16 @@ namespace Nonatomic.ServiceKit
 		/// <summary>
 		/// Returns the active service locator. Uses the override if set, otherwise falls back to the serialized field.
 		/// </summary>
-		protected IServiceKitLocator Locator => _locatorOverride ?? ServiceKitLocator;
+		protected IServiceKitLocator Locator => ResolveLocator();
+
+		/// <summary>
+		/// Resolves the active service locator. Override this to supply a locator from a custom source
+		/// (e.g. a global registry, a parent component, or an addressable) instead of the serialized
+		/// field - the serialized field cannot be typed as the interface, so this is the extension
+		/// point for alternative <see cref="IServiceKitLocator"/> implementations. Defaults to the
+		/// UseLocator() override if set, otherwise the serialized ServiceKitLocator field.
+		/// </summary>
+		protected virtual IServiceKitLocator ResolveLocator() => _locatorOverride ?? ServiceKitLocator;
 
 		/// <summary>
 		/// Sets an override for the ServiceKitLocator. Useful for unit testing with mocks.

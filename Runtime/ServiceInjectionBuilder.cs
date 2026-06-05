@@ -22,15 +22,20 @@ namespace Nonatomic.ServiceKit
 	public class ServiceInjectionBuilder : IServiceInjectionBuilder
 	{
 		public ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target)
+			// Fallback for external callers: only the concrete locator owns a dependency graph.
+			: this(serviceKitLocator, target, (serviceKitLocator as ServiceKitLocator)?.DependencyGraph)
+		{
+		}
+
+		// The concrete locator passes its graph in directly (see ServiceKitLocator.Inject) rather than
+		// having it re-discovered via a downcast. An alternative IServiceKitLocator simply has no graph
+		// and circular-dependency bookkeeping is skipped.
+		internal ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target, ServiceDependencyGraph dependencyGraph)
 		{
 			_serviceKitLocator = serviceKitLocator;
 			_target = target;
 			_targetServiceType = DetermineServiceType(target);
-
-			// The dependency graph is owned by the concrete locator. When the locator is a
-			// mock/stub (e.g. in unit tests) there is no graph and circular-dependency
-			// bookkeeping is simply skipped.
-			_dependencyGraph = (serviceKitLocator as ServiceKitLocator)?.DependencyGraph;
+			_dependencyGraph = dependencyGraph;
 		}
 
 		public IServiceInjectionBuilder WithCancellation(CancellationToken cancellationToken)
@@ -354,11 +359,8 @@ namespace Nonatomic.ServiceKit
 		private async Task<(FieldInfo field, object service, bool required)> ResolveOptionalService(FieldInfo field, Type serviceType, InjectServiceAttribute serviceAttribute, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
 #endif
 		{
-			var locator = _serviceKitLocator as ServiceKitLocator;
-			if (locator == null) return (field, null, serviceAttribute.Required);
-
 			// Atomic check: determines if the service is ready, registered-but-not-ready, or absent
-			var status = locator.TryResolveService(serviceType, out var readyService);
+			var status = _serviceKitLocator.TryResolveService(serviceType, out var readyService);
 
 			if (status == ServiceResolutionStatus.Ready)
 			{
@@ -371,7 +373,7 @@ namespace Nonatomic.ServiceKit
 				await WaitForAwakePhaseCompletion();
 
 				// Re-check atomically after the yield
-				status = locator.TryResolveService(serviceType, out readyService);
+				status = _serviceKitLocator.TryResolveService(serviceType, out readyService);
 
 				if (status == ServiceResolutionStatus.Ready)
 				{
@@ -592,15 +594,14 @@ namespace Nonatomic.ServiceKit
 		private void AppendWaitingServices(StringBuilder sb, List<FieldInfo> fieldsToInject)
 		{
 			var hasMissing = false;
-			var locator = _serviceKitLocator as ServiceKitLocator;
-			
+
 			for (var i = 0; i < fieldsToInject.Count; i++)
 			{
 				var field = fieldsToInject[i];
 				var attr = ServiceKitReflectionCache.GetInjectAttribute(field);
 				var serviceType = field.FieldType;
 				
-				if (IsServiceMissing(serviceType, attr.Required, locator))
+				if (IsServiceMissing(serviceType, attr.Required))
 				{
 					if (!hasMissing)
 					{
@@ -614,7 +615,7 @@ namespace Nonatomic.ServiceKit
 					
 					sb.Append(serviceType.Name);
 					
-					if (!attr.Required && locator?.IsServiceRegistered(serviceType) == true)
+					if (!attr.Required && _serviceKitLocator.IsServiceRegistered(serviceType))
 					{
 						sb.Append(" (optional but registered)");
 					}
@@ -625,11 +626,11 @@ namespace Nonatomic.ServiceKit
 				sb.Append(".");
 		}
 
-		private bool IsServiceMissing(Type serviceType, bool isRequired, ServiceKitLocator locator)
+		private bool IsServiceMissing(Type serviceType, bool isRequired)
 		{
 			var service = _serviceKitLocator.GetService(serviceType);
-			var isRegistered = locator?.IsServiceRegistered(serviceType) ?? false;
-			
+			var isRegistered = _serviceKitLocator.IsServiceRegistered(serviceType);
+
 			// Service is missing if it's null and either required or registered (but not ready)
 			return service == null && (isRequired || isRegistered);
 		}

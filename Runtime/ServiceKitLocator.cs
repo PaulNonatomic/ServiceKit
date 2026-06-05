@@ -520,12 +520,12 @@ namespace Nonatomic.ServiceKit
 		[System.Obsolete("Use Inject(target) or the InjectAsync(target, token) extension method instead.")]
 		public IServiceInjectionBuilder InjectServicesAsync(object target)
 		{
-			return new ServiceInjectionBuilder(this, target);
+			return new ServiceInjectionBuilder(this, target, _dependencyGraph);
 		}
 
 		public IServiceInjectionBuilder Inject(object target)
 		{
-			return new ServiceInjectionBuilder(this, target);
+			return new ServiceInjectionBuilder(this, target, _dependencyGraph);
 		}
 
 		public void UnregisterService<T>() where T : class
