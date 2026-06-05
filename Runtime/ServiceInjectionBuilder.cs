@@ -194,7 +194,7 @@ namespace Nonatomic.ServiceKit
 			var targetType = target.GetType();
 
 			// Check for [Service] attribute first
-			var serviceAttribute = targetType.GetCustomAttribute<ServiceAttribute>();
+			var serviceAttribute = ServiceKitReflectionCache.GetServiceAttribute(targetType);
 			if (serviceAttribute != null && serviceAttribute.ServiceTypes.Length > 0)
 			{
 				// Return the first registered type as the "primary" type for dependency graph
@@ -207,20 +207,9 @@ namespace Nonatomic.ServiceKit
 
 		private static List<FieldInfo> GetFieldsToInject(Type targetType)
 		{
-			var fields = new List<FieldInfo>();
-			var current = targetType;
-
-			while (current != null && current != typeof(object))
-			{
-				var typeFields = current
-					.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly)
-					.Where(f => f.GetCustomAttribute<InjectServiceAttribute>() != null);
-
-				fields.AddRange(typeFields);
-				current = current.BaseType;
-			}
-
-			return fields;
+			// Field discovery is cached per type (see ServiceKitReflectionCache); copy into a fresh
+			// list so the caller can treat it as owned.
+			return new List<FieldInfo>(ServiceKitReflectionCache.GetInjectableFields(targetType));
 		}
 
 		private void RegisterDependenciesForCircularDetection(List<FieldInfo> fieldsToInject)
@@ -287,7 +276,7 @@ namespace Nonatomic.ServiceKit
 			int index)
 #endif
 		{
-			var attr = field.GetCustomAttribute<InjectServiceAttribute>();
+			var attr = ServiceKitReflectionCache.GetInjectAttribute(field);
 			try
 			{
 				var result = await ResolveServiceForField(field, cancellationToken, resolutionCts);
@@ -346,7 +335,7 @@ namespace Nonatomic.ServiceKit
 		private async Task<(FieldInfo field, object service, bool required)> ResolveServiceForField(FieldInfo field, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
 #endif
 		{
-			var serviceAttribute = field.GetCustomAttribute<InjectServiceAttribute>();
+			var serviceAttribute = ServiceKitReflectionCache.GetInjectAttribute(field);
 			var serviceType = field.FieldType;
 
 			cancellationToken.ThrowIfCancellationRequested();
@@ -608,7 +597,7 @@ namespace Nonatomic.ServiceKit
 			for (var i = 0; i < fieldsToInject.Count; i++)
 			{
 				var field = fieldsToInject[i];
-				var attr = field.GetCustomAttribute<InjectServiceAttribute>();
+				var attr = ServiceKitReflectionCache.GetInjectAttribute(field);
 				var serviceType = field.FieldType;
 				
 				if (IsServiceMissing(serviceType, attr.Required, locator))
