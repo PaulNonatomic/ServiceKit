@@ -21,6 +21,17 @@ namespace Nonatomic.ServiceKit
 		private static readonly ConcurrentDictionary<FieldInfo, InjectServiceAttribute> InjectAttributes = new();
 		private static readonly ConcurrentDictionary<Type, ServiceAttribute> ServiceAttributes = new();
 
+		// The cached data is locator-independent and immutable per type, so surviving a domain reload
+		// is harmless. This reset exists purely so the cache behaves like fresh static state when
+		// "Enter Play Mode Without Domain Reload" is enabled - it runs before any scene loads.
+		[UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+		private static void ResetOnEnterPlayMode()
+		{
+			InjectableFields.Clear();
+			InjectAttributes.Clear();
+			ServiceAttributes.Clear();
+		}
+
 		/// <summary>The cached, inheritance-flattened set of fields marked with <c>[InjectService]</c>.</summary>
 		public static FieldInfo[] GetInjectableFields(Type type) => InjectableFields.GetOrAdd(type, BuildInjectableFields);
 
