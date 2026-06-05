@@ -1,6 +1,6 @@
 {
   "name": "com.nonatomic.servicekit",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "displayName": "Service Kit",
   "description": "A lightweight dependency injection and service locator framework for Unity. Attribute-based registration, async resolution, fluent API, optional dependencies, service tags, scene-aware lifecycle, and UniTask support.",
   "unity": "2022.3",

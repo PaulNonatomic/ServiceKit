@@ -1,4 +1,4 @@
-## [Unreleased]
+## [2.4.0] - 2026-06-05
 
 ### Added
 - `TryResolveService`, `HasCircularDependencyError`, and the `ServiceResolutionStatus` enum are now part of `IServiceKitLocator`, and `ServiceKitBehaviour` exposes a `protected virtual ResolveLocator()` hook. Alternative `IServiceKitLocator` implementations now work end-to-end — including optional-dependency injection, which previously silently no-opped against any non-concrete locator.
