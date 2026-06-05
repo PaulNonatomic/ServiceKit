@@ -331,7 +331,7 @@ namespace Nonatomic.ServiceKit
 		/// </summary>
 		protected virtual void HandleDependencyInjectionFailure(Exception exception)
 		{
-			Debug.LogError($"Failed to inject required services: {exception.Message}", this);
+			ServiceInjectionLog.Report(exception, this);
 		}
 
 		private bool IsServiceLocatorMissing()

@@ -561,8 +561,9 @@ namespace Nonatomic.ServiceKit
 				}
 			}
 
-			// Cancel outside the lock so awaiter continuations never run while _lock is held.
-			awaiterToCancel?.TrySetCanceled();
+			// Fault outside the lock so awaiter continuations never run while _lock is held.
+			// A typed exception lets injection distinguish "service unregistered" from a timeout.
+			awaiterToCancel?.TrySetException(new ServiceUnregisteredException(serviceType));
 		}
 
 		public string GetServiceStatus<T>() where T : class
@@ -697,9 +698,9 @@ namespace Nonatomic.ServiceKit
 		public void UnregisterServicesFromScene(Scene scene)
 		{
 #if SERVICEKIT_UNITASK
-			var awaitersToCancel = new List<UniTaskCompletionSource<object>>();
+			var awaitersToCancel = new List<(Type type, UniTaskCompletionSource<object> tcs)>();
 #else
-			var awaitersToCancel = new List<TaskCompletionSource<object>>();
+			var awaitersToCancel = new List<(Type type, TaskCompletionSource<object> tcs)>();
 #endif
 
 			lock (_lock)
@@ -730,17 +731,17 @@ namespace Nonatomic.ServiceKit
 					if (_serviceAwaiters.TryGetValue(type, out var tcs))
 					{
 						_serviceAwaiters.Remove(type);
-						awaitersToCancel.Add(tcs);
+						awaitersToCancel.Add((type, tcs));
 					}
 				}
 
 				_trackedScenes.Remove(scene);
 			}
 
-			// Cancel outside the lock so awaiter continuations never run while _lock is held.
-			foreach (var tcs in awaitersToCancel)
+			// Fault outside the lock so awaiter continuations never run while _lock is held.
+			foreach (var (type, tcs) in awaitersToCancel)
 			{
-				tcs.TrySetCanceled();
+				tcs.TrySetException(new ServiceUnregisteredException(type));
 			}
 		}
 
@@ -795,17 +796,17 @@ namespace Nonatomic.ServiceKit
 		public void ClearServices()
 		{
 #if SERVICEKIT_UNITASK
-			var awaitersToCancel = new List<UniTaskCompletionSource<object>>();
+			var awaitersToCancel = new List<(Type type, UniTaskCompletionSource<object> tcs)>();
 #else
-			var awaitersToCancel = new List<TaskCompletionSource<object>>();
+			var awaitersToCancel = new List<(Type type, TaskCompletionSource<object> tcs)>();
 #endif
 
 			lock (_lock)
 			{
-				// Collect pending awaiters; they are cancelled after releasing the lock.
+				// Collect pending awaiters; they are faulted after releasing the lock.
 				foreach (var kvp in _serviceAwaiters)
 				{
-					awaitersToCancel.Add(kvp.Value);
+					awaitersToCancel.Add((kvp.Key, kvp.Value));
 				}
 				_serviceAwaiters.Clear();
 
@@ -817,12 +818,12 @@ namespace Nonatomic.ServiceKit
 				_dependencyGraph.ClearAll();
 			}
 
-			// Cancel outside the lock so awaiter continuations never run while _lock is held.
-			foreach (var tcs in awaitersToCancel)
+			// Fault outside the lock so awaiter continuations never run while _lock is held.
+			foreach (var (type, tcs) in awaitersToCancel)
 			{
 				try
 				{
-					tcs.TrySetCanceled();
+					tcs.TrySetException(new ServiceUnregisteredException(type));
 				}
 				catch
 				{

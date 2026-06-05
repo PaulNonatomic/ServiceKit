@@ -1,3 +1,12 @@
+## [2.3.0] - 2026-06-05
+
+### Changed
+- Injection failures now log with the target as the Unity log context — click the console entry to select the offending GameObject — and name the cause (timeout, service unregistered, or target destroyed) with the GameObject's hierarchy path and scene.
+- Quieter scene transitions: a destroyed target is silent and an unregistered service (while the target survives) is a warning; timeouts, missing required services, and circular dependencies stay errors.
+
+### Added
+- `ServiceUnregisteredException` (`OperationCanceledException` subclass) and `ServiceInjectionTimeoutException` (`TimeoutException` subclass) so an unregistered service is distinguished from a timeout positively rather than inferred. Both subclass their existing base, so existing `catch` clauses keep working.
+
 ## [2.2.0] - 2026-05-31
 
 ### Fixed
