@@ -7,9 +7,7 @@
   "unityRelease": "1f1",
   "documentationUrl": "https://github.com/PaulNonatomic/ServiceKit/blob/main/README.md",
   "changelogUrl": "https://github.com/PaulNonatomic/ServiceKit/blob/main/CHANGELOG.md",
-  "dependencies": {
-    "com.unity.test-framework": "1.3.9"
-  },
+  "dependencies": {},
   "keywords": [
     "unity",
     "dependency-injection",
