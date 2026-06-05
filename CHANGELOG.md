@@ -1,3 +1,17 @@
+## [Unreleased]
+
+### Added
+- `TryResolveService`, `HasCircularDependencyError`, and the `ServiceResolutionStatus` enum are now part of `IServiceKitLocator`, and `ServiceKitBehaviour` exposes a `protected virtual ResolveLocator()` hook. Alternative `IServiceKitLocator` implementations now work end-to-end — including optional-dependency injection, which previously silently no-opped against any non-concrete locator.
+- A package `link.xml` preserving the `[Service]`/`[InjectService]` attribute types for IL2CPP managed stripping.
+
+### Changed
+- Injectable-field and attribute reflection is memoized per type, removing the `GetFields`/LINQ/`GetCustomAttribute` work that previously ran on every injection and registration.
+
+### Removed
+- The unused Unity Test Framework reference is no longer a runtime dependency (dropped from the runtime asmdef and `package.json`), so it no longer ships into player/IL2CPP builds.
+
+> `IServiceKitLocator` gained members — custom implementers of the interface (rare) must add them. Intended for a 2.4.0 release.
+
 ## [2.3.0] - 2026-06-05
 
 ### Changed
