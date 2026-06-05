@@ -1019,20 +1019,8 @@ namespace Nonatomic.ServiceKit
 
 		private List<FieldInfo> GetInjectableFields(Type serviceType)
 		{
-			var fields = new List<FieldInfo>();
-			var currentType = serviceType;
-
-			while (currentType != null && currentType != typeof(object))
-			{
-				var typeFields = currentType
-					.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly)
-					.Where(f => f.GetCustomAttribute<InjectServiceAttribute>() != null);
-
-				fields.AddRange(typeFields);
-				currentType = currentType.BaseType;
-			}
-
-			return fields;
+			// Cached per type (see ServiceKitReflectionCache); copy into a fresh owned list.
+			return new List<FieldInfo>(ServiceKitReflectionCache.GetInjectableFields(serviceType));
 		}
 
 

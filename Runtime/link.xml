@@ -1,0 +1,16 @@
+<linker>
+  <!--
+    Preserves ServiceKit's reflection-read attribute types so managed-code stripping
+    (IL2CPP - the default on iOS, WebGL and consoles) cannot remove them.
+
+    IMPORTANT: ServiceKit cannot preserve YOUR service types from here. If you register
+    plain-C# services, or inject interfaces that are only referenced via [InjectService] /
+    [Service], mark those classes/interfaces with [UnityEngine.Scripting.Preserve] (or add
+    your own link.xml) when managed stripping is enabled - otherwise they can be stripped
+    from player builds and injection will fail at runtime.
+  -->
+  <assembly fullname="com.nonatomic.servicekit.runtime">
+    <type fullname="Nonatomic.ServiceKit.ServiceAttribute" preserve="all" />
+    <type fullname="Nonatomic.ServiceKit.InjectServiceAttribute" preserve="all" />
+  </assembly>
+</linker>
