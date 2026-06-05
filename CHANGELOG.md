@@ -3,6 +3,29 @@
 ### Added
 - **Editor hint for concrete-only registration**: in the ServiceKit window, a service registered under its concrete type that implements a user-defined interface (which is not itself registered in the locator) now shows an amber `i` badge. The tooltip suggests registering it as the interface via `[Service(typeof(IFoo))]` — catching the common case of a forgotten attribute, or one placed on an abstract base where it has no effect (the attribute is not inherited).
 
+## [2.4.0] - 2026-06-05
+
+### Added
+- `TryResolveService`, `HasCircularDependencyError`, and the `ServiceResolutionStatus` enum are now part of `IServiceKitLocator`, and `ServiceKitBehaviour` exposes a `protected virtual ResolveLocator()` hook. Alternative `IServiceKitLocator` implementations now work end-to-end — including optional-dependency injection, which previously silently no-opped against any non-concrete locator.
+- A package `link.xml` preserving the `[Service]`/`[InjectService]` attribute types for IL2CPP managed stripping.
+
+### Changed
+- Injectable-field and attribute reflection is memoized per type, removing the `GetFields`/LINQ/`GetCustomAttribute` work that previously ran on every injection and registration.
+
+### Removed
+- The unused Unity Test Framework reference is no longer a runtime dependency (dropped from the runtime asmdef and `package.json`), so it no longer ships into player/IL2CPP builds.
+
+> `IServiceKitLocator` gained members — custom implementers of the interface (rare) must add them. Intended for a 2.4.0 release.
+
+## [2.3.0] - 2026-06-05
+
+### Changed
+- Injection failures now log with the target as the Unity log context — click the console entry to select the offending GameObject — and name the cause (timeout, service unregistered, or target destroyed) with the GameObject's hierarchy path and scene.
+- Quieter scene transitions: a destroyed target is silent and an unregistered service (while the target survives) is a warning; timeouts, missing required services, and circular dependencies stay errors.
+
+### Added
+- `ServiceUnregisteredException` (`OperationCanceledException` subclass) and `ServiceInjectionTimeoutException` (`TimeoutException` subclass) so an unregistered service is distinguished from a timeout positively rather than inferred. Both subclass their existing base, so existing `catch` clauses keep working.
+
 ## [2.2.0] - 2026-05-31
 
 ### Fixed

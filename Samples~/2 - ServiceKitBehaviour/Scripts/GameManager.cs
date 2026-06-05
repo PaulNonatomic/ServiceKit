@@ -55,8 +55,11 @@ namespace ServiceKitSamples.ServiceKitBehaviourExample
 			}
 		}
 
-		private void OnDestroy()
+		// Override (not hide) the base OnDestroy so the service still unregisters from the locator.
+		protected override void OnDestroy()
 		{
+			base.OnDestroy();
+
 			// Clean up event subscriptions
 			if (_scoreService != null)
 			{

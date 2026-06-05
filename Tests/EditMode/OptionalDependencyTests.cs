@@ -214,7 +214,9 @@ namespace Tests.EditMode
 			Assert.IsNull(consumer.OptionalServiceA, "ServiceA should be null");
 			Assert.IsNull(consumer.OptionalServiceB, "ServiceB should be null");
 			Assert.IsNull(consumer.OptionalServiceC, "ServiceC should be null");
-			Assert.Less(stopwatch.ElapsedMilliseconds, 100, 
+			// Intent: it returns without waiting for the (multi-second) injection timeout. The bound is
+			// generous so the test reflects "didn't block on the timeout", not raw machine/JIT speed.
+			Assert.Less(stopwatch.ElapsedMilliseconds, 1000,
 				"Injection should complete quickly when optional services aren't registered");
 		}
 

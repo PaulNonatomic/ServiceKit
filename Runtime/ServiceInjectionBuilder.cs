@@ -22,15 +22,20 @@ namespace Nonatomic.ServiceKit
 	public class ServiceInjectionBuilder : IServiceInjectionBuilder
 	{
 		public ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target)
+			// Fallback for external callers: only the concrete locator owns a dependency graph.
+			: this(serviceKitLocator, target, (serviceKitLocator as ServiceKitLocator)?.DependencyGraph)
+		{
+		}
+
+		// The concrete locator passes its graph in directly (see ServiceKitLocator.Inject) rather than
+		// having it re-discovered via a downcast. An alternative IServiceKitLocator simply has no graph
+		// and circular-dependency bookkeeping is skipped.
+		internal ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target, ServiceDependencyGraph dependencyGraph)
 		{
 			_serviceKitLocator = serviceKitLocator;
 			_target = target;
 			_targetServiceType = DetermineServiceType(target);
-
-			// The dependency graph is owned by the concrete locator. When the locator is a
-			// mock/stub (e.g. in unit tests) there is no graph and circular-dependency
-			// bookkeeping is simply skipped.
-			_dependencyGraph = (serviceKitLocator as ServiceKitLocator)?.DependencyGraph;
+			_dependencyGraph = dependencyGraph;
 		}
 
 		public IServiceInjectionBuilder WithCancellation(CancellationToken cancellationToken)
@@ -153,7 +158,7 @@ namespace Nonatomic.ServiceKit
 					await InjectResolvedServices(results, unityContext);
 				}
 			}
-			catch (OperationCanceledException)
+			catch (OperationCanceledException oce)
 			{
 				var isExplicitTimeout = timeoutCts?.IsCancellationRequested ?? false;
 
@@ -166,9 +171,10 @@ namespace Nonatomic.ServiceKit
 				}
 
 				// Route the failure through the configured handler (if any) before surfacing it.
-				var timeoutException = BuildTimeoutException(fieldsToInject, isExplicitTimeout);
-				_errorHandler?.Invoke(timeoutException);
-				throw timeoutException;
+				var kind = ClassifyCancellation(oce, isExplicitTimeout);
+				var injectionException = BuildInjectionException(fieldsToInject, kind);
+				_errorHandler?.Invoke(injectionException);
+				throw injectionException;
 			}
 			catch (Exception ex)
 			{
@@ -193,7 +199,7 @@ namespace Nonatomic.ServiceKit
 			var targetType = target.GetType();
 
 			// Check for [Service] attribute first
-			var serviceAttribute = targetType.GetCustomAttribute<ServiceAttribute>();
+			var serviceAttribute = ServiceKitReflectionCache.GetServiceAttribute(targetType);
 			if (serviceAttribute != null && serviceAttribute.ServiceTypes.Length > 0)
 			{
 				// Return the first registered type as the "primary" type for dependency graph
@@ -206,20 +212,9 @@ namespace Nonatomic.ServiceKit
 
 		private static List<FieldInfo> GetFieldsToInject(Type targetType)
 		{
-			var fields = new List<FieldInfo>();
-			var current = targetType;
-
-			while (current != null && current != typeof(object))
-			{
-				var typeFields = current
-					.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly)
-					.Where(f => f.GetCustomAttribute<InjectServiceAttribute>() != null);
-
-				fields.AddRange(typeFields);
-				current = current.BaseType;
-			}
-
-			return fields;
+			// Field discovery is cached per type (see ServiceKitReflectionCache); copy into a fresh
+			// list so the caller can treat it as owned.
+			return new List<FieldInfo>(ServiceKitReflectionCache.GetInjectableFields(targetType));
 		}
 
 		private void RegisterDependenciesForCircularDetection(List<FieldInfo> fieldsToInject)
@@ -286,7 +281,7 @@ namespace Nonatomic.ServiceKit
 			int index)
 #endif
 		{
-			var attr = field.GetCustomAttribute<InjectServiceAttribute>();
+			var attr = ServiceKitReflectionCache.GetInjectAttribute(field);
 			try
 			{
 				var result = await ResolveServiceForField(field, cancellationToken, resolutionCts);
@@ -345,7 +340,7 @@ namespace Nonatomic.ServiceKit
 		private async Task<(FieldInfo field, object service, bool required)> ResolveServiceForField(FieldInfo field, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
 #endif
 		{
-			var serviceAttribute = field.GetCustomAttribute<InjectServiceAttribute>();
+			var serviceAttribute = ServiceKitReflectionCache.GetInjectAttribute(field);
 			var serviceType = field.FieldType;
 
 			cancellationToken.ThrowIfCancellationRequested();
@@ -364,11 +359,8 @@ namespace Nonatomic.ServiceKit
 		private async Task<(FieldInfo field, object service, bool required)> ResolveOptionalService(FieldInfo field, Type serviceType, InjectServiceAttribute serviceAttribute, CancellationToken cancellationToken, CancellationTokenSource resolutionCts)
 #endif
 		{
-			var locator = _serviceKitLocator as ServiceKitLocator;
-			if (locator == null) return (field, null, serviceAttribute.Required);
-
 			// Atomic check: determines if the service is ready, registered-but-not-ready, or absent
-			var status = locator.TryResolveService(serviceType, out var readyService);
+			var status = _serviceKitLocator.TryResolveService(serviceType, out var readyService);
 
 			if (status == ServiceResolutionStatus.Ready)
 			{
@@ -381,7 +373,7 @@ namespace Nonatomic.ServiceKit
 				await WaitForAwakePhaseCompletion();
 
 				// Re-check atomically after the yield
-				status = locator.TryResolveService(serviceType, out readyService);
+				status = _serviceKitLocator.TryResolveService(serviceType, out readyService);
 
 				if (status == ServiceResolutionStatus.Ready)
 				{
@@ -453,12 +445,12 @@ namespace Nonatomic.ServiceKit
 
 		private void DefaultErrorHandler(Exception exception)
 		{
-			Debug.LogError($"Failed to inject required services: {exception.Message}");
+			ServiceInjectionLog.Report(exception, _target as UnityEngine.Object);
 
 			var circular = _dependencyGraph?.DetectCircularDependency(_targetServiceType);
 			if (circular == null) return;
 
-			Debug.LogError($"Circular dependency detected: {circular.Path}");
+			Debug.LogError($"Circular dependency detected: {circular.Path}", _target as UnityEngine.Object);
 			_dependencyGraph?.AddCircularDependencyError(_targetServiceType);
 
 			if (circular.ToType != null)
@@ -475,16 +467,53 @@ namespace Nonatomic.ServiceKit
 			return !isExplicitTimeout && !_cancellationToken.IsCancellationRequested && !Application.isPlaying;
 		}
 
-		private TimeoutException BuildTimeoutException(List<FieldInfo> fieldsToInject, bool isExplicitTimeout)
+		private ServiceInjectionFailureKind ClassifyCancellation(Exception exception, bool isExplicitTimeout)
+		{
+			// A destroyed target takes precedence: the injection is moot regardless of why it ended.
+			// Unity's overloaded null check is the only reliable "target destroyed" signal.
+			var targetIsUnityObject = _target is UnityEngine.Object;
+			if (targetIsUnityObject && (UnityEngine.Object)_target == null)
+			{
+				return ServiceInjectionFailureKind.TargetDestroyed;
+			}
+
+			// Positively signalled by the locator when an awaited service is unregistered
+			// (directly, via scene unload, or on ClearServices) - no inference required.
+			if (exception is ServiceUnregisteredException)
+			{
+				return ServiceInjectionFailureKind.ServiceUnregistered;
+			}
+
+			// Positively signalled: only the timeout manager cancels timeoutCts.
+			if (isExplicitTimeout)
+			{
+				return ServiceInjectionFailureKind.Timeout;
+			}
+
+			if (_cancellationToken.IsCancellationRequested)
+			{
+				// For a Unity target this is its destroyCancellationToken firing (scene change /
+				// teardown); for a plain C# object it is a deliberate caller cancellation.
+				return targetIsUnityObject
+					? ServiceInjectionFailureKind.TargetDestroyed
+					: ServiceInjectionFailureKind.CallerCanceled;
+			}
+
+			// Residual: a bare cancellation with no token and no typed cause. Nothing positively
+			// indicates a timeout, so treat it as a vanished service (warning) rather than an error.
+			return ServiceInjectionFailureKind.ServiceUnregistered;
+		}
+
+		private ServiceInjectionTimeoutException BuildInjectionException(List<FieldInfo> fieldsToInject, ServiceInjectionFailureKind kind)
 		{
 			var sb = ServiceKitObjectPool.RentStringBuilder();
 			try
 			{
-				AppendTimeoutMessage(sb, isExplicitTimeout);
+				AppendFailureMessage(sb, kind);
 				AppendWaitingServices(sb, fieldsToInject);
 				AppendCircularDependencyInfo(sb);
-				
-				return new TimeoutException(sb.ToString());
+
+				return new ServiceInjectionTimeoutException(sb.ToString(), kind);
 			}
 			finally
 			{
@@ -492,38 +521,87 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		private void AppendTimeoutMessage(StringBuilder sb, bool isExplicitTimeout)
+		private void AppendFailureMessage(StringBuilder sb, ServiceInjectionFailureKind kind)
 		{
-			sb.Append("Service injection timed out");
-			
-			if (isExplicitTimeout && _timeout > 0f)
+			switch (kind)
 			{
-				sb.Append(" after ");
-				sb.Append(_timeout);
-				sb.Append(" seconds");
+				case ServiceInjectionFailureKind.Timeout:
+					sb.Append("Service injection timed out");
+					if (_timeout > 0f)
+					{
+						sb.Append(" after ");
+						sb.Append(_timeout);
+						sb.Append(" seconds");
+					}
+					sb.Append(" for ");
+					sb.Append(DescribeTarget());
+					sb.Append('.');
+					break;
+
+				case ServiceInjectionFailureKind.ServiceUnregistered:
+					sb.Append("Service injection for ");
+					sb.Append(DescribeTarget());
+					sb.Append(" was interrupted because a required service was unregistered before it became available (e.g. a scene change).");
+					break;
+
+				case ServiceInjectionFailureKind.TargetDestroyed:
+					sb.Append("Service injection for ");
+					sb.Append(DescribeTarget());
+					sb.Append(" was canceled because the target was destroyed (e.g. a scene change).");
+					break;
+
+				default: // CallerCanceled
+					sb.Append("Service injection for ");
+					sb.Append(DescribeTarget());
+					sb.Append(" was canceled via its cancellation token.");
+					break;
 			}
-			else if (_cancellationToken.IsCancellationRequested)
+		}
+
+		/// <summary>
+		/// Describes the injection target for error messages. For a live Component this includes
+		/// the GameObject's hierarchy path and scene, so the offending object is easy to locate.
+		/// Guarded against Unity fake-null in case the target is mid-destruction.
+		/// </summary>
+		private string DescribeTarget()
+		{
+			var typeName = _target.GetType().Name;
+
+			if (_target is Component component && component != null)
 			{
-				sb.Append(" (via cancellation token)");
+				var path = GetHierarchyPath(component.transform);
+				var scene = component.gameObject.scene;
+				return scene.IsValid()
+					? $"'{typeName}' on '{path}' (scene '{scene.name}')"
+					: $"'{typeName}' on '{path}'";
 			}
-			
-			sb.Append(" for target '");
-			sb.Append(_target.GetType().Name);
-			sb.Append("'.");
+
+			return $"'{typeName}'";
+		}
+
+		private static string GetHierarchyPath(Transform transform)
+		{
+			// Error path — a plain StringBuilder is fine and avoids nesting the shared pool.
+			var sb = new StringBuilder(transform.name);
+			for (var parent = transform.parent; parent != null; parent = parent.parent)
+			{
+				sb.Insert(0, '/');
+				sb.Insert(0, parent.name);
+			}
+			return sb.ToString();
 		}
 
 		private void AppendWaitingServices(StringBuilder sb, List<FieldInfo> fieldsToInject)
 		{
 			var hasMissing = false;
-			var locator = _serviceKitLocator as ServiceKitLocator;
-			
+
 			for (var i = 0; i < fieldsToInject.Count; i++)
 			{
 				var field = fieldsToInject[i];
-				var attr = field.GetCustomAttribute<InjectServiceAttribute>();
+				var attr = ServiceKitReflectionCache.GetInjectAttribute(field);
 				var serviceType = field.FieldType;
 				
-				if (IsServiceMissing(serviceType, attr.Required, locator))
+				if (IsServiceMissing(serviceType, attr.Required))
 				{
 					if (!hasMissing)
 					{
@@ -537,7 +615,7 @@ namespace Nonatomic.ServiceKit
 					
 					sb.Append(serviceType.Name);
 					
-					if (!attr.Required && locator?.IsServiceRegistered(serviceType) == true)
+					if (!attr.Required && _serviceKitLocator.IsServiceRegistered(serviceType))
 					{
 						sb.Append(" (optional but registered)");
 					}
@@ -548,11 +626,11 @@ namespace Nonatomic.ServiceKit
 				sb.Append(".");
 		}
 
-		private bool IsServiceMissing(Type serviceType, bool isRequired, ServiceKitLocator locator)
+		private bool IsServiceMissing(Type serviceType, bool isRequired)
 		{
 			var service = _serviceKitLocator.GetService(serviceType);
-			var isRegistered = locator?.IsServiceRegistered(serviceType) ?? false;
-			
+			var isRegistered = _serviceKitLocator.IsServiceRegistered(serviceType);
+
 			// Service is missing if it's null and either required or registered (but not ready)
 			return service == null && (isRequired || isRegistered);
 		}
