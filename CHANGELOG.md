@@ -2,6 +2,7 @@
 
 ### Added
 - **Editor hint for concrete-only registration**: in the ServiceKit window, a service registered under its concrete type that implements a user-defined interface (which is not itself registered in the locator) now shows an amber `i` badge. The tooltip suggests registering it as the interface via `[Service(typeof(IFoo))]` — catching the common case of a forgotten attribute, or one placed on an abstract base where it has no effect (the attribute is not inherited).
+- Validated dependency injection under **IL2CPP + High managed stripping** on a Standalone player (new `StrippingSmokeTests`); the shipped `link.xml` preserves interface-only services so reflection-based injection survives stripping. Full suite: EditMode 113/113, PlayMode (Mono) 16/16, PlayMode (IL2CPP, High stripping) 17/17.
 
 ## [2.4.0] - 2026-06-05
 
