@@ -1,3 +1,13 @@
+## [2.5.1] - 2026-06-07
+
+### Fixed
+- **UniTask compile regression**: 2.4.0 dropped the UniTask assembly reference from the runtime asmdef (and the Unit Testing sample), so ServiceKit failed to compile in any project that has UniTask installed. Restored. The reference is by GUID, so it resolves when UniTask is present and is harmlessly ignored when it is not.
+- **WebGL requires UniTask**: WebGL has no thread pool, so the `System.Threading.Tasks` injection path cannot resume an awaiter waiting for a not-yet-ready service — the injection silently hangs (only already-ready dependencies resolve). UniTask's player-loop async resumes correctly, so a WebGL target now requires it. ServiceKit logs a startup warning in a WebGL build without UniTask, and the README documents the requirement. Validated on an IL2CPP WebGL player.
+- **Edit-mode injection hang under UniTask**: the one-frame "wait for the Awake phase" defer used `UniTask.NextFrame()`, which never resumes without a running player loop (e.g. edit-mode tooling, or `async Task` tests), hanging injection of optional or not-yet-registered dependencies. Edit mode has no Awake phase to wait for, so the defer is skipped there. Run-state is read from a thread-safe snapshot because the continuation can resume off the main thread.
+
+### Added
+- Single-threaded async-resume PlayMode tests (a required dependency that becomes ready mid-wait, and an absent optional dependency) that exercise the injection resume path without the thread pool, regression-guarding the WebGL/UniTask behaviour. Both builds run green: non-UniTask EditMode 113 / PlayMode 19, UniTask EditMode 111 (the two `System.Threading.Tasks`-internals fixtures excluded) / PlayMode 19.
+
 ## [2.5.0] - 2026-06-06
 
 ### Added

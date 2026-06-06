@@ -4,6 +4,10 @@ using NUnit.Framework;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
+// This fixture asserts System.Threading.Tasks awaiter internals (ContinueWith / IsCompleted and the
+// RunContinuationsAsynchronously lock-safety). UniTask has a different continuation model, so the
+// fixture only applies to the non-UniTask build.
+#if !SERVICEKIT_UNITASK
 namespace Tests.EditMode
 {
 	/// <summary>
@@ -80,3 +84,4 @@ namespace Tests.EditMode
 		}
 	}
 }
+#endif
