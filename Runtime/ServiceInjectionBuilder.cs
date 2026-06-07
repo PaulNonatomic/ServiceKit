@@ -129,8 +129,29 @@ namespace Nonatomic.ServiceKit
 
 			try
 			{
+				// Capture the Unity context up front (and remember it globally): the fast path uses it to
+				// confirm it is on the Unity thread before assigning inline, and the async path marshals
+				// back to it. Falls back to the captured context when this injection was started off the
+				// main thread (Current is null there).
+				unityContext = SynchronizationContext.Current;
+				ServiceKitRuntimeState.CaptureUnityContext(unityContext);
+				unityContext ??= ServiceKitRuntimeState.UnityContext;
+
 				RegisterDependenciesForCircularDetection(fieldsToInject);
 				ThrowIfCircularDependencyDetected();
+
+				// Fast path: when every dependency is already ready AND we are on the Unity thread, resolve
+				// and assign synchronously - skipping the per-field state machines, the Task[]/WhenAll, and
+				// the thread hop. The dominant steady-state case (spawning an object whose services became
+				// ready long ago). It triggers only when ALL fields resolve to Ready, so it is semantically
+				// identical to the async path resolving them immediately; anything not-yet-ready falls
+				// through to the full async path below.
+				if (SynchronizationContext.Current == unityContext
+					&& TryResolveAllReadySynchronously(fieldsToInject, results))
+				{
+					AssignResolvedFields(results);
+					return;
+				}
 
 				if (_timeout > 0f)
 				{
@@ -149,7 +170,6 @@ namespace Nonatomic.ServiceKit
 					timeoutCts?.Token ?? CancellationToken.None))
 				{
 					var finalToken = linked.Token;
-					unityContext = SynchronizationContext.Current;
 
 					await ResolveAllServicesInParallel(fieldsToInject, finalToken, resolutionCts, timeoutCts, results);
 
@@ -161,6 +181,11 @@ namespace Nonatomic.ServiceKit
 			catch (OperationCanceledException oce)
 			{
 				var isExplicitTimeout = timeoutCts?.IsCancellationRequested ?? false;
+
+				// The awaited continuation may have resumed off the main thread; get back on it before any
+				// Unity-API access below (destroyed-target check in ClassifyCancellation, hierarchy/scene
+				// lookups in DescribeTarget). No-op when already on the Unity thread.
+				await ServiceKitThreading.SwitchToUnityThread(unityContext);
 
 				// Always try to inject any services that were successfully resolved before cancellation
 				await TryInjectResolvedServices(results, unityContext);
@@ -210,22 +235,52 @@ namespace Nonatomic.ServiceKit
 			return targetType;
 		}
 
-		private static List<FieldInfo> GetFieldsToInject(Type targetType)
+		private static IReadOnlyList<FieldInfo> GetFieldsToInject(Type targetType)
 		{
-			// Field discovery is cached per type (see ServiceKitReflectionCache); copy into a fresh
-			// list so the caller can treat it as owned.
-			return new List<FieldInfo>(ServiceKitReflectionCache.GetInjectableFields(targetType));
+			// Field discovery is cached per type (see ServiceKitReflectionCache). The cached array is
+			// immutable and never mutated by callers, so hand it back directly (read-only) instead of
+			// copying it into a fresh list on every injection.
+			return ServiceKitReflectionCache.GetInjectableFields(targetType);
 		}
 
-		private void RegisterDependenciesForCircularDetection(List<FieldInfo> fieldsToInject)
+		private void RegisterDependenciesForCircularDetection(IReadOnlyList<FieldInfo> fieldsToInject)
 		{
 			_dependencyGraph?.UpdateForTarget(_targetServiceType, fieldsToInject);
 			_dependencyGraph?.SetResolving(_targetServiceType, true);
 		}
 
+		// Synchronous resolution for the all-ready fast path. Returns true only if EVERY field's service
+		// is already Ready (populating results); returns false the moment one isn't, leaving that case to
+		// the async path. A RegisteredNotReady service or an absent optional deliberately fails this so the
+		// async path can wait / give late registrations a frame.
+		private bool TryResolveAllReadySynchronously(IReadOnlyList<FieldInfo> fieldsToInject, (FieldInfo field, object service, bool required)[] results)
+		{
+			for (var i = 0; i < fieldsToInject.Count; i++)
+			{
+				var field = fieldsToInject[i];
+				var attr = ServiceKitReflectionCache.GetInjectAttribute(field);
+				if (_serviceKitLocator.TryResolveService(field.FieldType, out var service) != ServiceResolutionStatus.Ready)
+				{
+					return false;
+				}
+				results[i] = (field, service, attr.Required);
+			}
+			return true;
+		}
+
+		private void AssignResolvedFields((FieldInfo field, object service, bool required)[] results)
+		{
+			for (var i = 0; i < results.Length; i++)
+			{
+				var (field, service, _) = results[i];
+				if (field == null) continue;
+				field.SetValue(_target, service);
+			}
+		}
+
 #if SERVICEKIT_UNITASK
 		private async UniTask<(FieldInfo field, object service, bool required)[]> ResolveAllServicesInParallel(
-			List<FieldInfo> fieldsToInject,
+			IReadOnlyList<FieldInfo> fieldsToInject,
 			CancellationToken cancellationToken,
 			CancellationTokenSource resolutionCts,
 			CancellationTokenSource timeoutCts,
@@ -245,7 +300,7 @@ namespace Nonatomic.ServiceKit
 		}
 #else
 		private async Task<(FieldInfo field, object service, bool required)[]> ResolveAllServicesInParallel(
-			List<FieldInfo> fieldsToInject,
+			IReadOnlyList<FieldInfo> fieldsToInject,
 			CancellationToken cancellationToken,
 			CancellationTokenSource resolutionCts,
 			CancellationTokenSource timeoutCts,
@@ -303,19 +358,34 @@ namespace Nonatomic.ServiceKit
 
 		private void ThrowIfRequiredServicesAreMissing((FieldInfo field, object service, bool required)[] results)
 		{
-			var missingRequiredServices = results
-				.Where(r => r.field != null && r.service == null && r.required)
-				.Select(r => r.field.FieldType.Name)
-				.ToArray();
+			// Happy-path scan: allocate nothing unless a required service is actually missing.
+			var anyMissing = false;
+			for (var i = 0; i < results.Length; i++)
+			{
+				var r = results[i];
+				if (r.field != null && r.service == null && r.required)
+				{
+					anyMissing = true;
+					break;
+				}
+			}
 
-			if (missingRequiredServices.Length == 0)
+			if (!anyMissing)
 				return;
 
 			var sb = ServiceKitObjectPool.RentStringBuilder();
 			try
 			{
 				sb.Append("Required services not available: ");
-				sb.Append(string.Join(", ", missingRequiredServices));
+				var first = true;
+				for (var i = 0; i < results.Length; i++)
+				{
+					var r = results[i];
+					if (r.field == null || r.service != null || !r.required) continue;
+					if (!first) sb.Append(", ");
+					sb.Append(r.field.FieldType.Name);
+					first = false;
+				}
 				throw new ServiceInjectionException(sb.ToString());
 			}
 			finally
@@ -443,6 +513,11 @@ namespace Nonatomic.ServiceKit
 #else
 		private async Task WaitForAwakePhaseCompletion()
 		{
+			// Mirror the UniTask path: edit mode has no Awake phase to wait for, so skip the defer. Unlike
+			// UniTask.NextFrame, Task.Delay does resume in edit mode, so this is a consistency/perf tidy
+			// rather than a hang fix - but it keeps the two paths behaviourally aligned.
+			if (!ServiceKitRuntimeState.IsPlaying) return;
+
 			// Yield to allow other Awake calls to complete registration.
 			// Task.Yield doesn't properly defer in Unity Edit Mode, so we use Task.Delay
 			// as a fallback. This is imprecise but sufficient since we re-check atomically after.
@@ -470,8 +545,10 @@ namespace Nonatomic.ServiceKit
 
 		private bool ShouldIgnoreCancellation(bool isExplicitTimeout)
 		{
-			// Ignore cancellation if it's from application quit and not an explicit timeout or user cancellation
-			return !isExplicitTimeout && !_cancellationToken.IsCancellationRequested && !Application.isPlaying;
+			// Ignore cancellation if it's from application quit and not an explicit timeout or user cancellation.
+			// ServiceKitRuntimeState.IsPlaying (not Application.isPlaying) so this is safe if the continuation
+			// resumed off the main thread.
+			return !isExplicitTimeout && !_cancellationToken.IsCancellationRequested && !ServiceKitRuntimeState.IsPlaying;
 		}
 
 		private ServiceInjectionFailureKind ClassifyCancellation(Exception exception, bool isExplicitTimeout)
@@ -511,7 +588,7 @@ namespace Nonatomic.ServiceKit
 			return ServiceInjectionFailureKind.ServiceUnregistered;
 		}
 
-		private ServiceInjectionTimeoutException BuildInjectionException(List<FieldInfo> fieldsToInject, ServiceInjectionFailureKind kind)
+		private ServiceInjectionTimeoutException BuildInjectionException(IReadOnlyList<FieldInfo> fieldsToInject, ServiceInjectionFailureKind kind)
 		{
 			var sb = ServiceKitObjectPool.RentStringBuilder();
 			try
@@ -598,7 +675,7 @@ namespace Nonatomic.ServiceKit
 			return sb.ToString();
 		}
 
-		private void AppendWaitingServices(StringBuilder sb, List<FieldInfo> fieldsToInject)
+		private void AppendWaitingServices(StringBuilder sb, IReadOnlyList<FieldInfo> fieldsToInject)
 		{
 			var hasMissing = false;
 
