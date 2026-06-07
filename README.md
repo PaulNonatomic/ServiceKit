@@ -288,6 +288,10 @@ public class GameSettings : ServiceKitBehaviour
 
 ServiceKit provides automatic optimization when [UniTask](https://github.com/Cysharp/UniTask) is installed in your project. UniTask is a high-performance, zero-allocation async library specifically designed for Unity.
 
+> ### ⚠️ WebGL requires UniTask
+>
+> On most platforms UniTask is an optional performance upgrade. **On WebGL it is required.** WebGL has no thread pool, so the default `System.Threading.Tasks` path cannot resume an awaiter that is waiting for a not-yet-ready service — the injection silently hangs (only injections whose dependencies are *already* ready complete). UniTask is player-loop based and resumes correctly, so any project targeting WebGL **must** install UniTask. ServiceKit logs a warning at startup in a WebGL build that does not have it. (Validated on an IL2CPP WebGL player: the await-then-resume path fails on `Task` and passes on UniTask.)
+
 ### Automatic Detection
 
 ServiceKit automatically detects when UniTask is available and seamlessly switches to use UniTask APIs for enhanced performance:

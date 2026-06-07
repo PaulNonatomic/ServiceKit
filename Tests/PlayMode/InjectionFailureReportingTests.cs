@@ -85,15 +85,17 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 
 			var go = AddConsumer<RequiresPendingBehaviour>(_locator);
 
-			// Let the consumer reach the waiting state.
-			for (var i = 0; i < 3; i++) yield return null;
+			// Let the consumer reach the waiting state. Generous because, single-threaded (WebGL), each
+			// async hop to the await costs a frame pump.
+			for (var i = 0; i < 60; i++) yield return null;
 
 			// Unregistering the awaited service while the target is alive is a warning, not an error.
 			LogAssert.Expect(LogType.Warning, new Regex("Failed to inject required services"));
 
 			_locator.UnregisterService(typeof(IPendingService));
 
-			for (var i = 0; i < 5; i++) yield return null;
+			// The fault propagates back up the await chain one frame-pump at a time; wait generously.
+			for (var i = 0; i < 120; i++) yield return null;
 
 			Object.Destroy(go);
 			yield return null;

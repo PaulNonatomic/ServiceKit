@@ -430,6 +430,13 @@ namespace Nonatomic.ServiceKit
 #if SERVICEKIT_UNITASK
 		private async UniTask WaitForAwakePhaseCompletion()
 		{
+			// Edit mode has no Awake phase to wait for, and UniTask.NextFrame() never resumes without a
+			// running player loop (e.g. an async-Task EditMode test) - so the defer is both pointless and
+			// a hang there. Only defer in play mode / player builds, where Awake ordering is real.
+			// ServiceKitRuntimeState.IsPlaying (not Application.isPlaying) because this continuation can
+			// resume on a worker thread, where the Unity API would throw.
+			if (!ServiceKitRuntimeState.IsPlaying) return;
+
 			// Yield to allow other Awake calls to complete registration
 			await UniTask.NextFrame();
 		}

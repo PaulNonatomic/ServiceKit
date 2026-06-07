@@ -3,13 +3,14 @@ using NUnit.Framework;
 using Nonatomic.ServiceKit;
 using UnityEngine;
 
+using System.Threading.Tasks;
 #if SERVICEKIT_UNITASK
 using Cysharp.Threading.Tasks;
-using TestTask = Cysharp.Threading.Tasks.UniTask;
-#else
-using System.Threading.Tasks;
-using TestTask = System.Threading.Tasks.Task;
 #endif
+
+// Test methods always return System.Threading.Tasks.Task so the NUnit runner can await them; the
+// runner cannot await a UniTask-returning method. TestAwake() may return a UniTask under
+// SERVICEKIT_UNITASK, but a UniTask is awaitable from inside an async Task, so the bodies are unchanged.
 
 namespace ServiceKitSamples.UnitTestingExample.Tests
 {
@@ -81,7 +82,7 @@ namespace ServiceKitSamples.UnitTestingExample.Tests
 		}
 
 		[Test]
-		public async TestTask TestAwake_InjectsBothDependencies()
+		public async Task TestAwake_InjectsBothDependencies()
 		{
 			await _controller.TestAwake(CancellationToken.None);
 
@@ -90,7 +91,7 @@ namespace ServiceKitSamples.UnitTestingExample.Tests
 		}
 
 		[Test]
-		public async TestTask CollectItem_AccumulatesScore()
+		public async Task CollectItem_AccumulatesScore()
 		{
 			await _controller.TestAwake(CancellationToken.None);
 
@@ -101,7 +102,7 @@ namespace ServiceKitSamples.UnitTestingExample.Tests
 		}
 
 		[Test]
-		public async TestTask StartNewGame_ResetsScore()
+		public async Task StartNewGame_ResetsScore()
 		{
 			await _controller.TestAwake(CancellationToken.None);
 			_controller.CollectItem(50);
@@ -113,7 +114,7 @@ namespace ServiceKitSamples.UnitTestingExample.Tests
 		}
 
 		[Test]
-		public async TestTask EndGame_SubmitsCurrentScoreToLeaderboard()
+		public async Task EndGame_SubmitsCurrentScoreToLeaderboard()
 		{
 			await _controller.TestAwake(CancellationToken.None);
 			_controller.CollectItem(120);

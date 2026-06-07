@@ -220,25 +220,13 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			// Arrange
 			var awaitTasks = new List<Task>();
 			
-			// Create multiple services that will be awaited
+			// Create multiple awaiters ON THE MAIN THREAD. Task.Run schedules on the thread pool,
+			// which does not exist on WebGL - there the lambda never runs and the tasks never complete.
 			for (int i = 0; i < 5; i++)
 			{
-				var serviceType = typeof(ITestService);
-				var task = Task.Run(async () =>
-				{
-					try
-					{
-						var cts = new CancellationTokenSource();
-						_cancellationTokens.Add(cts);
-						
-						await _locator.GetServiceAsync(serviceType, cts.Token);
-					}
-					catch (OperationCanceledException)
-					{
-						// Expected during cleanup - TaskCanceledException derives from this
-					}
-				});
-				awaitTasks.Add(task);
+				var cts = new CancellationTokenSource();
+				_cancellationTokens.Add(cts);
+				awaitTasks.Add(AwaitServiceSwallowingCancellation(typeof(ITestService), cts.Token));
 			}
 
 			// Wait a moment for awaiters to be registered
@@ -248,15 +236,28 @@ namespace Nonatomic.ServiceKit.Tests.PlayMode
 			_locator.ClearServices();
 			ServiceKitTimeoutManager.Cleanup();
 
-			// Wait for all tasks to complete
-			yield return new WaitUntil(() => 
-				awaitTasks.TrueForAll(t => t.IsCompleted) || Time.time > 5f);
+			// Wait (relative) for all tasks to complete - continuations pump on the main-thread frames.
+			var start = Time.time;
+			yield return new WaitUntil(() =>
+				awaitTasks.TrueForAll(t => t.IsCompleted) || Time.time - start > 5f);
 
 			// Assert - All tasks should be completed (cancelled)
 			foreach (var task in awaitTasks)
 			{
 				Assert.IsTrue(task.IsCompleted, "All await tasks should be completed");
 				Assert.IsFalse(task.IsFaulted, "Tasks should not be faulted");
+			}
+		}
+
+		private async System.Threading.Tasks.Task AwaitServiceSwallowingCancellation(System.Type serviceType, CancellationToken cancellationToken)
+		{
+			try
+			{
+				await _locator.GetServiceAsync(serviceType, cancellationToken);
+			}
+			catch (OperationCanceledException)
+			{
+				// Expected during cleanup.
 			}
 		}
 
