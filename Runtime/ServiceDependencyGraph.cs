@@ -19,6 +19,9 @@ namespace Nonatomic.ServiceKit
 			public HashSet<Type> Dependencies { get; } = new HashSet<Type>();
 			public Dictionary<Type, string> DependencyFields { get; } = new Dictionary<Type, string>();
 			public bool IsResolving { get; set; }
+
+			// A type's [InjectService] fields are immutable, so its edges only need building once.
+			public bool DependenciesPopulated { get; set; }
 		}
 
 		internal sealed class CircularDependencyInfo
@@ -30,22 +33,29 @@ namespace Nonatomic.ServiceKit
 			public string FieldName { get; set; }
 		}
 
-		public void UpdateForTarget(Type serviceType, List<FieldInfo> fieldsToInject)
+		public void UpdateForTarget(Type serviceType, IReadOnlyList<FieldInfo> fieldsToInject)
 		{
 			lock (_graphLock)
 			{
 				var node = GetOrCreate(serviceType);
+				// Edges are derived from the type's immutable injectable fields, so building them once is
+				// enough. This skips the per-injection clear+rebuild churn under the lock when the same
+				// type is injected repeatedly (e.g. spawning many copies of a prefab).
+				if (node.DependenciesPopulated) return;
+
 				node.Dependencies.Clear();
 				node.DependencyFields.Clear();
-				foreach (var field in fieldsToInject)
+				for (var i = 0; i < fieldsToInject.Count; i++)
 				{
+					var field = fieldsToInject[i];
 					node.Dependencies.Add(field.FieldType);
 					node.DependencyFields[field.FieldType] = field.Name;
 				}
+				node.DependenciesPopulated = true;
 			}
 		}
 
-		public void UpdateForRegistration(Type serviceType, List<FieldInfo> fieldsToInject)
+		public void UpdateForRegistration(Type serviceType, IReadOnlyList<FieldInfo> fieldsToInject)
 		{
 			UpdateForTarget(serviceType, fieldsToInject);
 		}
@@ -54,15 +64,21 @@ namespace Nonatomic.ServiceKit
 		{
 			lock (_graphLock)
 			{
+				// Runs on every injection. Allocate nothing but the walk's path until a cycle is actually
+				// found - the CircularDependencyInfo and its path copy are pure garbage in the common case.
 				var path = new List<Type>();
-				var info = new CircularDependencyInfo();
-				if (!HasCircular(root, path, info))
+				if (!HasCircular(root, path, out var fromType, out var toType, out var fieldName))
 				{
 					return null;
 				}
-				info.TypesInPath = new List<Type>(path);
-				info.Path = string.Join(" → ", path.Select(t => t.Name));
-				return info;
+				return new CircularDependencyInfo
+				{
+					TypesInPath = new List<Type>(path),
+					Path = string.Join(" → ", path.Select(t => t.Name)),
+					FromType = fromType,
+					ToType = toType,
+					FieldName = fieldName,
+				};
 			}
 		}
 
@@ -215,8 +231,12 @@ namespace Nonatomic.ServiceKit
 			}
 		}
 
-		private bool HasCircular(Type serviceType, List<Type> path, CircularDependencyInfo info)
+		private bool HasCircular(Type serviceType, List<Type> path, out Type fromType, out Type toType, out string fieldName)
 		{
+			fromType = null;
+			toType = null;
+			fieldName = null;
+
 			if (_circularExempt.Contains(serviceType))
 			{
 				return false;
@@ -229,9 +249,9 @@ namespace Nonatomic.ServiceKit
 					_dependencyGraph.TryGetValue(path[lastIndex], out var lastNode) &&
 					lastNode.DependencyFields.TryGetValue(serviceType, out var completingField))
 				{
-					info.FromType = path[lastIndex];
-					info.ToType = serviceType;
-					info.FieldName = completingField;
+					fromType = path[lastIndex];
+					toType = serviceType;
+					fieldName = completingField;
 				}
 				return true;
 			}
@@ -244,7 +264,7 @@ namespace Nonatomic.ServiceKit
 					{
 						continue;
 					}
-					if (HasCircular(dep, path, info))
+					if (HasCircular(dep, path, out fromType, out toType, out fieldName))
 					{
 						return true;
 					}

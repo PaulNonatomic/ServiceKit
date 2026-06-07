@@ -303,7 +303,8 @@ await serviceKit.GetServiceAsync<IPlayerService>();
 // With UniTask installed:   → Zero allocations, faster execution
 // Without UniTask:          → Standard Task performance
 ```
-## Installation
+
+### Installing UniTask
 
 Add **UniTask** to your Unity project via Package Manager:
 
@@ -311,10 +312,10 @@ Add **UniTask** to your Unity project via Package Manager:
 2. Click **+** > **Add package from git URL**
 3. Enter:
 ```
-https://www.pkglnk.dev/unitask.git?path=src/UniTask/Assets/Plugins/UniTask
-```[sw.js](../../../../beer-tilt/sw.js)
+https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask#2.5.10
+```
 
-[![pkglnk](https://www.pkglnk.dev/card/unitask.svg?variant=directory)](https://www.pkglnk.dev/pkg/unitask)
+> ServiceKit's `SERVICEKIT_UNITASK` define activates at UniTask **2.5.10 or newer**. The `#2.5.10` suffix pins that minimum; omit it to track the latest.
 
 ### Performance Benefits
 
@@ -462,6 +463,10 @@ public class PlayerController : ServiceKitBehaviour, IPlayerController
     {
         Debug.LogError($"Failed to initialize player controller: {exception.Message}");
 
+        // The exception is typed: a timeout arrives as ServiceInjectionTimeoutException (a
+        // TimeoutException) and an unregistered service as ServiceUnregisteredException (an
+        // OperationCanceledException). Both subclass their base type, so the checks below keep
+        // working; both also carry a .Kind discriminator if you need to branch precisely.
         if (exception is TimeoutException)
         {
             Debug.Log("Services took too long to become available");
@@ -577,13 +582,20 @@ Services can be marked as optional using intelligent 3-state dependency resoluti
 ```csharp
 public class AnalyticsReporter : MonoBehaviour
 {
+    [SerializeField] private ServiceKitLocator _serviceKit;
+
     [InjectService(Required = false)]
-    private IAnalyticsService _analyticsService; // Uses intelligent resolution
+    private IAnalyticsService _analyticsService; // Optional - stays null if never registered
 
     [InjectService]
-    private IPlayerService _playerService; // Required - will fail if missing
+    private IPlayerService _playerService; // Required - injection fails if missing
 
-    // ...
+    private async void Awake()
+    {
+        // Injection is what populates the fields; a plain MonoBehaviour must trigger it itself
+        // (a ServiceKitBehaviour does this for you). After this, _analyticsService may be null.
+        await _serviceKit.InjectAsync(this, destroyCancellationToken);
+    }
 }
 ```
 
@@ -779,6 +791,11 @@ IReadOnlyList<ServiceInfo> GetServicesWithAllTags(params string[] tags);
 
 // Management
 IReadOnlyList<ServiceInfo> GetAllServices();
+
+// Curated subset. The interface also exposes status checks (IsServiceRegistered<T>,
+// IsServiceReady<T>, GetServiceStatus<T>), tag mutators (AddTagsToService, RemoveTagsFromService,
+// GetServiceTags), and scene tooling (GetServicesInScene, UnregisterServicesFromScene,
+// CleanupDestroyedServices). See IServiceKitLocator.cs for the full surface.
 ```
 
 ### IServiceRegistrationBuilder Interface
@@ -797,10 +814,15 @@ void Ready();     // Complete registration and mark as ready
 
 ```csharp
 IServiceInjectionBuilder WithCancellation(CancellationToken cancellationToken);
+IServiceInjectionBuilder WithTimeout();                        // Use the default timeout (30s, from ServiceKit Settings)
 IServiceInjectionBuilder WithTimeout(float timeoutSeconds);
+IServiceInjectionBuilder WithErrorHandling();                  // Use the default handler (logs against the target)
 IServiceInjectionBuilder WithErrorHandling(Action<Exception> errorHandler);
-void Execute(); // Fire-and-forget
-Task ExecuteAsync(); // Awaitable (UniTask when available)
+Task ExecuteAsync();                                           // Awaitable (UniTask when available)
+Task ExecuteWithCancellationAsync(CancellationToken token);    // Awaitable, applies the cancellation token
+
+// Fire-and-forget Execute() / ExecuteWithCancellation() also exist on the concrete
+// ServiceInjectionBuilder for advanced use; prefer the awaitable ExecuteAsync above.
 ```
 
 ## Best Practices

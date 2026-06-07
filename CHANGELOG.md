@@ -1,3 +1,15 @@
+## [2.6.0] - 2026-06-07
+
+### Added
+- The locator interface is now composed from focused facets — `IServiceLocator` (core register / ready / resolve / inject), `IServiceTagRegistry`, `IServiceSceneManager`, and `IServiceDiagnostics`. `IServiceKitLocator` inherits all four, so existing code and implementers are unaffected; new code and alternative locator implementations can depend on just the slice they need.
+
+### Changed
+- **Faster steady-state injection.** When every dependency of an object is already ready, injection now resolves and assigns synchronously — skipping the per-field async state machines, the task array + `WhenAll`, and the thread hop. Additionally, a type's dependency-graph edges are built once instead of on every injection, and the required-services and circular-dependency checks no longer allocate on the success path. Meaningfully less per-spawn GC when instantiating injected prefabs at runtime. Behaviour is unchanged: the fast path only triggers when all dependencies are already ready and the injection is on the Unity thread; anything else takes the existing async path.
+
+### Fixed
+- Injection-failure handling no longer risks a Unity main-thread exception when an injection was started off the main thread (or resumed there via `ConfigureAwait(false)`). The failure path now re-syncs to the Unity thread before any Unity-API access and reads play-state from a thread-safe snapshot. The non-UniTask edit-mode defer was also aligned with the UniTask path.
+- **README accuracy.** Corrected the UniTask install instructions to the official Cysharp source (`...UniTask#2.5.10`) and removed a corrupted link artifact; documented the typed injection exceptions and the 30-second default timeout; corrected the `IServiceInjectionBuilder` API reference (`Execute()` is not an interface member; added the missing members); and fixed the optional-dependency example to show the injection trigger.
+
 ## [2.5.1] - 2026-06-07
 
 ### Fixed
