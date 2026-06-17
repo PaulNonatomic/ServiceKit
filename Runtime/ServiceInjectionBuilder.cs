@@ -153,6 +153,11 @@ namespace Nonatomic.ServiceKit
 					return;
 				}
 
+				// Past the fast path we take the async route. If this injection was started off the main
+				// thread, get onto it now: the timeout manager creates a GameObject and reads Time.*, both
+				// main-thread-only. No-op when already on the Unity thread (the common case).
+				await ServiceKitThreading.SwitchToUnityThread(unityContext);
+
 				if (_timeout > 0f)
 				{
 					timeoutCts = new CancellationTokenSource();

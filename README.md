@@ -37,8 +37,8 @@ https://www.pkglnk.dev/servicekit.git
 -   **ScriptableObject-Based**: Clean, asset-based architecture that integrates seamlessly with Unity's workflow.
 -   **Multi-Phase Initialization**: A robust, automated lifecycle ensures services are registered, injected, and initialized safely.
 -   **Async Service Resolution**: Wait for services to become fully ready with cancellation and timeout support.
--   **Atomic 3-State Resolution**: Race-condition-free optional dependency resolution distinguishes ready, registered-but-not-ready, and absent services in a single atomic check.
--   **UniTask Integration**: Automatic performance optimization when [UniTask](https://github.com/Cysharp/UniTask) is available - zero allocations and faster async operations.
+-   **Atomic 3-State Resolution**: Each optional-dependency check is a single lock-guarded atomic operation distinguishing ready, registered-but-not-ready, and absent services (the optional-wait flow re-checks atomically across frames to catch late registrations).
+-   **UniTask Integration**: Automatic performance optimization when [UniTask](https://github.com/Cysharp/UniTask) is available - greatly reduced allocations and faster async operations.
 -   **Fluent Dependency Injection**: Elegant builder pattern for configuring service injection.
 -   **Automatic Scene Management**: Services are automatically tracked and cleaned up when scenes unload.
 -   **Comprehensive Debugging**: Built-in editor window with search, filtering, and service inspection.
@@ -300,7 +300,7 @@ ServiceKit automatically detects when UniTask is available and seamlessly switch
 // Same code, different performance characteristics:
 await serviceKit.GetServiceAsync<IPlayerService>();
 
-// With UniTask installed:   → Zero allocations, faster execution
+// With UniTask installed:   → Fewer allocations, faster execution
 // Without UniTask:          → Standard Task performance
 ```
 
@@ -321,9 +321,9 @@ https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask#2
 
 When UniTask is available, ServiceKit automatically provides:
 
-- **🚀 2-3x Faster Async Operations**: For immediately completing operations
-- **📉 50-80% Less Memory Allocation**: Reduced GC pressure and frame drops
-- **⚡ Zero-Allocation Async**: Most async operations produce no garbage
+- **🚀 Faster Async Operations**: Especially for operations that complete immediately
+- **📉 Less Memory Allocation**: Reduced GC pressure and frame drops
+- **⚡ Lower-Allocation Async**: UniTask itself is allocation-free; ServiceKit's async path allocates far less than on the Task path (not strictly zero — a small per-call buffer remains)
 - **🎯 Unity-Optimized**: Better main thread synchronization and PlayerLoop integration
 
 ### Usage Examples
@@ -466,7 +466,8 @@ public class PlayerController : ServiceKitBehaviour, IPlayerController
         // The exception is typed: a timeout arrives as ServiceInjectionTimeoutException (a
         // TimeoutException) and an unregistered service as ServiceUnregisteredException (an
         // OperationCanceledException). Both subclass their base type, so the checks below keep
-        // working; both also carry a .Kind discriminator if you need to branch precisely.
+        // working; both also carry a .Kind discriminator (ServiceInjectionFailureKind:
+        // Timeout, CallerCanceled, ServiceUnregistered, TargetDestroyed) if you need to branch precisely.
         if (exception is TimeoutException)
         {
             Debug.Log("Services took too long to become available");
@@ -763,6 +764,8 @@ IServiceRegistrationBuilder Register<T>(T service) where T : class;
 IServiceRegistrationBuilder Register(object service);
 
 // Direct Registration
+// (registration methods also take a trailing optional [CallerMemberName] string registeredBy,
+//  auto-filled for debug attribution - you normally omit it)
 void RegisterService<T>(T service) where T : class;
 void RegisterService(Type serviceType, object service);
 void RegisterAndReadyService<T>(T service) where T : class;
@@ -825,6 +828,57 @@ Task ExecuteWithCancellationAsync(CancellationToken token);    // Awaitable, app
 // ServiceInjectionBuilder for advanced use; prefer the awaitable ExecuteAsync above.
 ```
 
+### Convenience Extensions
+
+`ServiceKitExtensions` adds ergonomic helpers on top of `IServiceKitLocator`:
+
+```csharp
+// One-line injection (default timeout + cancellation + error handling)
+await serviceKit.InjectAsync(this, destroyCancellationToken);
+
+// Check whether a ready service exists
+if (serviceKit.HasService<IPlayerService>()) { /* ... */ }
+
+// Run an action only if the service is available (no-op otherwise)
+serviceKit.WithService<IAudioService>(audio => audio.Play(clip));
+
+// ...or return a value, with a fallback when the service is absent
+var volume = serviceKit.WithService<IAudioService, float>(audio => audio.Volume, 1f);
+
+// Register from a factory, or from an async source (Task<T> / UniTask<T>)
+serviceKit.RegisterServiceFactory<IPlayerService>(() => new PlayerService());
+await serviceKit.RegisterServiceAsync(LoadPlayerServiceAsync());
+```
+
+### Locator Interface Facets
+
+`IServiceKitLocator` is composed from four smaller interfaces, so code (and alternative locator implementations) can depend on only the slice it needs:
+
+| Interface | Responsibility |
+|-----------|----------------|
+| `IServiceLocator` | Core: register, ready, resolve, inject |
+| `IServiceTagRegistry` | Tag assignment and tag-based queries |
+| `IServiceSceneManager` | Scene-scoped enumeration and cleanup |
+| `IServiceDiagnostics` | Inspection, status, circular-dependency state |
+
+`IServiceKitLocator` inherits all four, so existing code is unaffected. To point a `ServiceKitBehaviour` at your own locator, override `ResolveLocator()`:
+
+```csharp
+protected override IServiceKitLocator ResolveLocator() => MyCustomLocator.Instance;
+```
+
+### ServiceKit Settings
+
+Create a settings asset via `Assets > Create > ServiceKit > Settings` (loaded from a `Resources` folder at runtime, auto-discovered in the editor):
+
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `DefaultTimeout` | `30` | Seconds `WithTimeout()` waits before failing |
+| `AutoCleanupOnSceneUnload` | `true` | Unregister scene `MonoBehaviour` services when their scene unloads |
+| `WarnOnDestroyedRegistration` | `true` | Log a warning when a destroyed object is registered |
+| `DebugLogging` | `false` | Verbose registration/ready logging (editor) |
+| `DefaultServiceKitLocator` | — | Locator used for auto-assignment; takes highest priority |
+
 ## Best Practices
 
 ### Service Design
@@ -854,9 +908,9 @@ Task ExecuteWithCancellationAsync(CancellationToken token);    // Awaitable, app
 * **Batch service resolution** when possible using `UniTask.WhenAll()` or `Task.WhenAll()`.
 * **Profile on target platforms** - UniTask benefits are most noticeable on mobile and lower-end devices.
 
-## Benchmark Performance
+## Indicative Performance
 
-All core service operations complete in sub-millisecond time. These numbers were measured in the Unity Editor (development build) and will be faster in release builds.
+The tables below are **indicative** timings from a single Unity Editor session (development build) on one machine — a rough guide, not a bundled or reproducible benchmark. Release builds are faster, and absolute numbers vary widely by hardware, so treat these as ballpark figures and profile your own target platform.
 
 ### Service Resolution
 
@@ -888,7 +942,7 @@ All core service operations complete in sub-millisecond time. These numbers were
 | 50 concurrent accessors x 20 services | 36.818ms |
 | 1000x register/unregister cycle | 1867.780ms |
 
-All core operations are well within frame budget for 60fps+ applications. Results will vary by hardware — run the included benchmark suite via `Window > General > Test Runner` to validate on your setup.
+All core operations are well within frame budget for 60fps+ applications. ServiceKit does not bundle a benchmark suite — use the Unity Profiler on your target platform to measure your own setup.
 
 ### Performance Tips
 

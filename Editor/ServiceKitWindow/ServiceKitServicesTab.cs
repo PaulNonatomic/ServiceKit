@@ -399,26 +399,16 @@ namespace Nonatomic.ServiceKit.Editor.ServiceKitWindow
 			{
 				// Check if there's a configured default in ServiceKitSettings
 				var configuredDefault = PropertyDrawer.ServiceKitLocatorDrawer.GetStaticPriorityBasedDefaultLocator();
-				
-				Debug.Log($"[ServiceKit Debug] ServiceKitServicesTab - No persisted selection, checking configured default");
-				Debug.Log($"[ServiceKit Debug] Configured default: {(configuredDefault != null ? configuredDefault.name : "null")}");
-				Debug.Log($"[ServiceKit Debug] Ordered locators count: {_orderedLocators.Count}");
-				if (_orderedLocators.Count > 0)
-				{
-					Debug.Log($"[ServiceKit Debug] First ordered locator: {_orderedLocators[0].name}");
-				}
-				
+
 				if (configuredDefault != null && _orderedLocators.Contains(configuredDefault))
 				{
 					// Use the configured default
 					locatorToSelect = configuredDefault;
-					Debug.Log($"[ServiceKit Debug] Using configured default: {configuredDefault.name}");
 				}
 				else
 				{
 					// Fall back to first item (which is sorted by priority already)
 					locatorToSelect = _orderedLocators[0];
-					Debug.Log($"[ServiceKit Debug] Using first ordered locator: {locatorToSelect.name}");
 				}
 			}
 

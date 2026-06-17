@@ -1,3 +1,15 @@
+## [2.6.1] - 2026-06-08
+
+### Fixed
+- **Dependency-graph edges weren't reset on unregister** (regression from 2.6.0's once-per-type edge caching). Re-registering a service type with a different concrete implementation — common across a scene reload — kept the previous type's dependency edges, so circular-dependency detection could miss a real cycle or report a phantom one. Unregister now invalidates the node.
+- **`CleanupDestroyedServices` left pending awaiters hanging.** Unlike the other teardown paths, it removed services without faulting their awaiters, so a consumer awaiting a now-destroyed service hung until timeout. It now faults them with `ServiceUnregisteredException`.
+- **`ServiceKitBehaviour`'s registration guard is reset on unregister**, so a pooled/reused object re-registers via `UseLocator()` as documented instead of being silently skipped on its second lifecycle.
+- **Off-thread injection with a timeout no longer throws a Unity main-thread exception** — injection hops to the Unity thread before creating the timeout manager (which calls `new GameObject` / reads `Time.*`).
+- **`WarnOnDestroyedRegistration` now works.** The setting was never read; registering a destroyed `UnityEngine.Object` now logs a warning when it is enabled (default on).
+
+### Changed
+- **README accuracy.** Removed the reference to a benchmark suite that does not ship and reframed the indicative timings honestly; softened "zero allocations" to "greatly reduced allocations" (UniTask is allocation-free, ServiceKit's wrapper is not); reworded "race-condition-free optional resolution" to match what the atomic check actually guarantees. Documented the interface facets, the `ServiceKitExtensions` convenience methods, the `ServiceKitSettings` fields, and the `ServiceInjectionFailureKind` values; added a class summary to `ServiceKitLocator`. Removed a leftover editor console-log block.
+
 ## [2.6.0] - 2026-06-07
 
 ### Added

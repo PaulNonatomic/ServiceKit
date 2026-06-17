@@ -60,6 +60,25 @@ namespace Nonatomic.ServiceKit
 			UpdateForTarget(serviceType, fieldsToInject);
 		}
 
+		/// <summary>
+		/// Resets a node's dependency edges so they are rebuilt on the next registration/injection. Must be
+		/// called when a service type is unregistered: the edges were derived from the previously-registered
+		/// concrete type's fields, and a different concrete registered under the same key (e.g. across a
+		/// scene reload) would otherwise inherit stale edges and mis-detect circular dependencies.
+		/// </summary>
+		public void InvalidateTarget(Type serviceType)
+		{
+			lock (_graphLock)
+			{
+				if (_dependencyGraph.TryGetValue(serviceType, out var node))
+				{
+					node.Dependencies.Clear();
+					node.DependencyFields.Clear();
+					node.DependenciesPopulated = false;
+				}
+			}
+		}
+
 		public CircularDependencyInfo DetectCircularDependency(Type root)
 		{
 			lock (_graphLock)
