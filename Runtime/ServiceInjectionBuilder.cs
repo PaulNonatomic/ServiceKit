@@ -21,16 +21,16 @@ namespace Nonatomic.ServiceKit
 	/// </summary>
 	public class ServiceInjectionBuilder : IServiceInjectionBuilder
 	{
-		public ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target)
+		public ServiceInjectionBuilder(IServiceLocator serviceKitLocator, object target)
 			// Fallback for external callers: only the concrete locator owns a dependency graph.
 			: this(serviceKitLocator, target, (serviceKitLocator as ServiceKitLocator)?.DependencyGraph)
 		{
 		}
 
 		// The concrete locator passes its graph in directly (see ServiceKitLocator.Inject) rather than
-		// having it re-discovered via a downcast. An alternative IServiceKitLocator simply has no graph
+		// having it re-discovered via a downcast. An alternative IServiceLocator simply has no graph
 		// and circular-dependency bookkeeping is skipped.
-		internal ServiceInjectionBuilder(IServiceKitLocator serviceKitLocator, object target, ServiceDependencyGraph dependencyGraph)
+		internal ServiceInjectionBuilder(IServiceLocator serviceKitLocator, object target, ServiceDependencyGraph dependencyGraph)
 		{
 			_serviceKitLocator = serviceKitLocator;
 			_target = target;
@@ -777,7 +777,7 @@ namespace Nonatomic.ServiceKit
 		[SerializeField]
 		private float _timeout = -1f;
 
-		private readonly IServiceKitLocator _serviceKitLocator;
+		private readonly IServiceLocator _serviceKitLocator;
 		private readonly ServiceDependencyGraph _dependencyGraph;
 		private readonly object _target;
 		private readonly Type _targetServiceType;

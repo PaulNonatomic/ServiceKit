@@ -39,7 +39,8 @@ namespace ServiceKitSamples.CompleteGameExample
 			Debug.Log("[SaveService] Saving game...");
 
 			// Discover all saveable services dynamically via the "saveable" tag
-			var saveableServices = Locator.GetServicesWithTag("saveable");
+			// Tags live on the full IServiceKitLocator; Locator is the core IServiceLocator facet, so cast.
+			var saveableServices = ((IServiceKitLocator)Locator).GetServicesWithTag("saveable");
 			var saveData = new Dictionary<string, string>();
 
 			foreach (var serviceInfo in saveableServices)
@@ -84,7 +85,8 @@ namespace ServiceKitSamples.CompleteGameExample
 			}
 
 			// Discover all saveable services and restore their data
-			var saveableServices = Locator.GetServicesWithTag("saveable");
+			// Tags live on the full IServiceKitLocator; Locator is the core IServiceLocator facet, so cast.
+			var saveableServices = ((IServiceKitLocator)Locator).GetServicesWithTag("saveable");
 			var loadedCount = 0;
 
 			foreach (var serviceInfo in saveableServices)

@@ -42,8 +42,9 @@ namespace ServiceKitSamples.CompleteGameExample
 
 		protected override void InitializeService()
 		{
-			// Tag this service as "saveable" so SaveService can discover it dynamically
-			Locator.AddTagsToService<IPlayerService>("saveable");
+			// Tag this service as "saveable" so SaveService can discover it dynamically.
+			// Tags live on the full IServiceKitLocator; Locator is the core IServiceLocator facet, so cast.
+			((IServiceKitLocator)Locator).AddTagsToService<IPlayerService>("saveable");
 
 			Debug.Log("[PlayerService] Initialized");
 			Reset();

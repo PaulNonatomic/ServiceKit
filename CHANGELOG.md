@@ -1,3 +1,12 @@
+## [3.0.0] - 2026-06-08
+
+### Changed
+- **Breaking: the injection engine and `ServiceKitBehaviour` now depend on the core `IServiceLocator` facet rather than the full `IServiceKitLocator`.** `ServiceKitBehaviour.ResolveLocator()` returns `IServiceLocator` and `UseLocator()` accepts one, so a **custom locator only has to implement the core register / ready / resolve / inject surface** — not the tag, scene, and diagnostics facets it may not need. `ServiceInjectionBuilder`, `ServiceRegistrationBuilder`, and the `ServiceKitExtensions` helpers were narrowed to `IServiceLocator` too. `IServiceKitLocator` still inherits all four facets, and the concrete `ServiceKitLocator` is unchanged.
+
+### Migration
+- **The common path is unaffected.** A serialized `ServiceKitLocator` field, `UseLocator(someServiceKitLocator)`, and overriding `ResolveLocator()` to return an `IServiceKitLocator` all keep compiling — the concrete type satisfies the narrower signatures and covariant returns cover the override.
+- **The one break:** a `ServiceKitBehaviour` subclass that calls a tag / scene / diagnostics member *through* `Locator` (e.g. `Locator.AddTagsToService(...)`, `Locator.GetServicesWithTag(...)`) must now cast, since `Locator` is the core facet: `((IServiceKitLocator)Locator).AddTagsToService(...)`. The Complete Game Example sample was updated to show this.
+
 ## [2.6.1] - 2026-06-08
 
 ### Fixed

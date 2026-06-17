@@ -16,9 +16,9 @@ namespace Nonatomic.ServiceKit
 		/// most injection scenarios.
 		/// </summary>
 #if SERVICEKIT_UNITASK
-		public static UniTask InjectAsync(this IServiceKitLocator locator, object target, CancellationToken cancellationToken)
+		public static UniTask InjectAsync(this IServiceLocator locator, object target, CancellationToken cancellationToken)
 #else
-		public static Task InjectAsync(this IServiceKitLocator locator, object target, CancellationToken cancellationToken)
+		public static Task InjectAsync(this IServiceLocator locator, object target, CancellationToken cancellationToken)
 #endif
 		{
 			return locator.Inject(target)
@@ -31,7 +31,7 @@ namespace Nonatomic.ServiceKit
 		/// <summary>
 		/// Register a service with a factory function
 		/// </summary>
-		public static void RegisterServiceFactory<T>(this IServiceKitLocator serviceKitLocator, Func<T> factory) where T : class
+		public static void RegisterServiceFactory<T>(this IServiceLocator serviceKitLocator, Func<T> factory) where T : class
 		{
 			serviceKitLocator.RegisterService(factory());
 		}
@@ -40,9 +40,9 @@ namespace Nonatomic.ServiceKit
 		/// Register a service asynchronously
 		/// </summary>
 #if SERVICEKIT_UNITASK
-		public static async UniTask RegisterServiceAsync<T>(this IServiceKitLocator serviceKitLocator, Task<T> serviceTask) where T : class
+		public static async UniTask RegisterServiceAsync<T>(this IServiceLocator serviceKitLocator, Task<T> serviceTask) where T : class
 #else
-		public static async Task RegisterServiceAsync<T>(this IServiceKitLocator serviceKitLocator, Task<T> serviceTask) where T : class
+		public static async Task RegisterServiceAsync<T>(this IServiceLocator serviceKitLocator, Task<T> serviceTask) where T : class
 #endif
 		{
 			var service = await serviceTask;
@@ -52,7 +52,7 @@ namespace Nonatomic.ServiceKit
 		/// <summary>
 		/// Check if a service is registered
 		/// </summary>
-		public static bool HasService<T>(this IServiceKitLocator serviceKitLocator) where T : class
+		public static bool HasService<T>(this IServiceLocator serviceKitLocator) where T : class
 		{
 			return serviceKitLocator.GetService<T>() != null;
 		}
@@ -60,7 +60,7 @@ namespace Nonatomic.ServiceKit
 		/// <summary>
 		/// Try to get a service and perform an action if it exists
 		/// </summary>
-		public static void WithService<T>(this IServiceKitLocator serviceKitLocator, Action<T> action) where T : class
+		public static void WithService<T>(this IServiceLocator serviceKitLocator, Action<T> action) where T : class
 		{
 			if (serviceKitLocator.TryGetService<T>(out var service))
 			{
@@ -71,7 +71,7 @@ namespace Nonatomic.ServiceKit
 		/// <summary>
 		/// Try to get a service and return a result if it exists
 		/// </summary>
-		public static TResult WithService<T, TResult>(this IServiceKitLocator serviceKitLocator, Func<T, TResult> func, TResult defaultValue = default) where T : class
+		public static TResult WithService<T, TResult>(this IServiceLocator serviceKitLocator, Func<T, TResult> func, TResult defaultValue = default) where T : class
 		{
 			return serviceKitLocator.TryGetService<T>(out var service) ? func(service) : defaultValue;
 		}

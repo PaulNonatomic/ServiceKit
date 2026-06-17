@@ -9,7 +9,7 @@ namespace Nonatomic.ServiceKit
 	/// </summary>
 	public class ServiceRegistrationBuilder : IServiceRegistrationBuilder
 	{
-		private readonly IServiceKitLocator _locator;
+		private readonly IServiceLocator _locator;
 		private readonly object _service;
 		private readonly string _registeredBy;
 		private readonly List<Type> _serviceTypes = new();
@@ -18,7 +18,7 @@ namespace Nonatomic.ServiceKit
 		private bool _executed;
 
 		internal ServiceRegistrationBuilder(
-			IServiceKitLocator locator,
+			IServiceLocator locator,
 			object service,
 			[CallerMemberName] string registeredBy = null)
 		{
