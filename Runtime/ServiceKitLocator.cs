@@ -25,6 +25,13 @@ namespace Nonatomic.ServiceKit
 		NotRegistered
 	}
 
+	/// <summary>
+	/// The default <see cref="IServiceKitLocator"/> - a <see cref="ScriptableObject"/> asset that holds the
+	/// registered services for a project or scene. Create one via <c>Assets &gt; Create &gt; ServiceKit &gt;
+	/// ServiceKitLocator</c> and assign it to a <see cref="ServiceKitBehaviour"/>'s serialized field (or any
+	/// <c>[SerializeField] ServiceKitLocator</c>). Multiple locators can coexist; each owns its own service
+	/// registry and dependency graph.
+	/// </summary>
 	[CreateAssetMenu(fileName = "ServiceKit", menuName = "ServiceKit/ServiceKitLocator")]
 	public class ServiceKitLocator : ScriptableObject, IServiceKitLocator
 	{
@@ -104,6 +111,16 @@ namespace Nonatomic.ServiceKit
 		private void RegisterServiceInternal(Type serviceType, object service, bool exemptFromCircularDependencyCheck, ServiceTag[] tags, [CallerMemberName] string registeredBy = null)
 		{
 			ValidateServiceNotNull(serviceType, service, registeredBy);
+
+			// A destroyed UnityEngine.Object passes the null check above (it is not reference-null) but is
+			// unusable; warn so the bug is visible at registration instead of surfacing later as a null
+			// dependency. Governed by the ServiceKitSettings.WarnOnDestroyedRegistration toggle (default on).
+			if (ServiceKitSettings.Instance.WarnOnDestroyedRegistration && service is UnityEngine.Object destroyedObject && destroyedObject == null)
+			{
+				Debug.LogWarning($"[ServiceKit] Registering '{serviceType.Name}'" +
+					(registeredBy != null ? $" by '{registeredBy}'" : string.Empty) +
+					" from a destroyed object; it is registered but will not be usable.");
+			}
 
 			lock (_lock)
 			{
@@ -546,6 +563,7 @@ namespace Nonatomic.ServiceKit
 				var removed = _readyServices.Remove(serviceType) || _registeredServices.Remove(serviceType);
 
 				_dependencyGraph.RemoveCircularDependencyExemption(serviceType);
+				_dependencyGraph.InvalidateTarget(serviceType);
 
 #if UNITY_EDITOR
 				if (removed && ServiceKitSettings.Instance.DebugLogging)
@@ -727,6 +745,7 @@ namespace Nonatomic.ServiceKit
 				{
 					_readyServices.Remove(type);
 					_registeredServices.Remove(type);
+					_dependencyGraph.InvalidateTarget(type);
 
 					if (_serviceAwaiters.TryGetValue(type, out var tcs))
 					{
@@ -764,6 +783,12 @@ namespace Nonatomic.ServiceKit
 
 		public void CleanupDestroyedServices()
 		{
+#if SERVICEKIT_UNITASK
+			var awaitersToCancel = new List<(Type type, UniTaskCompletionSource<object> tcs)>();
+#else
+			var awaitersToCancel = new List<(Type type, TaskCompletionSource<object> tcs)>();
+#endif
+
 			lock (_lock)
 			{
 				var servicesToRemove = new List<Type>();
@@ -788,8 +813,22 @@ namespace Nonatomic.ServiceKit
 				{
 					_readyServices.Remove(type);
 					_registeredServices.Remove(type);
+					_dependencyGraph.InvalidateTarget(type);
 
+					// Fault any pending awaiter so a consumer waiting on a now-destroyed service doesn't
+					// hang until timeout - matching UnregisterService / UnregisterServicesFromScene.
+					if (_serviceAwaiters.TryGetValue(type, out var tcs))
+					{
+						_serviceAwaiters.Remove(type);
+						awaitersToCancel.Add((type, tcs));
+					}
 				}
+			}
+
+			// Fault outside the lock so awaiter continuations never run while _lock is held.
+			foreach (var (type, tcs) in awaitersToCancel)
+			{
+				tcs.TrySetException(new ServiceUnregisteredException(type));
 			}
 		}
 

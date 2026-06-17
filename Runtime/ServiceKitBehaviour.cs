@@ -245,6 +245,11 @@ namespace Nonatomic.ServiceKit
 		{
 			MarkAsUnregistered();
 			MarkAsNotReady();
+
+			// Reset the double-registration guard so a later UseLocator()/re-registration can run again
+			// (e.g. a pooled object revived after OnDestroy unregistered it). Without this the guard stays
+			// latched at 1 and the re-registration UseLocator() promises is silently skipped.
+			Interlocked.Exchange(ref _registrationGuard, 0);
 		}
 
 		private void MarkAsUnregistered()
