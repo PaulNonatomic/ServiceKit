@@ -25,7 +25,7 @@ namespace Nonatomic.ServiceKit
 	{
 		[SerializeField] public ServiceKitLocator ServiceKitLocator;
 
-		private IServiceKitLocator _locatorOverride;
+		private IServiceLocator _locatorOverride;
 		private Type[] _cachedServiceTypes;
 		private bool _isCircularDependencyExempt;
 		private int _registrationGuard;
@@ -33,24 +33,25 @@ namespace Nonatomic.ServiceKit
 		/// <summary>
 		/// Returns the active service locator. Uses the override if set, otherwise falls back to the serialized field.
 		/// </summary>
-		protected IServiceKitLocator Locator => ResolveLocator();
+		protected IServiceLocator Locator => ResolveLocator();
 
 		/// <summary>
 		/// Resolves the active service locator. Override this to supply a locator from a custom source
 		/// (e.g. a global registry, a parent component, or an addressable) instead of the serialized
-		/// field - the serialized field cannot be typed as the interface, so this is the extension
-		/// point for alternative <see cref="IServiceKitLocator"/> implementations. Defaults to the
-		/// UseLocator() override if set, otherwise the serialized ServiceKitLocator field.
+		/// field - the serialized field cannot be typed as the interface, so this is the extension point
+		/// for alternative locators. It returns the core <see cref="IServiceLocator"/>, so a custom
+		/// implementation only needs that facet, not the full <see cref="IServiceKitLocator"/>. Defaults
+		/// to the UseLocator() override if set, otherwise the serialized ServiceKitLocator field.
 		/// </summary>
-		protected virtual IServiceKitLocator ResolveLocator() => _locatorOverride ?? ServiceKitLocator;
+		protected virtual IServiceLocator ResolveLocator() => _locatorOverride ?? ServiceKitLocator;
 
 		/// <summary>
 		/// Sets an override for the ServiceKitLocator. Useful for unit testing with mocks.
 		/// If Awake() already ran but registration was skipped due to missing locator,
 		/// this method will trigger registration automatically.
 		/// </summary>
-		/// <param name="locator">The IServiceKitLocator to use (can be a mock)</param>
-		public void UseLocator(IServiceKitLocator locator)
+		/// <param name="locator">The IServiceLocator to use (can be a mock or a custom implementation)</param>
+		public void UseLocator(IServiceLocator locator)
 		{
 			_locatorOverride = locator;
 

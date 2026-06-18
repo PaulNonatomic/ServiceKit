@@ -73,6 +73,20 @@ namespace Tests.EditMode
 		}
 
 		[Test]
+		public void UseLocator_AcceptsCoreIServiceLocator_NotJustFullInterface()
+		{
+			// The point of the facet split: a custom locator only needs to implement the core
+			// IServiceLocator, not the full IServiceKitLocator. This test compiles (and passes) only
+			// because UseLocator/ResolveLocator are typed to IServiceLocator - it would not build before.
+			var behaviour = CreateTestBehaviour();
+			IServiceLocator coreLocator = Substitute.For<IServiceLocator>();
+
+			behaviour.UseLocator(coreLocator);
+
+			Assert.Pass("UseLocator accepts a core IServiceLocator implementation");
+		}
+
+		[Test]
 		public void UseLocator_WithRealLocator_WorksAsExpected()
 		{
 			// Arrange
