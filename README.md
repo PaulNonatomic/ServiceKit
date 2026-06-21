@@ -879,6 +879,22 @@ Create a settings asset via `Assets > Create > ServiceKit > Settings` (loaded fr
 | `DebugLogging` | `false` | Verbose registration/ready logging (editor) |
 | `DefaultServiceKitLocator` | — | Locator used for auto-assignment; takes highest priority |
 
+### Addressable Locators (optional)
+
+If the [Addressables](https://docs.unity3d.com/Packages/com.unity.addressables@latest) package is installed, derive from `AddressableServiceKitBehaviour` instead of `ServiceKitBehaviour` to load the locator by Addressables reference rather than a direct serialized one. The locator loads asynchronously before the service registers (so it isn't pulled into every bundle that references it) and its handle is released on destroy:
+
+```csharp
+[Service(typeof(IPlayerService))]
+public class PlayerService : AddressableServiceKitBehaviour, IPlayerService
+{
+    // Assign the locator via the ServiceKitLocatorAssetReference field in the inspector;
+    // leave the inherited ServiceKitLocator field empty.
+    protected override void InitializeService() { /* ... */ }
+}
+```
+
+This is gated behind the `SERVICEKIT_ADDRESSABLES` define (set automatically when Addressables is present) and compiles to nothing otherwise. Under the hood it overrides the `protected virtual ServiceKitBehaviour.PrepareLocatorAsync()` hook — the same hook you can override to source a locator from any other asynchronous origin.
+
 ## Best Practices
 
 ### Service Design
