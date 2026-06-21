@@ -1,6 +1,6 @@
 {
   "name": "com.nonatomic.servicekit",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "displayName": "Service Kit",
   "description": "A lightweight dependency injection and service locator framework for Unity. Attribute-based registration, async resolution, fluent API, optional dependencies, service tags, scene-aware lifecycle, and UniTask support.",
   "unity": "2022.3",
@@ -86,6 +86,11 @@
       "displayName": "11 - Error Handling",
       "description": "TryResolveService, timeout recovery, circular dependency exemption, and custom error handlers.",
       "path": "Samples~/11 - Error Handling"
+    },
+    {
+      "displayName": "12 - Addressable Locator",
+      "description": "Loading a ServiceKitLocator via Addressables with AddressableServiceKitBehaviour (requires the Addressables package).",
+      "path": "Samples~/12 - Addressable Locator"
     }
   ]
 }
