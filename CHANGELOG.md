@@ -1,3 +1,9 @@
+## [3.1.0] - 2026-06-21
+
+### Added
+- **Optional Addressables support.** A new `AddressableServiceKitBehaviour` loads its `ServiceKitLocator` through Addressables (via a typed `ServiceKitLocatorAssetReference`) instead of a direct serialized reference — so the locator isn't pulled into every bundle/scene that references it, and its Addressables handle is released on destroy. It is compiled only when the Addressables package is installed (the `SERVICEKIT_ADDRESSABLES` define) and costs nothing otherwise.
+- `ServiceKitBehaviour.PrepareLocatorAsync()` — a `protected virtual` hook (default no-op, completes synchronously) run in `Awake` before registration, so a subclass can source its locator from an asynchronous origin and have `ResolveLocator()` return it. Normal behaviours are unaffected and still register synchronously within `Awake`.
+
 ## [3.0.0] - 2026-06-08
 
 ### Changed

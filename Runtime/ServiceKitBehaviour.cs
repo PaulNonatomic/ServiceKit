@@ -104,10 +104,29 @@ namespace Nonatomic.ServiceKit
 			if (IsObjectDestroyed()) return;
 
 			CacheDestroyToken();
+
+			// Optional async step: a subclass can source its locator asynchronously here (e.g. load it via
+			// Addressables) before registration. The default no-op completes synchronously, so behaviours
+			// that don't override it still register within this same Awake call.
+			await PrepareLocatorAsync();
+			if (IsObjectDestroyed()) return;
+
 			RegisterServiceWithLocator();
 
 			await PerformServiceInitializationSequence();
 		}
+
+		/// <summary>
+		/// Optional asynchronous step run during Awake, before the service registers. Override it to source
+		/// the locator from an async origin (e.g. load a <see cref="ServiceKitLocator"/> via Addressables)
+		/// and have <see cref="ResolveLocator"/> return it. The default returns immediately, so behaviours
+		/// that don't override it register synchronously within Awake exactly as before.
+		/// </summary>
+#if SERVICEKIT_UNITASK
+		protected virtual UniTask PrepareLocatorAsync() => UniTask.CompletedTask;
+#else
+		protected virtual Task PrepareLocatorAsync() => Task.CompletedTask;
+#endif
 
 		private bool IsObjectDestroyed()
 		{
